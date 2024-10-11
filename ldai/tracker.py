@@ -1,0 +1,41 @@
+from typing import Dict, Union
+from ldclient import Context, LDClient
+from ldai.tracking_utils import usage_to_token_metrics
+from ldai.types import BedrockTokenUsage, FeedbackKind, TokenUsage, UnderscoreTokenUsage
+
+class LDAIConfigTracker:
+    def __init__(self, ld_client: LDClient, variation_id: str, config_key: str, context: Context):
+        self.ld_client = ld_client
+        self.variation_id = variation_id
+        self.config_key = config_key
+        self.context = context
+
+    def get_track_data(self):
+        return {
+            'variationId': self.variation_id,
+            'configKey': self.config_key,
+        }
+    
+    def track_duration(self, duration: int) -> None:
+        self.ld_client.track('$ld:ai:duration:total', self.context, self.get_track_data(), duration)
+
+    def track_tokens(self, tokens: Union[TokenUsage, UnderscoreTokenUsage, BedrockTokenUsage]) -> None:
+        token_metrics = usage_to_token_metrics(tokens)
+        if token_metrics['total'] > 0:
+            self.ld_client.track('$ld:ai:tokens:total', self.context, self.get_track_data(), token_metrics['total'])
+        if token_metrics['input'] > 0:
+            self.ld_client.track('$ld:ai:tokens:input', self.context, self.get_track_data(), token_metrics['input'])
+        if token_metrics['output'] > 0:
+            self.ld_client.track('$ld:ai:tokens:output', self.context, self.get_track_data(), token_metrics['output'])
+
+    def track_error(self, error: int) -> None:
+        self.ld_client.track('$ld:ai:error', self.context, self.get_track_data(), error)
+
+    def track_generation(self, generation: int) -> None:
+        self.ld_client.track('$ld:ai:generation', self.context, self.get_track_data(), generation)
+
+    def track_feedback(self, feedback: Dict[str, FeedbackKind]) -> None:
+        if feedback['kind'] == FeedbackKind.Positive:
+            self.ld_client.track('$ld:ai:feedback:user:positive', self.context, self.get_track_data(), 1)
+        elif feedback['kind'] == FeedbackKind.Negative:
+            self.ld_client.track('$ld:ai:feedback:user:negative', self.context, self.get_track_data(), 1)
