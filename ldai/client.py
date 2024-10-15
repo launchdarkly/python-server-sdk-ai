@@ -1,11 +1,11 @@
 import json
 from typing import Any, Dict, Optional
 from ldclient import Context
-#from config import LDAIConfig, LDAIConfigTracker
 from ldclient.client import LDClient
 import chevron
 
 from ldai.tracker import LDAIConfigTracker
+from ldai.types import AIConfig
 
 class LDAIClient:
     """The LaunchDarkly AI SDK client object."""
@@ -13,7 +13,7 @@ class LDAIClient:
     def __init__(self, client: LDClient):
         self.client = client
 
-    def model_config(self, key: str, context: Context, default_value: str, variables: Optional[Dict[str, Any]] = None) -> Any:
+    def model_config(self, key: str, context: Context, default_value: str, variables: Optional[Dict[str, Any]] = None) -> AIConfig:
         """Get the value of a model configuration asynchronously.
 
         Args:
@@ -39,8 +39,6 @@ class LDAIClient:
             }
             for entry in variation['prompt']
         ]
-
-        #return detail.value,
 
         return {
             'config': variation,
