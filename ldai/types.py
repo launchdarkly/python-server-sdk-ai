@@ -22,11 +22,8 @@ class AITracker(TypedDict):
 
 class AIConfig():
     def __init__(self, config: AIConfigData, tracker: AITracker):
-        self._config = config
-        self._tracker = tracker
-
-    config: AIConfigData
-    tracker: AITracker
+        self.config = config
+        self.tracker = tracker
 
 class FeedbackKind(Enum):
     Positive = "positive"

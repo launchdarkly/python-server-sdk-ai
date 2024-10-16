@@ -1,4 +1,3 @@
-import json
 from typing import Any, Dict, Optional
 from ldclient import Context
 from ldclient.client import LDClient
@@ -31,7 +30,6 @@ class LDAIClient:
         if variables:
             all_variables.update(variables)
 
-        print(variation)
         variation['prompt'] = [
             {
                 **entry,
@@ -40,10 +38,7 @@ class LDAIClient:
             for entry in variation['prompt']
         ]
 
-        return {
-            'config': variation,
-            'tracker': LDAIConfigTracker(self.client, variation['_ldMeta']['variationId'], key, context)
-        }
+        return AIConfig(config=variation, tracker=LDAIConfigTracker(self.client, variation['_ldMeta']['variationId'], key, context))
 
     def interpolate_template(self, template: str, variables: Dict[str, Any]) -> str:
         """Interpolate the template with the given variables.
