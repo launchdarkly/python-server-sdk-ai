@@ -1,19 +1,21 @@
 from enum import Enum
-from typing import Callable, TypedDict
+from typing import Callable
 from dataclasses import dataclass
 
 @dataclass
-class TokenMetrics(TypedDict):
+class TokenMetrics():
     total: int
     input: int
     output: int # type: ignore
 
-class AIConfigData(TypedDict):
+@dataclass
+
+class AIConfigData():
     config: dict
     prompt: any
     _ldMeta: dict
 
-class AITracker(TypedDict):
+class AITracker():
     track_duration: Callable[..., None]
     track_tokens: Callable[..., None]
     track_error: Callable[..., None]
@@ -29,7 +31,9 @@ class FeedbackKind(Enum):
     Positive = "positive"
     Negative = "negative"
 
-class TokenUsage(TypedDict):
+@dataclass
+
+class TokenUsage():
     total_tokens: int
     prompt_tokens: int
     completion_tokens: int
