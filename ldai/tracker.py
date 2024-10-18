@@ -1,7 +1,7 @@
 import time
 from typing import Dict, Union
 from ldclient import Context, LDClient
-from ldai.types import BedrockTokenUsage, FeedbackKind, TokenUsage, UnderscoreTokenUsage
+from ldai.types import BedrockTokenUsage, FeedbackKind, OpenAITokenUsage, TokenUsage, UnderscoreTokenUsage
 
 class LDAIConfigTracker:
     def __init__(self, ld_client: LDClient, variation_id: str, config_key: str, context: Context):
@@ -27,6 +27,24 @@ class LDAIConfigTracker:
         self.track_duration(duration)
         return result
 
+    def track_error(self, error: int) -> None:
+        self.ld_client.track('$ld:ai:error', self.context, self.get_track_data(), error)
+
+    def track_feedback(self, feedback: Dict[str, FeedbackKind]) -> None:
+        if feedback['kind'] == FeedbackKind.Positive:
+            self.ld_client.track('$ld:ai:feedback:user:positive', self.context, self.get_track_data(), 1)
+        elif feedback['kind'] == FeedbackKind.Negative:
+            self.ld_client.track('$ld:ai:feedback:user:negative', self.context, self.get_track_data(), 1)
+
+    def track_generation(self, generation: int) -> None:
+        self.ld_client.track('$ld:ai:generation', self.context, self.get_track_data(), generation)
+
+    def track_openai(self, func, *args, **kwargs):
+        result = self.track_duration_of(func, *args, **kwargs)
+        if result.usage:
+            self.track_tokens(OpenAITokenUsage(result.usage))
+        return result
+
     def track_tokens(self, tokens: Union[TokenUsage, UnderscoreTokenUsage, BedrockTokenUsage]) -> None:
         token_metrics = tokens.to_metrics()
         if token_metrics['total'] > 0:
@@ -35,15 +53,3 @@ class LDAIConfigTracker:
             self.ld_client.track('$ld:ai:tokens:input', self.context, self.get_track_data(), token_metrics['input'])
         if token_metrics['output'] > 0:
             self.ld_client.track('$ld:ai:tokens:output', self.context, self.get_track_data(), token_metrics['output'])
-
-    def track_error(self, error: int) -> None:
-        self.ld_client.track('$ld:ai:error', self.context, self.get_track_data(), error)
-
-    def track_generation(self, generation: int) -> None:
-        self.ld_client.track('$ld:ai:generation', self.context, self.get_track_data(), generation)
-
-    def track_feedback(self, feedback: Dict[str, FeedbackKind]) -> None:
-        if feedback['kind'] == FeedbackKind.Positive:
-            self.ld_client.track('$ld:ai:feedback:user:positive', self.context, self.get_track_data(), 1)
-        elif feedback['kind'] == FeedbackKind.Negative:
-            self.ld_client.track('$ld:ai:feedback:user:negative', self.context, self.get_track_data(), 1)
