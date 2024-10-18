@@ -19,15 +19,13 @@ class LDAIConfigTracker:
     def track_duration(self, duration: int) -> None:
         self.ld_client.track('$ld:ai:duration:total', self.context, self.get_track_data(), duration)
 
-    def track_duration_of(self, func):
-            def wrapper(*args, **kwargs):
-                start_time = time.time()
-                result = func(*args, **kwargs)
-                end_time = time.time()
-                duration = int((end_time - start_time) * 1000)  # duration in milliseconds
-                self.track_duration(duration)
-                return result
-            return wrapper
+    def track_duration_of(self, func, *args, **kwargs):
+        start_time = time.time()
+        result = func(*args, **kwargs)
+        end_time = time.time()
+        duration = int((end_time - start_time) * 1000)  # duration in milliseconds
+        self.track_duration(duration)
+        return result
 
     def track_tokens(self, tokens: Union[TokenUsage, UnderscoreTokenUsage, BedrockTokenUsage]) -> None:
         token_metrics = tokens.to_metrics()
