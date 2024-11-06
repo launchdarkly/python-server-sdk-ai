@@ -43,9 +43,10 @@ class LDAIConfigTracker:
         return result
 
     def track_bedrock_converse(self, res: dict) -> dict:    
-        if res.get('$metadata', {}).get('httpStatusCode') == 200:
+        status_code = res.get('$metadata', {}).get('httpStatusCode', 0)
+        if status_code == 200:
             self.track_success()
-        elif res.get('$metadata', {}).get('httpStatusCode') and res['$metadata']['httpStatusCode'] >= 400:
+        elif status_code >= 400:
             # Potentially add error tracking in the future.
             pass
         if res.get('metrics', {}).get('latencyMs'):
