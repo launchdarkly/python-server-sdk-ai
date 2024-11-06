@@ -38,7 +38,7 @@ class LDAIClient:
             for entry in variation['prompt']
         ]
 
-        enabled = ['_ldMeta'].get('enabled')
+        enabled = variation['_ldMeta'].get('enabled')
         return AIConfig(config=variation, tracker=LDAIConfigTracker(self.client, variation['_ldMeta']['versionKey'], key, context, bool(enabled)))
 
     def interpolate_template(self, template: str, variables: Dict[str, Any]) -> str:
