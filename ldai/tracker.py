@@ -4,15 +4,15 @@ from ldclient import Context, LDClient
 from ldai.types import BedrockTokenUsage, FeedbackKind, OpenAITokenUsage, TokenUsage, UnderscoreTokenUsage
 
 class LDAIConfigTracker:
-    def __init__(self, ld_client: LDClient, variation_id: str, config_key: str, context: Context):
+    def __init__(self, ld_client: LDClient, version_key: str, config_key: str, context: Context):
         self.ld_client = ld_client
-        self.variation_id = variation_id
+        self.version_key = version_key
         self.config_key = config_key
         self.context = context
 
     def get_track_data(self):
         return {
-            'variationId': self.variation_id,
+            'versionKey': self.version_key,
             'configKey': self.config_key,
         }
     
@@ -27,23 +27,32 @@ class LDAIConfigTracker:
         self.track_duration(duration)
         return result
 
-    def track_error(self, error: int) -> None:
-        self.ld_client.track('$ld:ai:error', self.context, self.get_track_data(), error)
-
     def track_feedback(self, feedback: Dict[str, FeedbackKind]) -> None:
         if feedback['kind'] == FeedbackKind.Positive:
             self.ld_client.track('$ld:ai:feedback:user:positive', self.context, self.get_track_data(), 1)
         elif feedback['kind'] == FeedbackKind.Negative:
             self.ld_client.track('$ld:ai:feedback:user:negative', self.context, self.get_track_data(), 1)
 
-    def track_generation(self, generation: int) -> None:
-        self.ld_client.track('$ld:ai:generation', self.context, self.get_track_data(), generation)
+    def track_success(self) -> None:
+        self.ld_client.track('$ld:ai:generation', self.context, self.get_track_data(), 1)
 
     def track_openai(self, func, *args, **kwargs):
         result = self.track_duration_of(func, *args, **kwargs)
         if result.usage:
             self.track_tokens(OpenAITokenUsage(result.usage))
         return result
+
+    def track_bedrock_converse(self, res: dict) -> dict:    
+        if res.get('$metadata', {}).get('httpStatusCode') == 200:
+            self.track_success()
+        elif res.get('$metadata', {}).get('httpStatusCode') and res['$metadata']['httpStatusCode'] >= 400:
+            # Potentially add error tracking in the future.
+            pass
+        if res.get('metrics', {}).get('latencyMs'):
+            self.track_duration(res['metrics']['latencyMs'])
+        if res.get('usage'):
+            self.track_tokens(BedrockTokenUsage(res['usage']))
+        return res
 
     def track_tokens(self, tokens: Union[TokenUsage, UnderscoreTokenUsage, BedrockTokenUsage]) -> None:
         token_metrics = tokens.to_metrics()

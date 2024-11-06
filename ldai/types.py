@@ -23,15 +23,15 @@ class AITracker():
     track_feedback: Callable[..., None]
 
 class AIConfig():
-    def __init__(self, config: AIConfigData, tracker: AITracker):
+    def __init__(self, config: AIConfigData, tracker: AITracker, enabled: bool):
         self.config = config
         self.tracker = tracker
+        self.enabled = enabled
 
+@dataclass
 class FeedbackKind(Enum):
     Positive = "positive"
     Negative = "negative"
-
-@dataclass
 
 class TokenUsage():
     total_tokens: int
@@ -45,6 +45,7 @@ class TokenUsage():
             'output': self['completion_tokens'],
         }
 
+@dataclass
 class OpenAITokenUsage:
     def __init__(self, data: any):
         self.total_tokens = data.total_tokens
