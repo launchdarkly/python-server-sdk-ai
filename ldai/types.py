@@ -9,7 +9,6 @@ class TokenMetrics():
     output: int # type: ignore
 
 @dataclass
-
 class AIConfigData():
     config: dict
     prompt: any

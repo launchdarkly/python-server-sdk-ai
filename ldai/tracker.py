@@ -19,9 +19,9 @@ class LDAIConfigTracker:
     def track_duration(self, duration: int) -> None:
         self.ld_client.track('$ld:ai:duration:total', self.context, self.get_track_data(), duration)
 
-    def track_duration_of(self, func, *args, **kwargs):
+    def track_duration_of(self, func):
         start_time = time.time()
-        result = func(*args, **kwargs)
+        result = func()
         end_time = time.time()
         duration = int((end_time - start_time) * 1000)  # duration in milliseconds
         self.track_duration(duration)
@@ -36,8 +36,8 @@ class LDAIConfigTracker:
     def track_success(self) -> None:
         self.ld_client.track('$ld:ai:generation', self.context, self.get_track_data(), 1)
 
-    def track_openai(self, func, *args, **kwargs):
-        result = self.track_duration_of(func, *args, **kwargs)
+    def track_openai(self, func):
+        result = self.track_duration_of(func)
         if result.usage:
             self.track_tokens(OpenAITokenUsage(result.usage))
         return result

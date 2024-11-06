@@ -4,7 +4,7 @@ LaunchDarkly has published an [SDK contributor's guide](https://docs.launchdarkl
 
 ## Submitting bug reports and feature requests
 
-The LaunchDarkly SDK team monitors the [issue tracker](https://github.com/launchdarkly/python-server-sdk-AI/issues) in the SDK repository. Bug reports and feature requests specific to this library should be filed in this issue tracker. The SDK team will respond to all newly filed issues within two business days.
+The LaunchDarkly SDK team monitors the [issue tracker](https://github.com/launchdarkly/python-server-sdk-ai/issues) in the SDK repository. Bug reports and feature requests specific to this library should be filed in this issue tracker. The SDK team will respond to all newly filed issues within two business days.
 
 ## Submitting pull requests
 
@@ -54,8 +54,6 @@ make lint
 ## Code organization
 
 The library's module structure is as follows:
-
-<!-- TODO: Add structure description -->
 
 ### Type hints
 
