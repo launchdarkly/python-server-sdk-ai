@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Callable
+from typing import Callable, List, Literal
 from dataclasses import dataclass
 
 @dataclass
@@ -9,9 +9,14 @@ class TokenMetrics():
     output: int # type: ignore
 
 @dataclass
+class LDMessage():
+    role: Literal['system', 'user', 'assistant']
+    content: str
+
+@dataclass
 class AIConfigData():
-    config: dict
-    prompt: any
+    model: dict
+    prompt: List[LDMessage]
     _ldMeta: dict
 
 class AITracker():
