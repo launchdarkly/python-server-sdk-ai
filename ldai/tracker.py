@@ -1,7 +1,7 @@
 import time
 from typing import Dict, Union
 from ldclient import Context, LDClient
-from ldai.types import BedrockTokenUsage, FeedbackKind, OpenAITokenUsage, TokenUsage, UnderscoreTokenUsage
+from ldai.types import BedrockTokenUsage, FeedbackKind, OpenAITokenUsage, TokenUsage
 
 class LDAIConfigTracker:
     def __init__(self, ld_client: LDClient, version_key: str, config_key: str, context: Context):
@@ -55,7 +55,7 @@ class LDAIConfigTracker:
             self.track_tokens(BedrockTokenUsage(res['usage']))
         return res
 
-    def track_tokens(self, tokens: Union[TokenUsage, UnderscoreTokenUsage, BedrockTokenUsage]) -> None:
+    def track_tokens(self, tokens: Union[TokenUsage, BedrockTokenUsage]) -> None:
         token_metrics = tokens.to_metrics()
         if token_metrics['total'] > 0:
             self.ld_client.track('$ld:ai:tokens:total', self.context, self.get_track_data(), token_metrics['total'])
