@@ -43,7 +43,7 @@ class LDAIClient:
         if variables:
             all_variables.update(variables)
         all_variables['ldctx'] = context
-        print(variation)
+        
         if isinstance(variation['prompt'], list) and all(isinstance(entry, dict) for entry in variation['prompt']):
             variation['prompt'] = [
                 LDMessage(
