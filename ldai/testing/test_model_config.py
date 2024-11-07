@@ -41,7 +41,7 @@ def client(td: TestData) -> LDClient:
     return LDClient(config=config)
 
 @pytest.fixture
-def tracker() -> LDAIConfigTracker:
+def tracker(client: LDClient) -> LDAIConfigTracker:
     return LDAIConfigTracker(client, 'abcd', 'model-config', Context.create('user-key'))
 
 @pytest.fixture
