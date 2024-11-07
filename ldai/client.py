@@ -28,18 +28,18 @@ class LDAIClient:
         if variables:
             all_variables.update(variables)
         all_variables['ldctx'] = context
-
-        if isinstance(variation['prompt'], list) and all(isinstance(entry, dict) for entry in variation['prompt']):
-            variation['prompt'] = [
-                {
-                    'role': entry['role'],
-                    'content': self.interpolate_template(entry['content'], all_variables)
-                }
-                for entry in variation['prompt']
-            ]
+        print(variation)
+        #if isinstance(variation['prompt'], list) and all(isinstance(entry, dict) for entry in variation['prompt']):
+        variation['prompt'] = [
+            {
+                'role': entry['role'],
+                'content': self.interpolate_template(entry['content'], all_variables)
+            }
+            for entry in variation['prompt']
+        ]
 
         enabled = variation.get('_ldMeta',{}).get('enabled', False)
-        return AIConfig(config=variation, tracker=LDAIConfigTracker(self.client, variation.get('_ldMeta', {}).get('versionKey', ''), key, context, bool(enabled)))
+        return AIConfig(config=variation, tracker=LDAIConfigTracker(self.client, variation.get('_ldMeta', {}).get('versionKey', ''), key, context), enabled=bool(enabled))
 
     def interpolate_template(self, template: str, variables: Dict[str, Any]) -> str:
         """
