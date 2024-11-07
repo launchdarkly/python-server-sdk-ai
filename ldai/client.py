@@ -1,10 +1,25 @@
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Literal, Optional
 from ldclient import Context
 from ldclient.client import LDClient
 import chevron
 
 from ldai.tracker import LDAIConfigTracker
-from ldai.types import AIConfig
+from dataclasses import dataclass
+
+@dataclass
+class LDMessage():
+    role: Literal['system', 'user', 'assistant']
+    content: str
+
+@dataclass
+class AIConfigData():
+    model: Optional[dict]
+    prompt: Optional[List[LDMessage]]
+class AIConfig():
+    def __init__(self, config: AIConfigData, tracker: LDAIConfigTracker, enabled: bool):
+        self.config = config
+        self.tracker = tracker
+        self.enabled = enabled
 
 class LDAIClient:
     """The LaunchDarkly AI SDK client object."""
@@ -31,15 +46,15 @@ class LDAIClient:
         print(variation)
         if isinstance(variation['prompt'], list) and all(isinstance(entry, dict) for entry in variation['prompt']):
             variation['prompt'] = [
-                {
-                    'role': entry['role'],
-                    'content': self.interpolate_template(entry['content'], all_variables)
-                }
+                LDMessage(
+                    role=entry['role'],
+                    content=self.interpolate_template(entry['content'], all_variables)
+                )
                 for entry in variation['prompt']
             ]
 
         enabled = variation.get('_ldMeta',{}).get('enabled', False)
-        return AIConfig(config=variation, tracker=LDAIConfigTracker(self.client, variation.get('_ldMeta', {}).get('versionKey', ''), key, context), enabled=bool(enabled))
+        return AIConfig(config=AIConfigData(model=variation['model'], prompt=variation['prompt']), tracker=LDAIConfigTracker(self.client, variation.get('_ldMeta', {}).get('versionKey', ''), key, context), enabled=bool(enabled))
 
     def interpolate_template(self, template: str, variables: Dict[str, Any]) -> str:
         """
