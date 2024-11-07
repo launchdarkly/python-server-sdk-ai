@@ -59,6 +59,7 @@ class OpenAITokenUsage:
             'output': self.completion_tokens,
         }
  
+@dataclass
 class BedrockTokenUsage:
     def __init__(self, data: dict):
         self.totalTokens = data.get('totalTokens', 0)
