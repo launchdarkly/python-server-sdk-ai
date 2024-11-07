@@ -48,9 +48,9 @@ def tracker(td: TestData) -> LDAIConfigTracker:
 def ldai_client(client: LDClient) -> LDAIClient:
     return LDAIClient(client)
 
-def test_model_config_interpolation(ldai_client: LDAIClient):
+def test_model_config_interpolation(ldai_client: LDAIClient, td):
     context = Context.create('user-key')
-    default_value = AIConfig(config=AIConfigData(model={ 'modelId': 'fakeModel'}, prompt=[LDMessage(role='system', content='Hello, {{name}}!')]), tracker=tracker(td()), enabled=True)
+    default_value = AIConfig(config=AIConfigData(model={ 'modelId': 'fakeModel'}, prompt=[LDMessage(role='system', content='Hello, {{name}}!')]), tracker=tracker(td), enabled=True)
     variables = {'name': 'World'}
 
     config = ldai_client.model_config('model-config', context, default_value, variables)
@@ -60,9 +60,9 @@ def test_model_config_interpolation(ldai_client: LDAIClient):
     assert config.config.prompt[0].content == 'Hello, World!'
     assert config.enabled is True
 
-def test_model_config_no_variables(ldai_client: LDAIClient):
+def test_model_config_no_variables(ldai_client: LDAIClient, td):
     context = Context.create('user-key')
-    default_value = AIConfig(config=AIConfigData(model={}, prompt=[]), tracker=tracker(td()), enabled=True)
+    default_value = AIConfig(config=AIConfigData(model={}, prompt=[]), tracker=tracker(td), enabled=True)
 
     config = ldai_client.model_config('model-config', context, default_value, {})
 
@@ -71,9 +71,9 @@ def test_model_config_no_variables(ldai_client: LDAIClient):
     assert config.config.prompt[0].content == 'Hello, !'
     assert config.enabled is True
 
-def test_context_interpolation(ldai_client: LDAIClient):
+def test_context_interpolation(ldai_client: LDAIClient, td):
     context = Context.builder('user-key').name("Sandy").build()
-    default_value = AIConfig(config=AIConfigData(model={}, prompt=[]), tracker=tracker(td()), enabled=True)
+    default_value = AIConfig(config=AIConfigData(model={}, prompt=[]), tracker=tracker(td), enabled=True)
     variables = {'name': 'World'}
 
     config = ldai_client.model_config('ctx-interpolation', context, default_value, variables)
@@ -83,9 +83,9 @@ def test_context_interpolation(ldai_client: LDAIClient):
     assert config.config.prompt[0].content == 'Hello, Sandy!'
     assert config.enabled is True
 
-def test_model_config_multiple(ldai_client: LDAIClient):
+def test_model_config_multiple(ldai_client: LDAIClient, td):
     context = Context.create('user-key')
-    default_value = AIConfig(config=AIConfigData(model={}, prompt=[]), tracker=tracker(td()), enabled=True)
+    default_value = AIConfig(config=AIConfigData(model={}, prompt=[]), tracker=tracker(td), enabled=True)
     variables = {'name': 'World', 'day': 'Monday'}
 
     config = ldai_client.model_config('multiple-prompt', context, default_value, variables)
@@ -96,9 +96,9 @@ def test_model_config_multiple(ldai_client: LDAIClient):
     assert config.config.prompt[1].content == 'The day is, Monday!'
     assert config.enabled is True
 
-def test_model_config_disabled(ldai_client: LDAIClient):
+def test_model_config_disabled(ldai_client: LDAIClient, td):
     context = Context.create('user-key')
-    default_value = AIConfig(config=AIConfigData(model={}, prompt=[]), tracker=tracker(td()), enabled=False)
+    default_value = AIConfig(config=AIConfigData(model={}, prompt=[]), tracker=tracker(td), enabled=False)
 
     config = ldai_client.model_config('off-config', context, default_value, {})
 
