@@ -7,7 +7,6 @@ from ldai.tracker import LDAIConfigTracker
 from ldclient.testing.builders import *
 
 
-
 @pytest.fixture
 def td() -> TestData:
     td = TestData.data_source()
@@ -52,7 +51,7 @@ def test_model_config_interpolation(ldai_client: LDAIClient):
     variables = {'name': 'World'}
 
     config = ldai_client.model_config('model-config', context, default_value, variables)
-    
+
     assert config.config.prompt is not None
     assert len(config.config.prompt) > 0
     assert config.config.prompt[0].content == 'Hello, World!'
