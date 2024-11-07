@@ -1,6 +1,8 @@
 from enum import Enum
-from typing import Callable, List, Literal
+from typing import Any, Callable, List, Literal, Optional
 from dataclasses import dataclass
+
+from ldai.tracker import LDAIConfigTracker
 
 @dataclass
 class TokenMetrics():
@@ -15,19 +17,12 @@ class LDMessage():
 
 @dataclass
 class AIConfigData():
-    model: dict
-    prompt: List[LDMessage]
+    model: Optional[dict]
+    prompt: Optional[List[LDMessage]]
     _ldMeta: dict
 
-class AITracker():
-    track_duration: Callable[..., None]
-    track_tokens: Callable[..., None]
-    track_error: Callable[..., None]
-    track_generation: Callable[..., None]
-    track_feedback: Callable[..., None]
-
 class AIConfig():
-    def __init__(self, config: AIConfigData, tracker: AITracker, enabled: bool):
+    def __init__(self, config: AIConfigData, tracker: LDAIConfigTracker, enabled: bool):
         self.config = config
         self.tracker = tracker
         self.enabled = enabled
@@ -50,19 +45,25 @@ class TokenUsage():
             'output': self['completion_tokens'],
         }
 
+@dataclass 
+class LDOpenAIUsage():
+    total_tokens: int
+    prompt_tokens: int
+    completion_tokens: int
+
 @dataclass
 class OpenAITokenUsage:
-    def __init__(self, data: any):
+    def __init__(self, data: LDOpenAIUsage):
         self.total_tokens = data.total_tokens
         self.prompt_tokens = data.prompt_tokens
         self.completion_tokens = data.completion_tokens
 
     def to_metrics(self) -> TokenMetrics:
-        return {
-            'total': self.total_tokens,
-            'input': self.prompt_tokens,
-            'output': self.completion_tokens,
-        }
+        return TokenMetrics(
+            total=self.total_tokens,
+            input=self.prompt_tokens,
+            output=self.completion_tokens,
+        )
  
 @dataclass
 class BedrockTokenUsage:
@@ -72,8 +73,8 @@ class BedrockTokenUsage:
         self.outputTokens = data.get('outputTokens', 0)
 
     def to_metrics(self) -> TokenMetrics:
-        return {
-            'total': self.totalTokens,
-            'input': self.inputTokens,
-            'output': self.outputTokens,
-        }
+        return TokenMetrics(
+            total=self.totalTokens,
+            input=self.inputTokens,
+            output=self.outputTokens,
+        )

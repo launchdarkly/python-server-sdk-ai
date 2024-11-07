@@ -58,8 +58,8 @@ class LDAIConfigTracker:
     def track_tokens(self, tokens: Union[TokenUsage, BedrockTokenUsage]) -> None:
         token_metrics = tokens.to_metrics()
         if token_metrics['total'] > 0:
-            self.ld_client.track('$ld:ai:tokens:total', self.context, self.get_track_data(), token_metrics['total'])
+            self.ld_client.track('$ld:ai:tokens:total', self.context, self.get_track_data(), token_metrics.total)
         if token_metrics['input'] > 0:
-            self.ld_client.track('$ld:ai:tokens:input', self.context, self.get_track_data(), token_metrics['input'])
+            self.ld_client.track('$ld:ai:tokens:input', self.context, self.get_track_data(), token_metrics.input)
         if token_metrics['output'] > 0:
-            self.ld_client.track('$ld:ai:tokens:output', self.context, self.get_track_data(), token_metrics['output'])
+            self.ld_client.track('$ld:ai:tokens:output', self.context, self.get_track_data(), token_metrics.output)
