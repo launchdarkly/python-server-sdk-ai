@@ -48,7 +48,7 @@ class LDAIClient:
             variation['prompt'] = [
                 LDMessage(
                     role=entry['role'],
-                    content=self.interpolate_template(entry['content'], all_variables)
+                    content=self.__interpolate_template(entry['content'], all_variables)
                 )
                 for entry in variation['prompt']
             ]
@@ -56,7 +56,7 @@ class LDAIClient:
         enabled = variation.get('_ldMeta',{}).get('enabled', False)
         return AIConfig(config=AIConfigData(model=variation['model'], prompt=variation['prompt']), tracker=LDAIConfigTracker(self.client, variation.get('_ldMeta', {}).get('versionKey', ''), key, context), enabled=bool(enabled))
 
-    def interpolate_template(self, template: str, variables: Dict[str, Any]) -> str:
+    def __interpolate_template(self, template: str, variables: Dict[str, Any]) -> str:
         """
         Interpolate the template with the given variables.
 

@@ -135,7 +135,7 @@ class LDAIConfigTracker:
         self.config_key = config_key
         self.context = context
 
-    def get_track_data(self):
+    def __get_track_data(self):
         """
         Get tracking data for events.
 
@@ -152,7 +152,7 @@ class LDAIConfigTracker:
 
         :param duration: Duration in milliseconds.
         """
-        self.ld_client.track('$ld:ai:duration:total', self.context, self.get_track_data(), duration)
+        self.ld_client.track('$ld:ai:duration:total', self.context, self.__get_track_data(), duration)
 
     def track_duration_of(self, func):
         """
@@ -175,15 +175,15 @@ class LDAIConfigTracker:
         :param feedback: Dictionary containing feedback kind.
         """
         if feedback['kind'] == FeedbackKind.Positive:
-            self.ld_client.track('$ld:ai:feedback:user:positive', self.context, self.get_track_data(), 1)
+            self.ld_client.track('$ld:ai:feedback:user:positive', self.context, self.__get_track_data(), 1)
         elif feedback['kind'] == FeedbackKind.Negative:
-            self.ld_client.track('$ld:ai:feedback:user:negative', self.context, self.get_track_data(), 1)
+            self.ld_client.track('$ld:ai:feedback:user:negative', self.context, self.__get_track_data(), 1)
 
     def track_success(self) -> None:
         """
         Track a successful AI generation.
         """
-        self.ld_client.track('$ld:ai:generation', self.context, self.get_track_data(), 1)
+        self.ld_client.track('$ld:ai:generation', self.context, self.__get_track_data(), 1)
 
     def track_openai(self, func):
         """
@@ -224,8 +224,8 @@ class LDAIConfigTracker:
         """
         token_metrics = tokens.to_metrics()
         if token_metrics.total > 0:
-            self.ld_client.track('$ld:ai:tokens:total', self.context, self.get_track_data(), token_metrics.total)
+            self.ld_client.track('$ld:ai:tokens:total', self.context, self.__get_track_data(), token_metrics.total)
         if token_metrics.input > 0:
-            self.ld_client.track('$ld:ai:tokens:input', self.context, self.get_track_data(), token_metrics.input)
+            self.ld_client.track('$ld:ai:tokens:input', self.context, self.__get_track_data(), token_metrics.input)
         if token_metrics.output > 0:
-            self.ld_client.track('$ld:ai:tokens:output', self.context, self.get_track_data(), token_metrics.output)
+            self.ld_client.track('$ld:ai:tokens:output', self.context, self.__get_track_data(), token_metrics.output)
