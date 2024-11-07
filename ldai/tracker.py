@@ -148,7 +148,7 @@ class LDAIConfigTracker:
     
     def track_duration(self, duration: int) -> None:
         """
-        Track the duration of an AI operation.
+        Manually track the duration of an AI operation.
 
         :param duration: Duration in milliseconds.
         """
@@ -156,7 +156,7 @@ class LDAIConfigTracker:
 
     def track_duration_of(self, func):
         """
-        Track the duration of a function execution.
+        Automatically track the duration of an AI operation.
 
         :param func: Function to track.
         :return: Result of the tracked function.
