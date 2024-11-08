@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from typing import Any, Dict, List, Literal, Optional
 
 import chevron
@@ -13,6 +13,8 @@ class LDMessage:
     role: Literal['system', 'user', 'assistant']
     content: str
 
+    def to_dict(self):
+            return asdict(self)
 
 @dataclass
 class AIConfigData:
@@ -59,7 +61,7 @@ class LDAIClient:
         if isinstance(variation['prompt'], list) and all(
             isinstance(entry, dict) for entry in variation['prompt']
         ):
-            variation['prompt'] = [
+            prompt = [
                 LDMessage(
                     role=entry['role'],
                     content=self.__interpolate_template(
@@ -71,7 +73,7 @@ class LDAIClient:
 
         enabled = variation.get('_ldMeta', {}).get('enabled', False)
         return AIConfig(
-            config=AIConfigData(model=variation['model'], prompt=variation['prompt']),
+            config=AIConfigData(model=variation['model'], prompt=prompt),
             tracker=LDAIConfigTracker(
                 self.client,
                 variation.get('_ldMeta', {}).get('versionKey', ''),
