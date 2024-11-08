@@ -1,25 +1,31 @@
+from dataclasses import dataclass
 from typing import Any, Dict, List, Literal, Optional
+
+import chevron
 from ldclient import Context
 from ldclient.client import LDClient
-import chevron
 
 from ldai.tracker import LDAIConfigTracker
-from dataclasses import dataclass
+
 
 @dataclass
-class LDMessage():
+class LDMessage:
     role: Literal['system', 'user', 'assistant']
     content: str
 
+
 @dataclass
-class AIConfigData():
+class AIConfigData:
     model: Optional[dict]
     prompt: Optional[List[LDMessage]]
-class AIConfig():
+
+
+class AIConfig:
     def __init__(self, config: AIConfigData, tracker: LDAIConfigTracker, enabled: bool):
         self.config = config
         self.tracker = tracker
         self.enabled = enabled
+
 
 class LDAIClient:
     """The LaunchDarkly AI SDK client object."""
@@ -27,7 +33,13 @@ class LDAIClient:
     def __init__(self, client: LDClient):
         self.client = client
 
-    def model_config(self, key: str, context: Context, default_value: AIConfig, variables: Optional[Dict[str, Any]] = None) -> AIConfig:
+    def model_config(
+        self,
+        key: str,
+        context: Context,
+        default_value: AIConfig,
+        variables: Optional[Dict[str, Any]] = None,
+    ) -> AIConfig:
         """
         Get the value of a model configuration asynchronously.
 
@@ -43,18 +55,31 @@ class LDAIClient:
         if variables:
             all_variables.update(variables)
         all_variables['ldctx'] = context
-        
-        if isinstance(variation['prompt'], list) and all(isinstance(entry, dict) for entry in variation['prompt']):
+
+        if isinstance(variation['prompt'], list) and all(
+            isinstance(entry, dict) for entry in variation['prompt']
+        ):
             variation['prompt'] = [
                 LDMessage(
                     role=entry['role'],
-                    content=self.__interpolate_template(entry['content'], all_variables)
+                    content=self.__interpolate_template(
+                        entry['content'], all_variables
+                    ),
                 )
                 for entry in variation['prompt']
             ]
 
-        enabled = variation.get('_ldMeta',{}).get('enabled', False)
-        return AIConfig(config=AIConfigData(model=variation['model'], prompt=variation['prompt']), tracker=LDAIConfigTracker(self.client, variation.get('_ldMeta', {}).get('versionKey', ''), key, context), enabled=bool(enabled))
+        enabled = variation.get('_ldMeta', {}).get('enabled', False)
+        return AIConfig(
+            config=AIConfigData(model=variation['model'], prompt=variation['prompt']),
+            tracker=LDAIConfigTracker(
+                self.client,
+                variation.get('_ldMeta', {}).get('versionKey', ''),
+                key,
+                context,
+            ),
+            enabled=bool(enabled),
+        )
 
     def __interpolate_template(self, template: str, variables: Dict[str, Any]) -> str:
         """

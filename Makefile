@@ -30,6 +30,8 @@ test: install
 lint: #! Run type analysis and linting checks
 lint: install
 	@poetry run mypy ldai
+	@poetry run isort --check --atomic ldai
+	@poetry run pycodestyle ldai
 
 #
 # Documentation generation

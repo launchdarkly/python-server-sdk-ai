@@ -1,11 +1,13 @@
-from enum import Enum
 import time
-from typing import Dict, Union
-from ldclient import Context, LDClient
 from dataclasses import dataclass
+from enum import Enum
+from typing import Dict, Union
+
+from ldclient import Context, LDClient
+
 
 @dataclass
-class TokenMetrics():
+class TokenMetrics:
     """
     Metrics for token usage in AI operations.
 
@@ -13,20 +15,24 @@ class TokenMetrics():
     :param input: Number of input tokens.
     :param output: Number of output tokens.
     """
+
     total: int
     input: int
-    output: int # type: ignore
+    output: int  # type: ignore
+
 
 @dataclass
 class FeedbackKind(Enum):
     """
     Types of feedback that can be provided for AI operations.
     """
+
     Positive = "positive"
     Negative = "negative"
 
+
 @dataclass
-class TokenUsage():
+class TokenUsage:
     """
     Tracks token usage for AI operations.
 
@@ -34,6 +40,7 @@ class TokenUsage():
     :param prompt_tokens: Number of tokens in the prompt.
     :param completion_tokens: Number of tokens in the completion.
     """
+
     total_tokens: int
     prompt_tokens: int
     completion_tokens: int
@@ -50,8 +57,9 @@ class TokenUsage():
             'output': self['completion_tokens'],
         }
 
-@dataclass 
-class LDOpenAIUsage():
+
+@dataclass
+class LDOpenAIUsage:
     """
     LaunchDarkly-specific OpenAI usage tracking.
 
@@ -59,15 +67,18 @@ class LDOpenAIUsage():
     :param prompt_tokens: Number of tokens in the prompt.
     :param completion_tokens: Number of tokens in the completion.
     """
+
     total_tokens: int
     prompt_tokens: int
     completion_tokens: int
+
 
 @dataclass
 class OpenAITokenUsage:
     """
     Tracks OpenAI-specific token usage.
     """
+
     def __init__(self, data: LDOpenAIUsage):
         """
         Initialize OpenAI token usage tracking.
@@ -89,12 +100,14 @@ class OpenAITokenUsage:
             input=self.prompt_tokens,
             output=self.completion_tokens,
         )
- 
+
+
 @dataclass
 class BedrockTokenUsage:
     """
     Tracks AWS Bedrock-specific token usage.
     """
+
     def __init__(self, data: dict):
         """
         Initialize Bedrock token usage tracking.
@@ -116,12 +129,16 @@ class BedrockTokenUsage:
             input=self.inputTokens,
             output=self.outputTokens,
         )
-    
+
+
 class LDAIConfigTracker:
     """
     Tracks configuration and usage metrics for LaunchDarkly AI operations.
     """
-    def __init__(self, ld_client: LDClient, version_key: str, config_key: str, context: Context):
+
+    def __init__(
+        self, ld_client: LDClient, version_key: str, config_key: str, context: Context
+    ):
         """
         Initialize an AI configuration tracker.
 
@@ -145,14 +162,16 @@ class LDAIConfigTracker:
             'versionKey': self.version_key,
             'configKey': self.config_key,
         }
-    
+
     def track_duration(self, duration: int) -> None:
         """
         Manually track the duration of an AI operation.
 
         :param duration: Duration in milliseconds.
         """
-        self.ld_client.track('$ld:ai:duration:total', self.context, self.__get_track_data(), duration)
+        self.ld_client.track(
+            '$ld:ai:duration:total', self.context, self.__get_track_data(), duration
+        )
 
     def track_duration_of(self, func):
         """
@@ -175,15 +194,27 @@ class LDAIConfigTracker:
         :param feedback: Dictionary containing feedback kind.
         """
         if feedback['kind'] == FeedbackKind.Positive:
-            self.ld_client.track('$ld:ai:feedback:user:positive', self.context, self.__get_track_data(), 1)
+            self.ld_client.track(
+                '$ld:ai:feedback:user:positive',
+                self.context,
+                self.__get_track_data(),
+                1,
+            )
         elif feedback['kind'] == FeedbackKind.Negative:
-            self.ld_client.track('$ld:ai:feedback:user:negative', self.context, self.__get_track_data(), 1)
+            self.ld_client.track(
+                '$ld:ai:feedback:user:negative',
+                self.context,
+                self.__get_track_data(),
+                1,
+            )
 
     def track_success(self) -> None:
         """
         Track a successful AI generation.
         """
-        self.ld_client.track('$ld:ai:generation', self.context, self.__get_track_data(), 1)
+        self.ld_client.track(
+            '$ld:ai:generation', self.context, self.__get_track_data(), 1
+        )
 
     def track_openai(self, func):
         """
@@ -224,8 +255,23 @@ class LDAIConfigTracker:
         """
         token_metrics = tokens.to_metrics()
         if token_metrics.total > 0:
-            self.ld_client.track('$ld:ai:tokens:total', self.context, self.__get_track_data(), token_metrics.total)
+            self.ld_client.track(
+                '$ld:ai:tokens:total',
+                self.context,
+                self.__get_track_data(),
+                token_metrics.total,
+            )
         if token_metrics.input > 0:
-            self.ld_client.track('$ld:ai:tokens:input', self.context, self.__get_track_data(), token_metrics.input)
+            self.ld_client.track(
+                '$ld:ai:tokens:input',
+                self.context,
+                self.__get_track_data(),
+                token_metrics.input,
+            )
         if token_metrics.output > 0:
-            self.ld_client.track('$ld:ai:tokens:output', self.context, self.__get_track_data(), token_metrics.output)
+            self.ld_client.track(
+                '$ld:ai:tokens:output',
+                self.context,
+                self.__get_track_data(),
+                token_metrics.output,
+            )
