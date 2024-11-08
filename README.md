@@ -12,18 +12,7 @@ This version of the library has a minimum Python version of 3.8.
 
 ## Getting started
 
-Install the package
-
-    $ pip install launchdarkly-server-sdk-ai
-
-The provided `TracingHook` can be setup as shown below:
-
-<!-- TODO: Install instructions -->
-
-```python
-import ldclient
-
-```
+Refer to the [SDK reference guide](https://docs.launchdarkly.com/sdk/ai/python) for instructions on getting started with using the SDK.
 
 ## Learn more
 

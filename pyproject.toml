@@ -1,11 +1,11 @@
 [tool.poetry]
 name = "launchdarkly-server-sdk-ai"
-version = "0.0.1"
+version = "0.1.0"
 description = "LaunchDarkly SDK for AI"
 authors = ["LaunchDarkly <dev@launchdarkly.com>"]
 license = "Apache-2.0"
 readme = "README.md"
-homepage = "https://docs.launchdarkly.com/sdk/server-side/python-ai"
+homepage = "https://docs.launchdarkly.com/sdk/ai/python"
 repository = "https://github.com/launchdarkly/python-server-sdk-ai"
 documentation = "https://launchdarkly-python-sdk-ai.readthedocs.io/en/latest/"
 classifiers = [
