@@ -1,4 +1,5 @@
 from dataclasses import asdict, dataclass
+import json
 from typing import Any, Dict, List, Literal, Optional
 
 import chevron
@@ -13,8 +14,8 @@ class LDMessage:
     role: Literal['system', 'user', 'assistant']
     content: str
 
-    def to_dict(self):
-            return asdict(self)
+    def to_json(self):
+            return json.dumps(asdict(self))
 
 @dataclass
 class AIConfigData:
