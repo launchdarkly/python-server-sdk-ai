@@ -10,7 +10,7 @@ To verify SLSA provenance attestations, we recommend using [slsa-verifier](https
 
 ```
 # Set the version of the library to verify
-VERSION=1.0.0
+VERSION=0.1.0
 ```
 
 <!-- x-release-please-end -->
