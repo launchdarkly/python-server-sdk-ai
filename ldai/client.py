@@ -1,21 +1,20 @@
-from dataclasses import asdict, dataclass
-import json
+from dataclasses import dataclass
 from typing import Any, Dict, List, Literal, Optional
 
 import chevron
+from dataclasses_json import dataclass_json
 from ldclient import Context
 from ldclient.client import LDClient
 
 from ldai.tracker import LDAIConfigTracker
 
 
+@dataclass_json
 @dataclass
 class LDMessage:
     role: Literal['system', 'user', 'assistant']
     content: str
 
-    def to_json(self):
-            return json.dumps(asdict(self))
 
 @dataclass
 class AIConfigData:
