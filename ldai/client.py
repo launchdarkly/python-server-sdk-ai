@@ -2,12 +2,14 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Literal, Optional
 
 import chevron
+from dataclasses_json import dataclass_json
 from ldclient import Context
 from ldclient.client import LDClient
 
 from ldai.tracker import LDAIConfigTracker
 
 
+@dataclass_json
 @dataclass
 class LDMessage:
     role: Literal['system', 'user', 'assistant']
@@ -59,7 +61,7 @@ class LDAIClient:
         if isinstance(variation['prompt'], list) and all(
             isinstance(entry, dict) for entry in variation['prompt']
         ):
-            variation['prompt'] = [
+            prompt = [
                 LDMessage(
                     role=entry['role'],
                     content=self.__interpolate_template(
@@ -71,7 +73,7 @@ class LDAIClient:
 
         enabled = variation.get('_ldMeta', {}).get('enabled', False)
         return AIConfig(
-            config=AIConfigData(model=variation['model'], prompt=variation['prompt']),
+            config=AIConfigData(model=variation['model'], prompt=prompt),
             tracker=LDAIConfigTracker(
                 self.client,
                 variation.get('_ldMeta', {}).get('versionKey', ''),
