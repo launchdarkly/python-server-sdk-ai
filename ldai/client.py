@@ -35,28 +35,28 @@ class ModelConfig:
         self._attributes = attributes
 
     @property
-    def id(self):
+    def id(self) -> str:
         """
         The ID of the model.
         """
         return self._id
 
     @property
-    def temperature(self):
+    def temperature(self) -> Optional[float]:
         """"
         Turning parameter for randomness versus determinism. Exact effect will be determined by the model.
         """
         return self._temperature
 
     @property
-    def max_tokens(self):
+    def max_tokens(self) -> Optional[int]:
         """
         The maximum number of tokens.
         """
 
         return self._max_tokens
 
-    def get_attribute(self, key: str):
+    def get_attribute(self, key: str) -> Any:
         """
         Retrieve model-specific attributes.
 
