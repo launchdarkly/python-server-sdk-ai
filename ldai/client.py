@@ -16,8 +16,65 @@ class LDMessage:
     content: str
 
 
+class ModelConfig:
+    """
+    Configuration related to the model.
+    """
+
+    def __init__(self, id: str, temperature: Optional[float] = None,
+                 max_tokens: Optional[int] = None, attributes: dict = {}):
+        """
+        :param id: The ID of the model.
+        :param temperature: Turning parameter for randomness versus determinism. Exact effect will be determined by the model.
+        :param max_tokens: The maximum number of tokens.
+        :param attributes: Additional model-specific attributes.
+        """
+        self._id = id
+        self._temperature = temperature
+        self._max_tokens = max_tokens
+        self._attributes = attributes
+
+    @property
+    def id(self):
+        """
+        The ID of the model.
+        """
+        return self._id
+
+    @property
+    def temperature(self):
+        """"
+        Turning parameter for randomness versus determinism. Exact effect will be determined by the model.
+        """
+        return self._temperature
+
+    @property
+    def max_tokens(self):
+        """
+        The maximum number of tokens.
+        """
+
+        return self._max_tokens
+
+    def get_attribute(self, key: str):
+        """
+        Retrieve model-specific attributes.
+
+        Accessing a named, typed attribute (e.g. id) will result in the call
+        being delegated to the appropriate property.
+        """
+        if key == 'id':
+            return self.id
+        if key == 'temperature':
+            return self.temperature
+        if key == 'maxTokens':
+            return self.max_tokens
+
+        return self._attributes.get(key)
+
+
 class AIConfig:
-    def __init__(self, tracker: LDAIConfigTracker, enabled: bool, model: Optional[dict], prompt: Optional[List[LDMessage]]):
+    def __init__(self, tracker: LDAIConfigTracker, enabled: bool, model: Optional[ModelConfig], prompt: Optional[List[LDMessage]]):
         self.tracker = tracker
         self.enabled = enabled
         self.model = model
@@ -66,6 +123,15 @@ class LDAIClient:
                 for entry in variation['prompt']
             ]
 
+        model = None
+        if 'model' in variation:
+            model = ModelConfig(
+                id=variation['model']['modelId'],
+                temperature=variation['model'].get('temperature'),
+                max_tokens=variation['model'].get('maxTokens'),
+                attributes=variation['model'],
+            )
+
         enabled = variation.get('_ldMeta', {}).get('enabled', False)
         return AIConfig(
             tracker=LDAIConfigTracker(
@@ -75,7 +141,7 @@ class LDAIClient:
                 context,
             ),
             enabled=bool(enabled),
-            model=variation['model'],
+            model=model,
             prompt=prompt
         )
 
