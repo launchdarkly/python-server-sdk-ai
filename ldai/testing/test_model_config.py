@@ -3,7 +3,7 @@ from ldclient import Config, Context, LDClient
 from ldclient.integrations.test_data import TestData
 from ldclient.testing.builders import *
 
-from ldai.client import AIConfig, AIConfigData, LDAIClient, LDMessage
+from ldai.client import AIConfig, LDAIClient, LDMessage
 from ldai.tracker import LDAIConfigTracker
 
 
@@ -85,77 +85,67 @@ def ldai_client(client: LDClient) -> LDAIClient:
 def test_model_config_interpolation(ldai_client: LDAIClient, tracker):
     context = Context.create('user-key')
     default_value = AIConfig(
-        config=AIConfigData(
-            model={'modelId': 'fakeModel'},
-            prompt=[LDMessage(role='system', content='Hello, {{name}}!')],
-        ),
         tracker=tracker,
         enabled=True,
+        model={'modelId': 'fakeModel'},
+        prompt=[LDMessage(role='system', content='Hello, {{name}}!')],
     )
     variables = {'name': 'World'}
 
     config = ldai_client.model_config('model-config', context, default_value, variables)
 
-    assert config.config.prompt is not None
-    assert len(config.config.prompt) > 0
-    assert config.config.prompt[0].content == 'Hello, World!'
+    assert config.prompt is not None
+    assert len(config.prompt) > 0
+    assert config.prompt[0].content == 'Hello, World!'
     assert config.enabled is True
 
 
 def test_model_config_no_variables(ldai_client: LDAIClient, tracker):
     context = Context.create('user-key')
-    default_value = AIConfig(
-        config=AIConfigData(model={}, prompt=[]), tracker=tracker, enabled=True
-    )
+    default_value = AIConfig(tracker=tracker, enabled=True, model={}, prompt=[])
 
     config = ldai_client.model_config('model-config', context, default_value, {})
 
-    assert config.config.prompt is not None
-    assert len(config.config.prompt) > 0
-    assert config.config.prompt[0].content == 'Hello, !'
+    assert config.prompt is not None
+    assert len(config.prompt) > 0
+    assert config.prompt[0].content == 'Hello, !'
     assert config.enabled is True
 
 
 def test_context_interpolation(ldai_client: LDAIClient, tracker):
     context = Context.builder('user-key').name("Sandy").build()
-    default_value = AIConfig(
-        config=AIConfigData(model={}, prompt=[]), tracker=tracker, enabled=True
-    )
+    default_value = AIConfig(tracker=tracker, enabled=True, model={}, prompt=[])
     variables = {'name': 'World'}
 
     config = ldai_client.model_config(
         'ctx-interpolation', context, default_value, variables
     )
 
-    assert config.config.prompt is not None
-    assert len(config.config.prompt) > 0
-    assert config.config.prompt[0].content == 'Hello, Sandy!'
+    assert config.prompt is not None
+    assert len(config.prompt) > 0
+    assert config.prompt[0].content == 'Hello, Sandy!'
     assert config.enabled is True
 
 
 def test_model_config_multiple(ldai_client: LDAIClient, tracker):
     context = Context.create('user-key')
-    default_value = AIConfig(
-        config=AIConfigData(model={}, prompt=[]), tracker=tracker, enabled=True
-    )
+    default_value = AIConfig(tracker=tracker, enabled=True, model={}, prompt=[])
     variables = {'name': 'World', 'day': 'Monday'}
 
     config = ldai_client.model_config(
         'multiple-prompt', context, default_value, variables
     )
 
-    assert config.config.prompt is not None
-    assert len(config.config.prompt) > 0
-    assert config.config.prompt[0].content == 'Hello, World!'
-    assert config.config.prompt[1].content == 'The day is, Monday!'
+    assert config.prompt is not None
+    assert len(config.prompt) > 0
+    assert config.prompt[0].content == 'Hello, World!'
+    assert config.prompt[1].content == 'The day is, Monday!'
     assert config.enabled is True
 
 
 def test_model_config_disabled(ldai_client: LDAIClient, tracker):
     context = Context.create('user-key')
-    default_value = AIConfig(
-        config=AIConfigData(model={}, prompt=[]), tracker=tracker, enabled=False
-    )
+    default_value = AIConfig(tracker=tracker, enabled=False, model={}, prompt=[])
 
     config = ldai_client.model_config('off-config', context, default_value, {})
 

@@ -16,17 +16,12 @@ class LDMessage:
     content: str
 
 
-@dataclass
-class AIConfigData:
-    model: Optional[dict]
-    prompt: Optional[List[LDMessage]]
-
-
 class AIConfig:
-    def __init__(self, config: AIConfigData, tracker: LDAIConfigTracker, enabled: bool):
-        self.config = config
+    def __init__(self, tracker: LDAIConfigTracker, enabled: bool, model: Optional[dict], prompt: Optional[List[LDMessage]]):
         self.tracker = tracker
         self.enabled = enabled
+        self.model = model
+        self.prompt = prompt
 
 
 class LDAIClient:
@@ -73,7 +68,6 @@ class LDAIClient:
 
         enabled = variation.get('_ldMeta', {}).get('enabled', False)
         return AIConfig(
-            config=AIConfigData(model=variation['model'], prompt=prompt),
             tracker=LDAIConfigTracker(
                 self.client,
                 variation.get('_ldMeta', {}).get('versionKey', ''),
@@ -81,6 +75,8 @@ class LDAIClient:
                 context,
             ),
             enabled=bool(enabled),
+            model=variation['model'],
+            prompt=prompt
         )
 
     def __interpolate_template(self, template: str, variables: Dict[str, Any]) -> str:
