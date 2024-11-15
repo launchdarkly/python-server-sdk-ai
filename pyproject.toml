@@ -30,8 +30,6 @@ exclude = [
 python = ">=3.8,<4"
 launchdarkly-server-sdk = ">=9.4.0"
 chevron = "=0.14.0"
-pycodestyle = "^2.12.1"
-isort = "^5.13.2"
 dataclasses-json = "^0.6.7"
 
 
@@ -40,6 +38,8 @@ pytest = ">=2.8"
 pytest-cov = ">=2.4.0"
 pytest-mypy = "==0.10.3"
 mypy = "==1.13.0"
+pycodestyle = "^2.12.1"
+isort = "^5.13.2"
 
 
 [tool.poetry.group.docs]
