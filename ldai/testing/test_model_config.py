@@ -2,7 +2,7 @@ import pytest
 from ldclient import Config, Context, LDClient
 from ldclient.integrations.test_data import TestData
 
-from ldai.client import AIConfig, ModelConfig, LDAIClient, LDMessage
+from ldai.client import AIConfig, LDAIClient, LDMessage, ModelConfig
 from ldai.tracker import LDAIConfigTracker
 
 
@@ -112,6 +112,7 @@ def test_model_config_interpolation(ldai_client: LDAIClient, tracker):
     assert config.prompt[0].content == 'Hello, World!'
     assert config.enabled is True
 
+    assert config.model is not None
     assert config.model.id == 'fakeModel'
     assert config.model.temperature == 0.5
     assert config.model.max_tokens == 4096
@@ -128,6 +129,7 @@ def test_model_config_no_variables(ldai_client: LDAIClient, tracker):
     assert config.prompt[0].content == 'Hello, !'
     assert config.enabled is True
 
+    assert config.model is not None
     assert config.model.id == 'fakeModel'
     assert config.model.temperature == 0.5
     assert config.model.max_tokens == 4096
@@ -147,6 +149,7 @@ def test_context_interpolation(ldai_client: LDAIClient, tracker):
     assert config.prompt[0].content == 'Hello, Sandy!'
     assert config.enabled is True
 
+    assert config.model is not None
     assert config.model.id == 'fakeModel'
     assert config.model.temperature is None
     assert config.model.max_tokens is None
@@ -168,6 +171,7 @@ def test_model_config_multiple(ldai_client: LDAIClient, tracker):
     assert config.prompt[1].content == 'The day is, Monday!'
     assert config.enabled is True
 
+    assert config.model is not None
     assert config.model.id == 'fakeModel'
     assert config.model.temperature == 0.7
     assert config.model.max_tokens == 8192
@@ -179,6 +183,7 @@ def test_model_config_disabled(ldai_client: LDAIClient, tracker):
 
     config = ldai_client.model_config('off-config', context, default_value, {})
 
+    assert config.model is not None
     assert config.enabled is False
     assert config.model.id == 'fakeModel'
     assert config.model.temperature == 0.1
