@@ -62,6 +62,32 @@ def td() -> TestData:
         .variation_for_all(0)
     )
 
+    td.update(
+        td.flag('initial-config-disabled')
+        .variations(
+            {
+                '_ldMeta': {'enabled': False},
+            },
+            {
+                '_ldMeta': {'enabled': True},
+            }
+        )
+        .variation_for_all(0)
+    )
+
+    td.update(
+        td.flag('initial-config-enabled')
+        .variations(
+            {
+                '_ldMeta': {'enabled': False},
+            },
+            {
+                '_ldMeta': {'enabled': True},
+            }
+        )
+        .variation_for_all(1)
+    )
+
     return td
 
 
@@ -188,3 +214,25 @@ def test_model_config_disabled(ldai_client: LDAIClient, tracker):
     assert config.model.id == 'fakeModel'
     assert config.model.temperature == 0.1
     assert config.model.max_tokens is None
+
+
+def test_model_initial_config_disabled(ldai_client: LDAIClient, tracker):
+    context = Context.create('user-key')
+    default_value = AIConfig(tracker=tracker, enabled=False, model=ModelConfig('fake-model'), prompt=[])
+
+    config = ldai_client.model_config('initial-config-disabled', context, default_value, {})
+
+    assert config.enabled is False
+    assert config.model is None
+    assert config.prompt is None
+
+
+def test_model_initial_config_enabled(ldai_client: LDAIClient, tracker):
+    context = Context.create('user-key')
+    default_value = AIConfig(tracker=tracker, enabled=False, model=ModelConfig('fake-model'), prompt=[])
+
+    config = ldai_client.model_config('initial-config-enabled', context, default_value, {})
+
+    assert config.enabled is True
+    assert config.model is None
+    assert config.prompt is None
