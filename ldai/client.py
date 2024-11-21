@@ -110,7 +110,8 @@ class LDAIClient:
             all_variables.update(variables)
         all_variables['ldctx'] = context
 
-        if isinstance(variation['prompt'], list) and all(
+        prompt = None
+        if 'prompt' in variation and isinstance(variation['prompt'], list) and all(
             isinstance(entry, dict) for entry in variation['prompt']
         ):
             prompt = [
