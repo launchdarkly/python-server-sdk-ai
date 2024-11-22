@@ -87,7 +87,7 @@ class LDAIClient:
     def __init__(self, client: LDClient):
         self.client = client
 
-    def model_config(
+    def config(
         self,
         key: str,
         context: Context,
@@ -95,7 +95,7 @@ class LDAIClient:
         variables: Optional[Dict[str, Any]] = None,
     ) -> AIConfig:
         """
-        Get the value of a model configuration asynchronously.
+        Get the value of a model configuration.
 
         :param key: The key of the model configuration.
         :param context: The context to evaluate the model configuration in.
