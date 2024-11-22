@@ -2,6 +2,33 @@
 
 All notable changes to the LaunchDarkly Python AI package will be documented in this file. This project adheres to [Semantic Versioning](http://semver.org).
 
+## [0.3.0](https://github.com/launchdarkly/python-server-sdk-ai/compare/0.2.0...0.3.0) (2024-11-22)
+
+
+### ⚠ BREAKING CHANGES
+
+* Rename nest parameters under model
+* Change modelId to id
+* Remove max_tokens and temperature as top level model config keys
+* Suffix track methods with metrics
+* Rename `LDAIClient.model_config` to `LDAIClient.config`
+* Rename prompt to messages
+
+### Features
+
+* Add custom parameter support to model config ([95015f1](https://github.com/launchdarkly/python-server-sdk-ai/commit/95015f1f29b4ddf0acc2f22b72a5c0c4241fd3f3))
+* Add support for provider config ([d2a2ea7](https://github.com/launchdarkly/python-server-sdk-ai/commit/d2a2ea7a16159de5c11484114ad4a7ae6369f9c6))
+
+
+### Bug Fixes
+
+* Change modelId to id ([9564780](https://github.com/launchdarkly/python-server-sdk-ai/commit/9564780ea2b919d456431e3309b73156f8e9817d))
+* Remove max_tokens and temperature as top level model config keys ([55f34fe](https://github.com/launchdarkly/python-server-sdk-ai/commit/55f34fec9410124d24318feadada9e087e7d4cb8))
+* Rename `LDAIClient.model_config` to `LDAIClient.config` ([3a3e913](https://github.com/launchdarkly/python-server-sdk-ai/commit/3a3e913d9e1586278d9fe6228f79f6748cbbd605))
+* Rename nest parameters under model ([a2cc966](https://github.com/launchdarkly/python-server-sdk-ai/commit/a2cc9662bdc526f0b6a3a271a4b4f46b95d0ec2f))
+* Rename prompt to messages ([9a86f0a](https://github.com/launchdarkly/python-server-sdk-ai/commit/9a86f0af9322baf71d7ddddb6115d585582cfc86))
+* Suffix track methods with metrics ([319f64d](https://github.com/launchdarkly/python-server-sdk-ai/commit/319f64da54815854163d663022fdffc274c2059a))
+
 ## [0.2.0](https://github.com/launchdarkly/python-server-sdk-ai/compare/0.1.1...0.2.0) (2024-11-21)
 
 
