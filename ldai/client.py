@@ -125,7 +125,7 @@ class LDAIClient:
         model = None
         if 'model' in variation:
             model = ModelConfig(
-                id=variation['model']['modelId'],
+                id=variation['model']['id'],
                 parameters=variation['model'],
             )
 
