@@ -21,18 +21,13 @@ class ModelConfig:
     Configuration related to the model.
     """
 
-    def __init__(self, id: str, temperature: Optional[float] = None,
-                 max_tokens: Optional[int] = None, attributes: dict = {}):
+    def __init__(self, id: str, parameters: dict = {}):
         """
         :param id: The ID of the model.
-        :param temperature: Turning parameter for randomness versus determinism. Exact effect will be determined by the model.
-        :param max_tokens: The maximum number of tokens.
-        :param attributes: Additional model-specific attributes.
+        :param parameters: Additional model-specific parameters.
         """
         self._id = id
-        self._temperature = temperature
-        self._max_tokens = max_tokens
-        self._attributes = attributes
+        self._parameters = parameters
 
     @property
     def id(self) -> str:
@@ -41,36 +36,17 @@ class ModelConfig:
         """
         return self._id
 
-    @property
-    def temperature(self) -> Optional[float]:
-        """"
-        Turning parameter for randomness versus determinism. Exact effect will be determined by the model.
+    def get_parameter(self, key: str) -> Any:
         """
-        return self._temperature
-
-    @property
-    def max_tokens(self) -> Optional[int]:
-        """
-        The maximum number of tokens.
-        """
-
-        return self._max_tokens
-
-    def get_attribute(self, key: str) -> Any:
-        """
-        Retrieve model-specific attributes.
+        Retrieve model-specific parameters.
 
         Accessing a named, typed attribute (e.g. id) will result in the call
         being delegated to the appropriate property.
         """
         if key == 'id':
             return self.id
-        if key == 'temperature':
-            return self.temperature
-        if key == 'maxTokens':
-            return self.max_tokens
 
-        return self._attributes.get(key)
+        return self._parameters.get(key)
 
 
 class ProviderConfig:
@@ -150,9 +126,7 @@ class LDAIClient:
         if 'model' in variation:
             model = ModelConfig(
                 id=variation['model']['modelId'],
-                temperature=variation['model'].get('temperature'),
-                max_tokens=variation['model'].get('maxTokens'),
-                attributes=variation['model'],
+                parameters=variation['model'],
             )
 
         enabled = variation.get('_ldMeta', {}).get('enabled', False)
