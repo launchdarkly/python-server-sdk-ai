@@ -216,7 +216,7 @@ class LDAIConfigTracker:
             '$ld:ai:generation', self.context, self.__get_track_data(), 1
         )
 
-    def track_openai(self, func):
+    def track_openai_metrics(self, func):
         """
         Track OpenAI-specific operations.
 
@@ -228,7 +228,7 @@ class LDAIConfigTracker:
             self.track_tokens(OpenAITokenUsage(result.usage))
         return result
 
-    def track_bedrock_converse(self, res: dict) -> dict:
+    def track_bedrock_converse_metrics(self, res: dict) -> dict:
         """
         Track AWS Bedrock conversation operations.
 
