@@ -109,17 +109,12 @@ def ldai_client(client: LDClient) -> LDAIClient:
 
 
 def test_model_config_delegates_to_properties():
-    model = ModelConfig('fakeModel', temperature=0.5, max_tokens=4096, attributes={'extra-attribute': 'value'})
+    model = ModelConfig('fakeModel', parameters={'extra-attribute': 'value'})
     assert model.id == 'fakeModel'
-    assert model.temperature == 0.5
-    assert model.max_tokens == 4096
-    assert model.get_attribute('extra-attribute') == 'value'
-    assert model.get_attribute('non-existent') is None
+    assert model.get_parameter('extra-attribute') == 'value'
+    assert model.get_parameter('non-existent') is None
 
-    assert model.id == model.get_attribute('id')
-    assert model.temperature == model.get_attribute('temperature')
-    assert model.max_tokens == model.get_attribute('maxTokens')
-    assert model.max_tokens != model.get_attribute('max_tokens')
+    assert model.id == model.get_parameter('id')
 
 
 def test_model_config_interpolation(ldai_client: LDAIClient, tracker):
@@ -141,8 +136,8 @@ def test_model_config_interpolation(ldai_client: LDAIClient, tracker):
 
     assert config.model is not None
     assert config.model.id == 'fakeModel'
-    assert config.model.temperature == 0.5
-    assert config.model.max_tokens == 4096
+    assert config.model.get_parameter('temperature') == 0.5
+    assert config.model.get_parameter('maxTokens') == 4096
 
 
 def test_model_config_no_variables(ldai_client: LDAIClient, tracker):
@@ -158,8 +153,8 @@ def test_model_config_no_variables(ldai_client: LDAIClient, tracker):
 
     assert config.model is not None
     assert config.model.id == 'fakeModel'
-    assert config.model.temperature == 0.5
-    assert config.model.max_tokens == 4096
+    assert config.model.get_parameter('temperature') == 0.5
+    assert config.model.get_parameter('maxTokens') == 4096
 
 
 def test_provider_config_handling(ldai_client: LDAIClient, tracker):
@@ -189,9 +184,9 @@ def test_context_interpolation(ldai_client: LDAIClient, tracker):
 
     assert config.model is not None
     assert config.model.id == 'fakeModel'
-    assert config.model.temperature is None
-    assert config.model.max_tokens is None
-    assert config.model.get_attribute('extra-attribute') == 'I can be anything I set my mind/type to'
+    assert config.model.get_parameter('temperature') is None
+    assert config.model.get_parameter('maxTokens') is None
+    assert config.model.get_parameter('extra-attribute') == 'I can be anything I set my mind/type to'
 
 
 def test_model_config_multiple(ldai_client: LDAIClient, tracker):
@@ -211,8 +206,8 @@ def test_model_config_multiple(ldai_client: LDAIClient, tracker):
 
     assert config.model is not None
     assert config.model.id == 'fakeModel'
-    assert config.model.temperature == 0.7
-    assert config.model.max_tokens == 8192
+    assert config.model.get_parameter('temperature') == 0.7
+    assert config.model.get_parameter('maxTokens') == 8192
 
 
 def test_model_config_disabled(ldai_client: LDAIClient, tracker):
@@ -224,8 +219,8 @@ def test_model_config_disabled(ldai_client: LDAIClient, tracker):
     assert config.model is not None
     assert config.enabled is False
     assert config.model.id == 'fakeModel'
-    assert config.model.temperature == 0.1
-    assert config.model.max_tokens is None
+    assert config.model.get_parameter('temperature') == 0.1
+    assert config.model.get_parameter('maxTokens') is None
 
 
 def test_model_initial_config_disabled(ldai_client: LDAIClient, tracker):
