@@ -74,11 +74,11 @@ class ModelConfig:
 
 
 class AIConfig:
-    def __init__(self, tracker: LDAIConfigTracker, enabled: bool, model: Optional[ModelConfig], prompt: Optional[List[LDMessage]]):
+    def __init__(self, tracker: LDAIConfigTracker, enabled: bool, model: Optional[ModelConfig], messages: Optional[List[LDMessage]]):
         self.tracker = tracker
         self.enabled = enabled
         self.model = model
-        self.prompt = prompt
+        self.messages = messages
 
 
 class LDAIClient:
@@ -110,18 +110,18 @@ class LDAIClient:
             all_variables.update(variables)
         all_variables['ldctx'] = context
 
-        prompt = None
-        if 'prompt' in variation and isinstance(variation['prompt'], list) and all(
-            isinstance(entry, dict) for entry in variation['prompt']
+        messages = None
+        if 'messages' in variation and isinstance(variation['messages'], list) and all(
+            isinstance(entry, dict) for entry in variation['messages']
         ):
-            prompt = [
+            messages = [
                 LDMessage(
                     role=entry['role'],
                     content=self.__interpolate_template(
                         entry['content'], all_variables
                     ),
                 )
-                for entry in variation['prompt']
+                for entry in variation['messages']
             ]
 
         model = None
@@ -143,7 +143,7 @@ class LDAIClient:
             ),
             enabled=bool(enabled),
             model=model,
-            prompt=prompt
+            messages=messages
         )
 
     def __interpolate_template(self, template: str, variables: Dict[str, Any]) -> str:
