@@ -14,6 +14,7 @@ def td() -> TestData:
         .variations(
             {
                 'model': {'modelId': 'fakeModel', 'temperature': 0.5, 'maxTokens': 4096},
+                'provider': {'id': 'fakeProvider'},
                 'messages': [{'role': 'system', 'content': 'Hello, {{name}}!'}],
                 '_ldMeta': {'enabled': True, 'versionKey': 'abcd'},
             },
@@ -161,6 +162,17 @@ def test_model_config_no_variables(ldai_client: LDAIClient, tracker):
     assert config.model.max_tokens == 4096
 
 
+def test_provider_config_handling(ldai_client: LDAIClient, tracker):
+    context = Context.builder('user-key').name("Sandy").build()
+    default_value = AIConfig(tracker=tracker, enabled=True, model=ModelConfig('fake-model'), messages=[])
+    variables = {'name': 'World'}
+
+    config = ldai_client.config('model-config', context, default_value, variables)
+
+    assert config.provider is not None
+    assert config.provider.id == 'fakeProvider'
+
+
 def test_context_interpolation(ldai_client: LDAIClient, tracker):
     context = Context.builder('user-key').name("Sandy").build()
     default_value = AIConfig(tracker=tracker, enabled=True, model=ModelConfig('fake-model'), messages=[])
@@ -225,6 +237,7 @@ def test_model_initial_config_disabled(ldai_client: LDAIClient, tracker):
     assert config.enabled is False
     assert config.model is None
     assert config.messages is None
+    assert config.provider is None
 
 
 def test_model_initial_config_enabled(ldai_client: LDAIClient, tracker):
@@ -236,3 +249,4 @@ def test_model_initial_config_enabled(ldai_client: LDAIClient, tracker):
     assert config.enabled is True
     assert config.model is None
     assert config.messages is None
+    assert config.provider is None

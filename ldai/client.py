@@ -73,12 +73,29 @@ class ModelConfig:
         return self._attributes.get(key)
 
 
+class ProviderConfig:
+    """
+    Configuration related to the provider.
+    """
+
+    def __init__(self, id: str):
+        self._id = id
+
+    @property
+    def id(self) -> str:
+        """
+        The ID of the provider.
+        """
+        return self._id
+
+
 class AIConfig:
-    def __init__(self, tracker: LDAIConfigTracker, enabled: bool, model: Optional[ModelConfig], messages: Optional[List[LDMessage]]):
+    def __init__(self, tracker: LDAIConfigTracker, enabled: bool, model: Optional[ModelConfig], messages: Optional[List[LDMessage]], provider: Optional[ProviderConfig] = None):
         self.tracker = tracker
         self.enabled = enabled
         self.model = model
         self.messages = messages
+        self.provider = provider
 
 
 class LDAIClient:
@@ -124,6 +141,11 @@ class LDAIClient:
                 for entry in variation['messages']
             ]
 
+        provider_config = None
+        if 'provider' in variation and isinstance(variation['provider'], dict):
+            provider = variation['provider']
+            provider_config = ProviderConfig(provider.get('id', ''))
+
         model = None
         if 'model' in variation:
             model = ModelConfig(
@@ -143,7 +165,8 @@ class LDAIClient:
             ),
             enabled=bool(enabled),
             model=model,
-            messages=messages
+            messages=messages,
+            provider=provider_config,
         )
 
     def __interpolate_template(self, template: str, variables: Dict[str, Any]) -> str:
