@@ -21,7 +21,7 @@ class ModelConfig:
     Configuration related to the model.
     """
 
-    def __init__(self, id: str, parameters: dict = {}):
+    def __init__(self, id: str, parameters: Optional[Dict[str, Any]] = None):
         """
         :param id: The ID of the model.
         :param parameters: Additional model-specific parameters.
@@ -45,6 +45,9 @@ class ModelConfig:
         """
         if key == 'id':
             return self.id
+
+        if self._parameters is None:
+            return None
 
         return self._parameters.get(key)
 
@@ -123,10 +126,11 @@ class LDAIClient:
             provider_config = ProviderConfig(provider.get('id', ''))
 
         model = None
-        if 'model' in variation:
+        if 'model' in variation and isinstance(variation['model'], dict):
+            parameters = variation['model'].get('parameters', None)
             model = ModelConfig(
                 id=variation['model']['id'],
-                parameters=variation['model'],
+                parameters=parameters
             )
 
         enabled = variation.get('_ldMeta', {}).get('enabled', False)

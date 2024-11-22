@@ -13,7 +13,7 @@ def td() -> TestData:
         td.flag('model-config')
         .variations(
             {
-                'model': {'id': 'fakeModel', 'temperature': 0.5, 'maxTokens': 4096},
+                'model': {'id': 'fakeModel', 'parameters': {'temperature': 0.5, 'maxTokens': 4096}},
                 'provider': {'id': 'fakeProvider'},
                 'messages': [{'role': 'system', 'content': 'Hello, {{name}}!'}],
                 '_ldMeta': {'enabled': True, 'versionKey': 'abcd'},
@@ -27,7 +27,7 @@ def td() -> TestData:
         td.flag('multiple-messages')
         .variations(
             {
-                'model': {'id': 'fakeModel', 'temperature': 0.7, 'maxTokens': 8192},
+                'model': {'id': 'fakeModel', 'parameters': {'temperature': 0.7, 'maxTokens': 8192}},
                 'messages': [
                     {'role': 'system', 'content': 'Hello, {{name}}!'},
                     {'role': 'user', 'content': 'The day is, {{day}}!'},
@@ -43,7 +43,7 @@ def td() -> TestData:
         td.flag('ctx-interpolation')
         .variations(
             {
-                'model': {'id': 'fakeModel', 'extra-attribute': 'I can be anything I set my mind/type to'},
+                'model': {'id': 'fakeModel', 'parameters': {'extra-attribute': 'I can be anything I set my mind/type to'}},
                 'messages': [{'role': 'system', 'content': 'Hello, {{ldctx.name}}!'}],
                 '_ldMeta': {'enabled': True, 'versionKey': 'abcd'},
             }
@@ -55,7 +55,7 @@ def td() -> TestData:
         td.flag('off-config')
         .variations(
             {
-                'model': {'id': 'fakeModel', 'temperature': 0.1},
+                'model': {'id': 'fakeModel', 'parameters': {'temperature': 0.1}},
                 'messages': [{'role': 'system', 'content': 'Hello, {{name}}!'}],
                 '_ldMeta': {'enabled': False, 'versionKey': 'abcd'},
             }
