@@ -13,7 +13,7 @@ def td() -> TestData:
         td.flag('model-config')
         .variations(
             {
-                'model': {'id': 'fakeModel', 'parameters': {'temperature': 0.5, 'maxTokens': 4096}},
+                'model': {'id': 'fakeModel', 'parameters': {'temperature': 0.5, 'maxTokens': 4096}, 'custom': {'extra-attribute': 'value'}},
                 'provider': {'id': 'fakeProvider'},
                 'messages': [{'role': 'system', 'content': 'Hello, {{name}}!'}],
                 '_ldMeta': {'enabled': True, 'versionKey': 'abcd'},
@@ -115,6 +115,14 @@ def test_model_config_delegates_to_properties():
     assert model.get_parameter('non-existent') is None
 
     assert model.id == model.get_parameter('id')
+
+
+def test_model_config_handles_custom():
+    model = ModelConfig('fakeModel', custom={'extra-attribute': 'value'})
+    assert model.id == 'fakeModel'
+    assert model.get_parameter('extra-attribute') is None
+    assert model.get_custom('non-existent') is None
+    assert model.get_custom('id') is None
 
 
 def test_model_config_interpolation(ldai_client: LDAIClient, tracker):
