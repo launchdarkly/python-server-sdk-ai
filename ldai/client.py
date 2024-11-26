@@ -2,18 +2,25 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Literal, Optional
 
 import chevron
-from dataclasses_json import dataclass_json
 from ldclient import Context
 from ldclient.client import LDClient
 
 from ldai.tracker import LDAIConfigTracker
 
 
-@dataclass_json
 @dataclass
 class LDMessage:
     role: Literal['system', 'user', 'assistant']
     content: str
+
+    def to_dict(self) -> dict:
+        """
+        Render the given message as a dictionary object.
+        """
+        return {
+            'role': self.role,
+            'content': self.content,
+        }
 
 
 class ModelConfig:
@@ -62,6 +69,16 @@ class ModelConfig:
 
         return self._custom.get(key)
 
+    def to_dict(self) -> dict:
+        """
+        Render the given model config as a dictionary object.
+        """
+        return {
+            'id': self._id,
+            'parameters': self._parameters,
+            'custom': self._custom,
+        }
+
 
 class ProviderConfig:
     """
@@ -78,14 +95,46 @@ class ProviderConfig:
         """
         return self._id
 
+    def to_dict(self) -> dict:
+        """
+        Render the given provider config as a dictionary object.
+        """
+        return {
+            'id': self._id,
+        }
 
+
+@dataclass(frozen=True)
+class DefaultAIConfig:
+    """
+    The default values when evaluating an AI configuration.
+    """
+    enabled: Optional[bool] = None
+    model: Optional[ModelConfig] = None
+    messages: Optional[List[LDMessage]] = None
+    provider: Optional[ProviderConfig] = None
+
+    def to_dict(self) -> dict:
+        """
+        Render the given default values as an AIConfig-compatible dictionary object.
+        """
+        return {
+            '_ldMeta': {
+                'enabled': self.enabled or False,
+            },
+            'model': self.model.to_dict() if self.model else None,
+            'messages': [message.to_dict() for message in self.messages] if self.messages else None,
+            'provider': self.provider.to_dict() if self.provider else None,
+        }
+
+
+@dataclass(frozen=True)
 class AIConfig:
-    def __init__(self, tracker: LDAIConfigTracker, enabled: bool, model: Optional[ModelConfig], messages: Optional[List[LDMessage]], provider: Optional[ProviderConfig] = None):
-        self.tracker = tracker
-        self.enabled = enabled
-        self.model = model
-        self.messages = messages
-        self.provider = provider
+    tracker: LDAIConfigTracker
+    enabled: bool
+    model: Optional[ModelConfig] = None
+    messages: Optional[List[LDMessage]] = None
+    provider: Optional[ProviderConfig] = None
 
 
 class LDAIClient:
@@ -98,7 +147,7 @@ class LDAIClient:
         self,
         key: str,
         context: Context,
-        default_value: AIConfig,
+        default_value: DefaultAIConfig,
         variables: Optional[Dict[str, Any]] = None,
     ) -> AIConfig:
         """
@@ -110,7 +159,7 @@ class LDAIClient:
         :param variables: Additional variables for the model configuration.
         :return: The value of the model configuration.
         """
-        variation = self.client.variation(key, context, default_value)
+        variation = self.client.variation(key, context, default_value.to_dict())
 
         all_variables = {}
         if variables:

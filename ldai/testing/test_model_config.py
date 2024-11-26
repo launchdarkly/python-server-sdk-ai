@@ -2,8 +2,7 @@ import pytest
 from ldclient import Config, Context, LDClient
 from ldclient.integrations.test_data import TestData
 
-from ldai.client import AIConfig, LDAIClient, LDMessage, ModelConfig
-from ldai.tracker import LDAIConfigTracker
+from ldai.client import DefaultAIConfig, LDAIClient, LDMessage, ModelConfig
 
 
 @pytest.fixture
@@ -99,11 +98,6 @@ def client(td: TestData) -> LDClient:
 
 
 @pytest.fixture
-def tracker(client: LDClient) -> LDAIConfigTracker:
-    return LDAIConfigTracker(client, 'abcd', 'model-config', Context.create('user-key'))
-
-
-@pytest.fixture
 def ldai_client(client: LDClient) -> LDAIClient:
     return LDAIClient(client)
 
@@ -125,10 +119,31 @@ def test_model_config_handles_custom():
     assert model.get_custom('id') is None
 
 
-def test_model_config_interpolation(ldai_client: LDAIClient, tracker):
+def test_uses_default_on_invalid_flag(ldai_client: LDAIClient):
     context = Context.create('user-key')
-    default_value = AIConfig(
-        tracker=tracker,
+    default_value = DefaultAIConfig(
+        enabled=True,
+        model=ModelConfig('fakeModel', parameters={'temperature': 0.5, 'maxTokens': 4096}),
+        messages=[LDMessage(role='system', content='Hello, {{name}}!')],
+    )
+    variables = {'name': 'World'}
+
+    config = ldai_client.config('missing-flag', context, default_value, variables)
+
+    assert config.messages is not None
+    assert len(config.messages) > 0
+    assert config.messages[0].content == 'Hello, World!'
+    assert config.enabled is True
+
+    assert config.model is not None
+    assert config.model.id == 'fakeModel'
+    assert config.model.get_parameter('temperature') == 0.5
+    assert config.model.get_parameter('maxTokens') == 4096
+
+
+def test_model_config_interpolation(ldai_client: LDAIClient):
+    context = Context.create('user-key')
+    default_value = DefaultAIConfig(
         enabled=True,
         model=ModelConfig('fakeModel'),
         messages=[LDMessage(role='system', content='Hello, {{name}}!')],
@@ -148,9 +163,9 @@ def test_model_config_interpolation(ldai_client: LDAIClient, tracker):
     assert config.model.get_parameter('maxTokens') == 4096
 
 
-def test_model_config_no_variables(ldai_client: LDAIClient, tracker):
+def test_model_config_no_variables(ldai_client: LDAIClient):
     context = Context.create('user-key')
-    default_value = AIConfig(tracker=tracker, enabled=True, model=ModelConfig('fake-model'), messages=[])
+    default_value = DefaultAIConfig(enabled=True, model=ModelConfig('fake-model'), messages=[])
 
     config = ldai_client.config('model-config', context, default_value, {})
 
@@ -165,9 +180,9 @@ def test_model_config_no_variables(ldai_client: LDAIClient, tracker):
     assert config.model.get_parameter('maxTokens') == 4096
 
 
-def test_provider_config_handling(ldai_client: LDAIClient, tracker):
+def test_provider_config_handling(ldai_client: LDAIClient):
     context = Context.builder('user-key').name("Sandy").build()
-    default_value = AIConfig(tracker=tracker, enabled=True, model=ModelConfig('fake-model'), messages=[])
+    default_value = DefaultAIConfig(enabled=True, model=ModelConfig('fake-model'), messages=[])
     variables = {'name': 'World'}
 
     config = ldai_client.config('model-config', context, default_value, variables)
@@ -176,9 +191,9 @@ def test_provider_config_handling(ldai_client: LDAIClient, tracker):
     assert config.provider.id == 'fakeProvider'
 
 
-def test_context_interpolation(ldai_client: LDAIClient, tracker):
+def test_context_interpolation(ldai_client: LDAIClient):
     context = Context.builder('user-key').name("Sandy").build()
-    default_value = AIConfig(tracker=tracker, enabled=True, model=ModelConfig('fake-model'), messages=[])
+    default_value = DefaultAIConfig(enabled=True, model=ModelConfig('fake-model'), messages=[])
     variables = {'name': 'World'}
 
     config = ldai_client.config(
@@ -197,9 +212,9 @@ def test_context_interpolation(ldai_client: LDAIClient, tracker):
     assert config.model.get_parameter('extra-attribute') == 'I can be anything I set my mind/type to'
 
 
-def test_model_config_multiple(ldai_client: LDAIClient, tracker):
+def test_model_config_multiple(ldai_client: LDAIClient):
     context = Context.create('user-key')
-    default_value = AIConfig(tracker=tracker, enabled=True, model=ModelConfig('fake-model'), messages=[])
+    default_value = DefaultAIConfig(enabled=True, model=ModelConfig('fake-model'), messages=[])
     variables = {'name': 'World', 'day': 'Monday'}
 
     config = ldai_client.config(
@@ -218,9 +233,9 @@ def test_model_config_multiple(ldai_client: LDAIClient, tracker):
     assert config.model.get_parameter('maxTokens') == 8192
 
 
-def test_model_config_disabled(ldai_client: LDAIClient, tracker):
+def test_model_config_disabled(ldai_client: LDAIClient):
     context = Context.create('user-key')
-    default_value = AIConfig(tracker=tracker, enabled=False, model=ModelConfig('fake-model'), messages=[])
+    default_value = DefaultAIConfig(enabled=False, model=ModelConfig('fake-model'), messages=[])
 
     config = ldai_client.config('off-config', context, default_value, {})
 
@@ -231,9 +246,9 @@ def test_model_config_disabled(ldai_client: LDAIClient, tracker):
     assert config.model.get_parameter('maxTokens') is None
 
 
-def test_model_initial_config_disabled(ldai_client: LDAIClient, tracker):
+def test_model_initial_config_disabled(ldai_client: LDAIClient):
     context = Context.create('user-key')
-    default_value = AIConfig(tracker=tracker, enabled=False, model=ModelConfig('fake-model'), messages=[])
+    default_value = DefaultAIConfig(enabled=False, model=ModelConfig('fake-model'), messages=[])
 
     config = ldai_client.config('initial-config-disabled', context, default_value, {})
 
@@ -243,9 +258,9 @@ def test_model_initial_config_disabled(ldai_client: LDAIClient, tracker):
     assert config.provider is None
 
 
-def test_model_initial_config_enabled(ldai_client: LDAIClient, tracker):
+def test_model_initial_config_enabled(ldai_client: LDAIClient):
     context = Context.create('user-key')
-    default_value = AIConfig(tracker=tracker, enabled=False, model=ModelConfig('fake-model'), messages=[])
+    default_value = DefaultAIConfig(enabled=False, model=ModelConfig('fake-model'), messages=[])
 
     config = ldai_client.config('initial-config-enabled', context, default_value, {})
 
