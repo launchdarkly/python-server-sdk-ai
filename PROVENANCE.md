@@ -33,11 +33,11 @@ launchdarkly_server_sdk_ai-${VERSION}-py3-none-any.whl
 Below is a sample of expected output.
 
 ```
-Verified signature against tlog entry index 89939519 at URL: https://rekor.sigstore.dev/api/v1/log/entries/24296fb24b8ad77abb8d2f681b007c76a4fe9f89cd9574918683ac8bc87cd6834c5baa479ae5cb98
-Verified build using builder "https://github.com/slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@refs/tags/v1.10.0" at commit 984fc268df29918b03f51f2507146f66d8668d03
-Verifying artifact launchdarkly_server_sdk_ai-1.0.0-py3-none-any.whl: PASSED
+Verified signature against tlog entry index 150910243 at URL: https://rekor.sigstore.dev/api/v1/log/entries/108e9186e8c5677ab3f14fc82cd3deb769e07ef812cadda623c08c77d4e51fc03124ee7542c470a1
+Verified build using builder "https://github.com/slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@refs/tags/v2.0.0" at commit 8e2d4094b4833d075e70dfce43bbc7176008c4a1
+Verifying artifact launchdarkly_server_sdk_ai-0.3.0-py3-none-any.whl: PASSED
 
-PASSED: Verified SLSA provenance
+PASSED: SLSA verification passed
 ```
 
 Alternatively, to verify the provenance manually, the SLSA framework specifies [recommendations for verifying build artifacts](https://slsa.dev/spec/v1.0/verifying-artifacts) in their documentation.
