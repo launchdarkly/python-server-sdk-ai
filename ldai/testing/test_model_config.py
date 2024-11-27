@@ -43,7 +43,19 @@ def td() -> TestData:
         .variations(
             {
                 'model': {'id': 'fakeModel', 'parameters': {'extra-attribute': 'I can be anything I set my mind/type to'}},
-                'messages': [{'role': 'system', 'content': 'Hello, {{ldctx.name}}!'}],
+                'messages': [{'role': 'system', 'content': 'Hello, {{ldctx.name}}! Is your last name {{ldctx.last}}?'}],
+                '_ldMeta': {'enabled': True, 'versionKey': 'abcd'},
+            }
+        )
+        .variation_for_all(0)
+    )
+
+    td.update(
+        td.flag('multi-ctx-interpolation')
+        .variations(
+            {
+                'model': {'id': 'fakeModel', 'parameters': {'extra-attribute': 'I can be anything I set my mind/type to'}},
+                'messages': [{'role': 'system', 'content': 'Hello, {{ldctx.user.name}}! Do you work for {{ldctx.org.shortname}}?'}],
                 '_ldMeta': {'enabled': True, 'versionKey': 'abcd'},
             }
         )
@@ -192,7 +204,7 @@ def test_provider_config_handling(ldai_client: LDAIClient):
 
 
 def test_context_interpolation(ldai_client: LDAIClient):
-    context = Context.builder('user-key').name("Sandy").build()
+    context = Context.builder('user-key').name("Sandy").set('last', 'Beaches').build()
     default_value = AIConfig(enabled=True, model=ModelConfig('fake-model'), messages=[])
     variables = {'name': 'World'}
 
@@ -202,7 +214,30 @@ def test_context_interpolation(ldai_client: LDAIClient):
 
     assert config.messages is not None
     assert len(config.messages) > 0
-    assert config.messages[0].content == 'Hello, Sandy!'
+    assert config.messages[0].content == 'Hello, Sandy! Is your last name Beaches?'
+    assert config.enabled is True
+
+    assert config.model is not None
+    assert config.model.id == 'fakeModel'
+    assert config.model.get_parameter('temperature') is None
+    assert config.model.get_parameter('maxTokens') is None
+    assert config.model.get_parameter('extra-attribute') == 'I can be anything I set my mind/type to'
+
+
+def test_multi_context_interpolation(ldai_client: LDAIClient):
+    user_context = Context.builder('user-key').name("Sandy").build()
+    org_context = Context.builder('org-key').kind('org').name("LaunchDarkly").set('shortname', 'LD').build()
+    context = Context.multi_builder().add(user_context).add(org_context).build()
+    default_value = AIConfig(enabled=True, model=ModelConfig('fake-model'), messages=[])
+    variables = {'name': 'World'}
+
+    config, _ = ldai_client.config(
+        'multi-ctx-interpolation', context, default_value, variables
+    )
+
+    assert config.messages is not None
+    assert len(config.messages) > 0
+    assert config.messages[0].content == 'Hello, Sandy! Do you work for LD?'
     assert config.enabled is True
 
     assert config.model is not None
