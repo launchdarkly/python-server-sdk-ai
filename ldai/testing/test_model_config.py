@@ -2,7 +2,7 @@ import pytest
 from ldclient import Config, Context, LDClient
 from ldclient.integrations.test_data import TestData
 
-from ldai.client import DefaultAIConfig, LDAIClient, LDMessage, ModelConfig
+from ldai.client import AIConfig, LDAIClient, LDMessage, ModelConfig
 
 
 @pytest.fixture
@@ -121,14 +121,14 @@ def test_model_config_handles_custom():
 
 def test_uses_default_on_invalid_flag(ldai_client: LDAIClient):
     context = Context.create('user-key')
-    default_value = DefaultAIConfig(
+    default_value = AIConfig(
         enabled=True,
         model=ModelConfig('fakeModel', parameters={'temperature': 0.5, 'maxTokens': 4096}),
         messages=[LDMessage(role='system', content='Hello, {{name}}!')],
     )
     variables = {'name': 'World'}
 
-    config = ldai_client.config('missing-flag', context, default_value, variables)
+    config, _ = ldai_client.config('missing-flag', context, default_value, variables)
 
     assert config.messages is not None
     assert len(config.messages) > 0
@@ -143,14 +143,14 @@ def test_uses_default_on_invalid_flag(ldai_client: LDAIClient):
 
 def test_model_config_interpolation(ldai_client: LDAIClient):
     context = Context.create('user-key')
-    default_value = DefaultAIConfig(
+    default_value = AIConfig(
         enabled=True,
         model=ModelConfig('fakeModel'),
         messages=[LDMessage(role='system', content='Hello, {{name}}!')],
     )
     variables = {'name': 'World'}
 
-    config = ldai_client.config('model-config', context, default_value, variables)
+    config, _ = ldai_client.config('model-config', context, default_value, variables)
 
     assert config.messages is not None
     assert len(config.messages) > 0
@@ -165,9 +165,9 @@ def test_model_config_interpolation(ldai_client: LDAIClient):
 
 def test_model_config_no_variables(ldai_client: LDAIClient):
     context = Context.create('user-key')
-    default_value = DefaultAIConfig(enabled=True, model=ModelConfig('fake-model'), messages=[])
+    default_value = AIConfig(enabled=True, model=ModelConfig('fake-model'), messages=[])
 
-    config = ldai_client.config('model-config', context, default_value, {})
+    config, _ = ldai_client.config('model-config', context, default_value, {})
 
     assert config.messages is not None
     assert len(config.messages) > 0
@@ -182,10 +182,10 @@ def test_model_config_no_variables(ldai_client: LDAIClient):
 
 def test_provider_config_handling(ldai_client: LDAIClient):
     context = Context.builder('user-key').name("Sandy").build()
-    default_value = DefaultAIConfig(enabled=True, model=ModelConfig('fake-model'), messages=[])
+    default_value = AIConfig(enabled=True, model=ModelConfig('fake-model'), messages=[])
     variables = {'name': 'World'}
 
-    config = ldai_client.config('model-config', context, default_value, variables)
+    config, _ = ldai_client.config('model-config', context, default_value, variables)
 
     assert config.provider is not None
     assert config.provider.id == 'fakeProvider'
@@ -193,10 +193,10 @@ def test_provider_config_handling(ldai_client: LDAIClient):
 
 def test_context_interpolation(ldai_client: LDAIClient):
     context = Context.builder('user-key').name("Sandy").build()
-    default_value = DefaultAIConfig(enabled=True, model=ModelConfig('fake-model'), messages=[])
+    default_value = AIConfig(enabled=True, model=ModelConfig('fake-model'), messages=[])
     variables = {'name': 'World'}
 
-    config = ldai_client.config(
+    config, _ = ldai_client.config(
         'ctx-interpolation', context, default_value, variables
     )
 
@@ -214,10 +214,10 @@ def test_context_interpolation(ldai_client: LDAIClient):
 
 def test_model_config_multiple(ldai_client: LDAIClient):
     context = Context.create('user-key')
-    default_value = DefaultAIConfig(enabled=True, model=ModelConfig('fake-model'), messages=[])
+    default_value = AIConfig(enabled=True, model=ModelConfig('fake-model'), messages=[])
     variables = {'name': 'World', 'day': 'Monday'}
 
-    config = ldai_client.config(
+    config, _ = ldai_client.config(
         'multiple-messages', context, default_value, variables
     )
 
@@ -235,9 +235,9 @@ def test_model_config_multiple(ldai_client: LDAIClient):
 
 def test_model_config_disabled(ldai_client: LDAIClient):
     context = Context.create('user-key')
-    default_value = DefaultAIConfig(enabled=False, model=ModelConfig('fake-model'), messages=[])
+    default_value = AIConfig(enabled=False, model=ModelConfig('fake-model'), messages=[])
 
-    config = ldai_client.config('off-config', context, default_value, {})
+    config, _ = ldai_client.config('off-config', context, default_value, {})
 
     assert config.model is not None
     assert config.enabled is False
@@ -248,9 +248,9 @@ def test_model_config_disabled(ldai_client: LDAIClient):
 
 def test_model_initial_config_disabled(ldai_client: LDAIClient):
     context = Context.create('user-key')
-    default_value = DefaultAIConfig(enabled=False, model=ModelConfig('fake-model'), messages=[])
+    default_value = AIConfig(enabled=False, model=ModelConfig('fake-model'), messages=[])
 
-    config = ldai_client.config('initial-config-disabled', context, default_value, {})
+    config, _ = ldai_client.config('initial-config-disabled', context, default_value, {})
 
     assert config.enabled is False
     assert config.model is None
@@ -260,9 +260,9 @@ def test_model_initial_config_disabled(ldai_client: LDAIClient):
 
 def test_model_initial_config_enabled(ldai_client: LDAIClient):
     context = Context.create('user-key')
-    default_value = DefaultAIConfig(enabled=False, model=ModelConfig('fake-model'), messages=[])
+    default_value = AIConfig(enabled=False, model=ModelConfig('fake-model'), messages=[])
 
-    config = ldai_client.config('initial-config-enabled', context, default_value, {})
+    config, _ = ldai_client.config('initial-config-enabled', context, default_value, {})
 
     assert config.enabled is True
     assert config.model is None

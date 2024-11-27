@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional, Tuple
 
 import chevron
 from ldclient import Context
@@ -105,10 +105,7 @@ class ProviderConfig:
 
 
 @dataclass(frozen=True)
-class DefaultAIConfig:
-    """
-    The default values when evaluating an AI configuration.
-    """
+class AIConfig:
     enabled: Optional[bool] = None
     model: Optional[ModelConfig] = None
     messages: Optional[List[LDMessage]] = None
@@ -128,15 +125,6 @@ class DefaultAIConfig:
         }
 
 
-@dataclass(frozen=True)
-class AIConfig:
-    tracker: LDAIConfigTracker
-    enabled: bool
-    model: Optional[ModelConfig] = None
-    messages: Optional[List[LDMessage]] = None
-    provider: Optional[ProviderConfig] = None
-
-
 class LDAIClient:
     """The LaunchDarkly AI SDK client object."""
 
@@ -147,9 +135,9 @@ class LDAIClient:
         self,
         key: str,
         context: Context,
-        default_value: DefaultAIConfig,
+        default_value: AIConfig,
         variables: Optional[Dict[str, Any]] = None,
-    ) -> AIConfig:
+    ) -> Tuple[AIConfig, LDAIConfigTracker]:
         """
         Get the value of a model configuration.
 
@@ -157,7 +145,7 @@ class LDAIClient:
         :param context: The context to evaluate the model configuration in.
         :param default_value: The default value of the model configuration.
         :param variables: Additional variables for the model configuration.
-        :return: The value of the model configuration.
+        :return: The value of the model configuration along with a tracker used for gathering metrics.
         """
         variation = self.client.variation(key, context, default_value.to_dict())
 
@@ -195,19 +183,22 @@ class LDAIClient:
                 custom=custom
             )
 
+        tracker = LDAIConfigTracker(
+            self.client,
+            variation.get('_ldMeta', {}).get('versionKey', ''),
+            key,
+            context,
+        )
+
         enabled = variation.get('_ldMeta', {}).get('enabled', False)
-        return AIConfig(
-            tracker=LDAIConfigTracker(
-                self.client,
-                variation.get('_ldMeta', {}).get('versionKey', ''),
-                key,
-                context,
-            ),
+        config = AIConfig(
             enabled=bool(enabled),
             model=model,
             messages=messages,
             provider=provider_config,
         )
+
+        return config, tracker
 
     def __interpolate_template(self, template: str, variables: Dict[str, Any]) -> str:
         """
