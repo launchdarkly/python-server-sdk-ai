@@ -2,6 +2,18 @@
 
 All notable changes to the LaunchDarkly Python AI package will be documented in this file. This project adheres to [Semantic Versioning](http://semver.org).
 
+## [0.4.0](https://github.com/launchdarkly/python-server-sdk-ai/compare/0.3.0...0.4.0) (2024-12-02)
+
+
+### Features
+
+* Return AIConfig and LDAITracker separately [#23](https://github.com/launchdarkly/python-server-sdk-ai/issues/23) ([96f888f](https://github.com/launchdarkly/python-server-sdk-ai/commit/96f888f50503cc2e9e2c30bf1c21f80a2773c8b5))
+
+
+### Bug Fixes
+
+* Fix context usage for message interpolation ([#24](https://github.com/launchdarkly/python-server-sdk-ai/issues/24)) ([1159aee](https://github.com/launchdarkly/python-server-sdk-ai/commit/1159aeeda7c46cf2dab93f209929dbad5d35dc80))
+
 ## [0.3.0](https://github.com/launchdarkly/python-server-sdk-ai/compare/0.2.0...0.3.0) (2024-11-22)
 
 
