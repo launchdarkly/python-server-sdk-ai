@@ -3,7 +3,7 @@
     ".": {
       "release-type": "python",
       "versioning": "default",
-      "release-as": "0.3.0",
+      "bump-minor-pre-major": true,
       "include-v-in-tag": false,
       "extra-files": ["ldai/__init__.py", "PROVENANCE.md"],
       "include-component-in-tag": false
