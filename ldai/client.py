@@ -152,7 +152,7 @@ class LDAIClient:
         all_variables = {}
         if variables:
             all_variables.update(variables)
-        all_variables['ldctx'] = context
+        all_variables['ldctx'] = context.to_dict()
 
         messages = None
         if 'messages' in variation and isinstance(variation['messages'], list) and all(
