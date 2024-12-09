@@ -2,6 +2,17 @@
 
 All notable changes to the LaunchDarkly Python AI package will be documented in this file. This project adheres to [Semantic Versioning](http://semver.org).
 
+## [0.5.0](https://github.com/launchdarkly/python-server-sdk-ai/compare/0.4.0...0.5.0) (2024-12-09)
+
+
+### ⚠ BREAKING CHANGES
+
+* Rename model and provider id to name ([#27](https://github.com/launchdarkly/python-server-sdk-ai/issues/27))
+
+### Code Refactoring
+
+* Rename model and provider id to name ([#27](https://github.com/launchdarkly/python-server-sdk-ai/issues/27)) ([65260b6](https://github.com/launchdarkly/python-server-sdk-ai/commit/65260b621acee07b38e9ebaeb4a10c1e4c9db794))
+
 ## [0.4.0](https://github.com/launchdarkly/python-server-sdk-ai/compare/0.3.0...0.4.0) (2024-12-02)
 
 
