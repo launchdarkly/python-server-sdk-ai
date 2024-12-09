@@ -12,8 +12,8 @@ def td() -> TestData:
         td.flag('model-config')
         .variations(
             {
-                'model': {'id': 'fakeModel', 'parameters': {'temperature': 0.5, 'maxTokens': 4096}, 'custom': {'extra-attribute': 'value'}},
-                'provider': {'id': 'fakeProvider'},
+                'model': {'name': 'fakeModel', 'parameters': {'temperature': 0.5, 'maxTokens': 4096}, 'custom': {'extra-attribute': 'value'}},
+                'provider': {'name': 'fakeProvider'},
                 'messages': [{'role': 'system', 'content': 'Hello, {{name}}!'}],
                 '_ldMeta': {'enabled': True, 'versionKey': 'abcd'},
             },
@@ -26,7 +26,7 @@ def td() -> TestData:
         td.flag('multiple-messages')
         .variations(
             {
-                'model': {'id': 'fakeModel', 'parameters': {'temperature': 0.7, 'maxTokens': 8192}},
+                'model': {'name': 'fakeModel', 'parameters': {'temperature': 0.7, 'maxTokens': 8192}},
                 'messages': [
                     {'role': 'system', 'content': 'Hello, {{name}}!'},
                     {'role': 'user', 'content': 'The day is, {{day}}!'},
@@ -42,7 +42,7 @@ def td() -> TestData:
         td.flag('ctx-interpolation')
         .variations(
             {
-                'model': {'id': 'fakeModel', 'parameters': {'extra-attribute': 'I can be anything I set my mind/type to'}},
+                'model': {'name': 'fakeModel', 'parameters': {'extra-attribute': 'I can be anything I set my mind/type to'}},
                 'messages': [{'role': 'system', 'content': 'Hello, {{ldctx.name}}! Is your last name {{ldctx.last}}?'}],
                 '_ldMeta': {'enabled': True, 'versionKey': 'abcd'},
             }
@@ -54,7 +54,7 @@ def td() -> TestData:
         td.flag('multi-ctx-interpolation')
         .variations(
             {
-                'model': {'id': 'fakeModel', 'parameters': {'extra-attribute': 'I can be anything I set my mind/type to'}},
+                'model': {'name': 'fakeModel', 'parameters': {'extra-attribute': 'I can be anything I set my mind/type to'}},
                 'messages': [{'role': 'system', 'content': 'Hello, {{ldctx.user.name}}! Do you work for {{ldctx.org.shortname}}?'}],
                 '_ldMeta': {'enabled': True, 'versionKey': 'abcd'},
             }
@@ -66,7 +66,7 @@ def td() -> TestData:
         td.flag('off-config')
         .variations(
             {
-                'model': {'id': 'fakeModel', 'parameters': {'temperature': 0.1}},
+                'model': {'name': 'fakeModel', 'parameters': {'temperature': 0.1}},
                 'messages': [{'role': 'system', 'content': 'Hello, {{name}}!'}],
                 '_ldMeta': {'enabled': False, 'versionKey': 'abcd'},
             }
@@ -116,19 +116,19 @@ def ldai_client(client: LDClient) -> LDAIClient:
 
 def test_model_config_delegates_to_properties():
     model = ModelConfig('fakeModel', parameters={'extra-attribute': 'value'})
-    assert model.id == 'fakeModel'
+    assert model.name == 'fakeModel'
     assert model.get_parameter('extra-attribute') == 'value'
     assert model.get_parameter('non-existent') is None
 
-    assert model.id == model.get_parameter('id')
+    assert model.name == model.get_parameter('name')
 
 
 def test_model_config_handles_custom():
     model = ModelConfig('fakeModel', custom={'extra-attribute': 'value'})
-    assert model.id == 'fakeModel'
+    assert model.name == 'fakeModel'
     assert model.get_parameter('extra-attribute') is None
     assert model.get_custom('non-existent') is None
-    assert model.get_custom('id') is None
+    assert model.get_custom('name') is None
 
 
 def test_uses_default_on_invalid_flag(ldai_client: LDAIClient):
@@ -148,7 +148,7 @@ def test_uses_default_on_invalid_flag(ldai_client: LDAIClient):
     assert config.enabled is True
 
     assert config.model is not None
-    assert config.model.id == 'fakeModel'
+    assert config.model.name == 'fakeModel'
     assert config.model.get_parameter('temperature') == 0.5
     assert config.model.get_parameter('maxTokens') == 4096
 
@@ -170,7 +170,7 @@ def test_model_config_interpolation(ldai_client: LDAIClient):
     assert config.enabled is True
 
     assert config.model is not None
-    assert config.model.id == 'fakeModel'
+    assert config.model.name == 'fakeModel'
     assert config.model.get_parameter('temperature') == 0.5
     assert config.model.get_parameter('maxTokens') == 4096
 
@@ -187,7 +187,7 @@ def test_model_config_no_variables(ldai_client: LDAIClient):
     assert config.enabled is True
 
     assert config.model is not None
-    assert config.model.id == 'fakeModel'
+    assert config.model.name == 'fakeModel'
     assert config.model.get_parameter('temperature') == 0.5
     assert config.model.get_parameter('maxTokens') == 4096
 
@@ -200,7 +200,7 @@ def test_provider_config_handling(ldai_client: LDAIClient):
     config, _ = ldai_client.config('model-config', context, default_value, variables)
 
     assert config.provider is not None
-    assert config.provider.id == 'fakeProvider'
+    assert config.provider.name == 'fakeProvider'
 
 
 def test_context_interpolation(ldai_client: LDAIClient):
@@ -218,7 +218,7 @@ def test_context_interpolation(ldai_client: LDAIClient):
     assert config.enabled is True
 
     assert config.model is not None
-    assert config.model.id == 'fakeModel'
+    assert config.model.name == 'fakeModel'
     assert config.model.get_parameter('temperature') is None
     assert config.model.get_parameter('maxTokens') is None
     assert config.model.get_parameter('extra-attribute') == 'I can be anything I set my mind/type to'
@@ -241,7 +241,7 @@ def test_multi_context_interpolation(ldai_client: LDAIClient):
     assert config.enabled is True
 
     assert config.model is not None
-    assert config.model.id == 'fakeModel'
+    assert config.model.name == 'fakeModel'
     assert config.model.get_parameter('temperature') is None
     assert config.model.get_parameter('maxTokens') is None
     assert config.model.get_parameter('extra-attribute') == 'I can be anything I set my mind/type to'
@@ -263,7 +263,7 @@ def test_model_config_multiple(ldai_client: LDAIClient):
     assert config.enabled is True
 
     assert config.model is not None
-    assert config.model.id == 'fakeModel'
+    assert config.model.name == 'fakeModel'
     assert config.model.get_parameter('temperature') == 0.7
     assert config.model.get_parameter('maxTokens') == 8192
 
@@ -276,7 +276,7 @@ def test_model_config_disabled(ldai_client: LDAIClient):
 
     assert config.model is not None
     assert config.enabled is False
-    assert config.model.id == 'fakeModel'
+    assert config.model.name == 'fakeModel'
     assert config.model.get_parameter('temperature') == 0.1
     assert config.model.get_parameter('maxTokens') is None
 
