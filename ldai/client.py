@@ -28,32 +28,32 @@ class ModelConfig:
     Configuration related to the model.
     """
 
-    def __init__(self, id: str, parameters: Optional[Dict[str, Any]] = None, custom: Optional[Dict[str, Any]] = None):
+    def __init__(self, name: str, parameters: Optional[Dict[str, Any]] = None, custom: Optional[Dict[str, Any]] = None):
         """
-        :param id: The ID of the model.
+        :param name: The name of the model.
         :param parameters: Additional model-specific parameters.
         :param custom: Additional customer provided data.
         """
-        self._id = id
+        self._name = name
         self._parameters = parameters
         self._custom = custom
 
     @property
-    def id(self) -> str:
+    def name(self) -> str:
         """
-        The ID of the model.
+        The name of the model.
         """
-        return self._id
+        return self._name
 
     def get_parameter(self, key: str) -> Any:
         """
         Retrieve model-specific parameters.
 
-        Accessing a named, typed attribute (e.g. id) will result in the call
+        Accessing a named, typed attribute (e.g. name) will result in the call
         being delegated to the appropriate property.
         """
-        if key == 'id':
-            return self.id
+        if key == 'name':
+            return self.name
 
         if self._parameters is None:
             return None
@@ -74,7 +74,7 @@ class ModelConfig:
         Render the given model config as a dictionary object.
         """
         return {
-            'id': self._id,
+            'name': self._name,
             'parameters': self._parameters,
             'custom': self._custom,
         }
@@ -85,22 +85,22 @@ class ProviderConfig:
     Configuration related to the provider.
     """
 
-    def __init__(self, id: str):
-        self._id = id
+    def __init__(self, name: str):
+        self._name = name
 
     @property
-    def id(self) -> str:
+    def name(self) -> str:
         """
-        The ID of the provider.
+        The name of the provider.
         """
-        return self._id
+        return self._name
 
     def to_dict(self) -> dict:
         """
         Render the given provider config as a dictionary object.
         """
         return {
-            'id': self._id,
+            'name': self._name,
         }
 
 
@@ -171,14 +171,14 @@ class LDAIClient:
         provider_config = None
         if 'provider' in variation and isinstance(variation['provider'], dict):
             provider = variation['provider']
-            provider_config = ProviderConfig(provider.get('id', ''))
+            provider_config = ProviderConfig(provider.get('name', ''))
 
         model = None
         if 'model' in variation and isinstance(variation['model'], dict):
             parameters = variation['model'].get('parameters', None)
             custom = variation['model'].get('custom', None)
             model = ModelConfig(
-                id=variation['model']['id'],
+                name=variation['model']['name'],
                 parameters=parameters,
                 custom=custom
             )
