@@ -15,7 +15,7 @@ def td() -> TestData:
                 'model': {'name': 'fakeModel', 'parameters': {'temperature': 0.5, 'maxTokens': 4096}, 'custom': {'extra-attribute': 'value'}},
                 'provider': {'name': 'fakeProvider'},
                 'messages': [{'role': 'system', 'content': 'Hello, {{name}}!'}],
-                '_ldMeta': {'enabled': True, 'versionKey': 'abcd'},
+                '_ldMeta': {'enabled': True, 'variationKey': 'abcd'},
             },
             "green",
         )
@@ -31,7 +31,7 @@ def td() -> TestData:
                     {'role': 'system', 'content': 'Hello, {{name}}!'},
                     {'role': 'user', 'content': 'The day is, {{day}}!'},
                 ],
-                '_ldMeta': {'enabled': True, 'versionKey': 'abcd'},
+                '_ldMeta': {'enabled': True, 'variationKey': 'abcd'},
             },
             "green",
         )
@@ -44,7 +44,7 @@ def td() -> TestData:
             {
                 'model': {'name': 'fakeModel', 'parameters': {'extra-attribute': 'I can be anything I set my mind/type to'}},
                 'messages': [{'role': 'system', 'content': 'Hello, {{ldctx.name}}! Is your last name {{ldctx.last}}?'}],
-                '_ldMeta': {'enabled': True, 'versionKey': 'abcd'},
+                '_ldMeta': {'enabled': True, 'variationKey': 'abcd'},
             }
         )
         .variation_for_all(0)
@@ -56,7 +56,7 @@ def td() -> TestData:
             {
                 'model': {'name': 'fakeModel', 'parameters': {'extra-attribute': 'I can be anything I set my mind/type to'}},
                 'messages': [{'role': 'system', 'content': 'Hello, {{ldctx.user.name}}! Do you work for {{ldctx.org.shortname}}?'}],
-                '_ldMeta': {'enabled': True, 'versionKey': 'abcd'},
+                '_ldMeta': {'enabled': True, 'variationKey': 'abcd'},
             }
         )
         .variation_for_all(0)
@@ -68,7 +68,7 @@ def td() -> TestData:
             {
                 'model': {'name': 'fakeModel', 'parameters': {'temperature': 0.1}},
                 'messages': [{'role': 'system', 'content': 'Hello, {{name}}!'}],
-                '_ldMeta': {'enabled': False, 'versionKey': 'abcd'},
+                '_ldMeta': {'enabled': False, 'variationKey': 'abcd'},
             }
         )
         .variation_for_all(0)

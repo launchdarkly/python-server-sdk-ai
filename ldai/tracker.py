@@ -137,18 +137,18 @@ class LDAIConfigTracker:
     """
 
     def __init__(
-        self, ld_client: LDClient, version_key: str, config_key: str, context: Context
+        self, ld_client: LDClient, variation_key: str, config_key: str, context: Context
     ):
         """
         Initialize an AI configuration tracker.
 
         :param ld_client: LaunchDarkly client instance.
-        :param version_key: Version key for tracking.
+        :param variation_key: Variation key for tracking.
         :param config_key: Configuration key for tracking.
         :param context: Context for evaluation.
         """
         self.ld_client = ld_client
-        self.version_key = version_key
+        self.variation_key = variation_key
         self.config_key = config_key
         self.context = context
 
@@ -156,10 +156,10 @@ class LDAIConfigTracker:
         """
         Get tracking data for events.
 
-        :return: Dictionary containing version and config keys.
+        :return: Dictionary containing variation and config keys.
         """
         return {
-            'versionKey': self.version_key,
+            'variationKey': self.variation_key,
             'configKey': self.config_key,
         }
 
