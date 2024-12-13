@@ -1,24 +1,9 @@
 import time
 from dataclasses import dataclass
 from enum import Enum
-from typing import Dict, Optional, Union
+from typing import Dict, Optional
 
 from ldclient import Context, LDClient
-
-
-@dataclass
-class TokenMetrics:
-    """
-    Metrics for token usage in AI operations.
-
-    :param total: Total number of tokens used.
-    :param input: Number of input tokens.
-    :param output: Number of output tokens.
-    """
-
-    total: int
-    input: int
-    output: int  # type: ignore
 
 
 class FeedbackKind(Enum):
@@ -35,99 +20,14 @@ class TokenUsage:
     """
     Tracks token usage for AI operations.
 
-    :param total_tokens: Total number of tokens used.
-    :param prompt_tokens: Number of tokens in the prompt.
-    :param completion_tokens: Number of tokens in the completion.
+    :param total: Total number of tokens used.
+    :param input: Number of tokens in the prompt.
+    :param output: Number of tokens in the completion.
     """
 
-    total_tokens: int
-    prompt_tokens: int
-    completion_tokens: int
-
-    def to_metrics(self):
-        """
-        Convert token usage to metrics format.
-
-        :return: Dictionary containing token metrics.
-        """
-        return {
-            'total': self['total_tokens'],
-            'input': self['prompt_tokens'],
-            'output': self['completion_tokens'],
-        }
-
-
-@dataclass
-class LDOpenAIUsage:
-    """
-    LaunchDarkly-specific OpenAI usage tracking.
-
-    :param total_tokens: Total number of tokens used.
-    :param prompt_tokens: Number of tokens in the prompt.
-    :param completion_tokens: Number of tokens in the completion.
-    """
-
-    total_tokens: int
-    prompt_tokens: int
-    completion_tokens: int
-
-
-@dataclass
-class OpenAITokenUsage:
-    """
-    Tracks OpenAI-specific token usage.
-    """
-
-    def __init__(self, data: LDOpenAIUsage):
-        """
-        Initialize OpenAI token usage tracking.
-
-        :param data: OpenAI usage data.
-        """
-        self.total_tokens = data.total_tokens
-        self.prompt_tokens = data.prompt_tokens
-        self.completion_tokens = data.completion_tokens
-
-    def to_metrics(self) -> TokenMetrics:
-        """
-        Convert OpenAI token usage to metrics format.
-
-        :return: TokenMetrics object containing usage data.
-        """
-        return TokenMetrics(
-            total=self.total_tokens,
-            input=self.prompt_tokens,
-            output=self.completion_tokens,
-        )
-
-
-@dataclass
-class BedrockTokenUsage:
-    """
-    Tracks AWS Bedrock-specific token usage.
-    """
-
-    def __init__(self, data: dict):
-        """
-        Initialize Bedrock token usage tracking.
-
-        :param data: Dictionary containing Bedrock usage data.
-        """
-        self.totalTokens = data.get('totalTokens', 0)
-        self.inputTokens = data.get('inputTokens', 0)
-        self.outputTokens = data.get('outputTokens', 0)
-
-    def to_metrics(self) -> TokenMetrics:
-        """
-        Convert Bedrock token usage to metrics format.
-
-        :return: TokenMetrics object containing usage data.
-        """
-        return TokenMetrics(
-            total=self.totalTokens,
-            input=self.inputTokens,
-            output=self.outputTokens,
-        )
+    total: int
+    input: int
+    output: int
 
 
 class LDAIMetricSummary:
@@ -154,7 +54,7 @@ class LDAIMetricSummary:
         return self._feedback
 
     @property
-    def usage(self) -> Optional[Union[TokenUsage, BedrockTokenUsage]]:
+    def usage(self) -> Optional[TokenUsage]:
         return self._usage
 
 
@@ -255,8 +155,8 @@ class LDAIConfigTracker:
         :return: Result of the tracked function.
         """
         result = self.track_duration_of(func)
-        if result.usage:
-            self.track_tokens(OpenAITokenUsage(result.usage))
+        if hasattr(result, 'usage') and hasattr(result.usage, 'to_dict'):
+            self.track_tokens(_openai_to_token_usage(result.usage.to_dict()))
         return result
 
     def track_bedrock_converse_metrics(self, res: dict) -> dict:
@@ -275,37 +175,36 @@ class LDAIConfigTracker:
         if res.get('metrics', {}).get('latencyMs'):
             self.track_duration(res['metrics']['latencyMs'])
         if res.get('usage'):
-            self.track_tokens(BedrockTokenUsage(res['usage']))
+            self.track_tokens(_bedrock_to_token_usage(res['usage']))
         return res
 
-    def track_tokens(self, tokens: Union[TokenUsage, BedrockTokenUsage]) -> None:
+    def track_tokens(self, tokens: TokenUsage) -> None:
         """
         Track token usage metrics.
 
         :param tokens: Token usage data from either custom, OpenAI, or Bedrock sources.
         """
         self._summary._usage = tokens
-        token_metrics = tokens.to_metrics()
-        if token_metrics.total > 0:
+        if tokens.total > 0:
             self._ld_client.track(
                 '$ld:ai:tokens:total',
                 self._context,
                 self.__get_track_data(),
-                token_metrics.total,
+                tokens.total,
             )
-        if token_metrics.input > 0:
+        if tokens.input > 0:
             self._ld_client.track(
                 '$ld:ai:tokens:input',
                 self._context,
                 self.__get_track_data(),
-                token_metrics.input,
+                tokens.input,
             )
-        if token_metrics.output > 0:
+        if tokens.output > 0:
             self._ld_client.track(
                 '$ld:ai:tokens:output',
                 self._context,
                 self.__get_track_data(),
-                token_metrics.output,
+                tokens.output,
             )
 
     def get_summary(self) -> LDAIMetricSummary:
@@ -315,3 +214,31 @@ class LDAIConfigTracker:
         :return: Summary of AI metrics.
         """
         return self._summary
+
+
+def _bedrock_to_token_usage(data: dict) -> TokenUsage:
+    """
+    Convert a Bedrock usage dictionary to a TokenUsage object.
+
+    :param data: Dictionary containing Bedrock usage data.
+    :return: TokenUsage object containing usage data.
+    """
+    return TokenUsage(
+        total=data.get('totalTokens', 0),
+        input=data.get('inputTokens', 0),
+        output=data.get('outputTokens', 0),
+    )
+
+
+def _openai_to_token_usage(data: dict) -> TokenUsage:
+    """
+    Convert an OpenAI usage dictionary to a TokenUsage object.
+
+    :param data: Dictionary containing OpenAI usage data.
+    :return: TokenUsage object containing usage data.
+    """
+    return TokenUsage(
+        total=data.get('total_tokens', 0),
+        input=data.get('prompt_tokens', 0),
+        output=data.get('completion_tokens', 0),
+    )
