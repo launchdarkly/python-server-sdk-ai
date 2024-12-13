@@ -1,7 +1,7 @@
 import time
 from dataclasses import dataclass
 from enum import Enum
-from typing import Dict, Union
+from typing import Dict, Optional, Union
 
 from ldclient import Context, LDClient
 
@@ -21,7 +21,6 @@ class TokenMetrics:
     output: int  # type: ignore
 
 
-@dataclass
 class FeedbackKind(Enum):
     """
     Types of feedback that can be provided for AI operations.
@@ -131,6 +130,34 @@ class BedrockTokenUsage:
         )
 
 
+class LDAIMetricSummary:
+    """
+    Summary of metrics which have been tracked.
+    """
+
+    def __init__(self):
+        self._duration = None
+        self._success = None
+        self._feedback = None
+        self._usage = None
+
+    @property
+    def duration(self) -> Optional[int]:
+        return self._duration
+
+    @property
+    def success(self) -> Optional[bool]:
+        return self._success
+
+    @property
+    def feedback(self) -> Optional[Dict[str, FeedbackKind]]:
+        return self._feedback
+
+    @property
+    def usage(self) -> Optional[Union[TokenUsage, BedrockTokenUsage]]:
+        return self._usage
+
+
 class LDAIConfigTracker:
     """
     Tracks configuration and usage metrics for LaunchDarkly AI operations.
@@ -147,10 +174,11 @@ class LDAIConfigTracker:
         :param config_key: Configuration key for tracking.
         :param context: Context for evaluation.
         """
-        self.ld_client = ld_client
-        self.variation_key = variation_key
-        self.config_key = config_key
-        self.context = context
+        self._ld_client = ld_client
+        self._variation_key = variation_key
+        self._config_key = config_key
+        self._context = context
+        self._summary = LDAIMetricSummary()
 
     def __get_track_data(self):
         """
@@ -159,8 +187,8 @@ class LDAIConfigTracker:
         :return: Dictionary containing variation and config keys.
         """
         return {
-            'variationKey': self.variation_key,
-            'configKey': self.config_key,
+            'variationKey': self._variation_key,
+            'configKey': self._config_key,
         }
 
     def track_duration(self, duration: int) -> None:
@@ -169,8 +197,9 @@ class LDAIConfigTracker:
 
         :param duration: Duration in milliseconds.
         """
-        self.ld_client.track(
-            '$ld:ai:duration:total', self.context, self.__get_track_data(), duration
+        self._summary._duration = duration
+        self._ld_client.track(
+            '$ld:ai:duration:total', self._context, self.__get_track_data(), duration
         )
 
     def track_duration_of(self, func):
@@ -193,17 +222,18 @@ class LDAIConfigTracker:
 
         :param feedback: Dictionary containing feedback kind.
         """
+        self._summary._feedback = feedback
         if feedback['kind'] == FeedbackKind.Positive:
-            self.ld_client.track(
+            self._ld_client.track(
                 '$ld:ai:feedback:user:positive',
-                self.context,
+                self._context,
                 self.__get_track_data(),
                 1,
             )
         elif feedback['kind'] == FeedbackKind.Negative:
-            self.ld_client.track(
+            self._ld_client.track(
                 '$ld:ai:feedback:user:negative',
-                self.context,
+                self._context,
                 self.__get_track_data(),
                 1,
             )
@@ -212,8 +242,9 @@ class LDAIConfigTracker:
         """
         Track a successful AI generation.
         """
-        self.ld_client.track(
-            '$ld:ai:generation', self.context, self.__get_track_data(), 1
+        self._summary._success = True
+        self._ld_client.track(
+            '$ld:ai:generation', self._context, self.__get_track_data(), 1
         )
 
     def track_openai_metrics(self, func):
@@ -253,25 +284,34 @@ class LDAIConfigTracker:
 
         :param tokens: Token usage data from either custom, OpenAI, or Bedrock sources.
         """
+        self._summary._usage = tokens
         token_metrics = tokens.to_metrics()
         if token_metrics.total > 0:
-            self.ld_client.track(
+            self._ld_client.track(
                 '$ld:ai:tokens:total',
-                self.context,
+                self._context,
                 self.__get_track_data(),
                 token_metrics.total,
             )
         if token_metrics.input > 0:
-            self.ld_client.track(
+            self._ld_client.track(
                 '$ld:ai:tokens:input',
-                self.context,
+                self._context,
                 self.__get_track_data(),
                 token_metrics.input,
             )
         if token_metrics.output > 0:
-            self.ld_client.track(
+            self._ld_client.track(
                 '$ld:ai:tokens:output',
-                self.context,
+                self._context,
                 self.__get_track_data(),
                 token_metrics.output,
             )
+
+    def get_summary(self) -> LDAIMetricSummary:
+        """
+        Get the current summary of AI metrics.
+
+        :return: Summary of AI metrics.
+        """
+        return self._summary

@@ -129,7 +129,7 @@ class LDAIClient:
     """The LaunchDarkly AI SDK client object."""
 
     def __init__(self, client: LDClient):
-        self.client = client
+        self._client = client
 
     def config(
         self,
@@ -147,7 +147,7 @@ class LDAIClient:
         :param variables: Additional variables for the model configuration.
         :return: The value of the model configuration along with a tracker used for gathering metrics.
         """
-        variation = self.client.variation(key, context, default_value.to_dict())
+        variation = self._client.variation(key, context, default_value.to_dict())
 
         all_variables = {}
         if variables:
@@ -184,7 +184,7 @@ class LDAIClient:
             )
 
         tracker = LDAIConfigTracker(
-            self.client,
+            self._client,
             variation.get('_ldMeta', {}).get('variationKey', ''),
             key,
             context,
