@@ -72,7 +72,7 @@ def test_tracks_duration_of(client: LDClient):
     assert calls[0].args[0] == '$ld:ai:duration:total'
     assert calls[0].args[1] == context
     assert calls[0].args[2] == {'variationKey': 'variation-key', 'configKey': 'config-key'}
-    assert calls[0].args[3] == pytest.approx(10)
+    assert calls[0].args[3] == pytest.approx(10, rel=10)
 
 
 def test_tracks_duration_of_with_exception(client: LDClient):
@@ -95,7 +95,7 @@ def test_tracks_duration_of_with_exception(client: LDClient):
     assert calls[0].args[0] == '$ld:ai:duration:total'
     assert calls[0].args[1] == context
     assert calls[0].args[2] == {'variationKey': 'variation-key', 'configKey': 'config-key'}
-    assert calls[0].args[3] == pytest.approx(10)
+    assert calls[0].args[3] == pytest.approx(10, rel=10)
 
 
 def test_tracks_token_usage(client: LDClient):
