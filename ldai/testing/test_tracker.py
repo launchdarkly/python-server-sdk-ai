@@ -97,6 +97,7 @@ def test_tracks_bedrock_metrics(client: LDClient):
 
     calls = [
         call('$ld:ai:generation', context, {'variationKey': 'variation-key', 'configKey': 'config-key'}, 1),
+        call('$ld:ai:generation:success', context, {'variationKey': 'variation-key', 'configKey': 'config-key'}, 1),
         call('$ld:ai:duration:total', context, {'variationKey': 'variation-key', 'configKey': 'config-key'}, 50),
         call('$ld:ai:tokens:total', context, {'variationKey': 'variation-key', 'configKey': 'config-key'}, 330),
         call('$ld:ai:tokens:input', context, {'variationKey': 'variation-key', 'configKey': 'config-key'}, 220),
@@ -106,6 +107,39 @@ def test_tracks_bedrock_metrics(client: LDClient):
     client.track.assert_has_calls(calls)  # type: ignore
 
     assert tracker.get_summary().success is True
+    assert tracker.get_summary().duration == 50
+    assert tracker.get_summary().usage == TokenUsage(330, 220, 110)
+
+
+def test_tracks_bedrock_metrics_with_error(client: LDClient):
+    context = Context.create('user-key')
+    tracker = LDAIConfigTracker(client, "variation-key", "config-key", context)
+
+    bedrock_result = {
+        '$metadata': {'httpStatusCode': 500},
+        'usage': {
+            'totalTokens': 330,
+            'inputTokens': 220,
+            'outputTokens': 110,
+        },
+        'metrics': {
+            'latencyMs': 50,
+        }
+    }
+    tracker.track_bedrock_converse_metrics(bedrock_result)
+
+    calls = [
+        call('$ld:ai:generation', context, {'variationKey': 'variation-key', 'configKey': 'config-key'}, 1),
+        call('$ld:ai:generation:error', context, {'variationKey': 'variation-key', 'configKey': 'config-key'}, 1),
+        call('$ld:ai:duration:total', context, {'variationKey': 'variation-key', 'configKey': 'config-key'}, 50),
+        call('$ld:ai:tokens:total', context, {'variationKey': 'variation-key', 'configKey': 'config-key'}, 330),
+        call('$ld:ai:tokens:input', context, {'variationKey': 'variation-key', 'configKey': 'config-key'}, 220),
+        call('$ld:ai:tokens:output', context, {'variationKey': 'variation-key', 'configKey': 'config-key'}, 110),
+    ]
+
+    client.track.assert_has_calls(calls)  # type: ignore
+
+    assert tracker.get_summary().success is False
     assert tracker.get_summary().duration == 50
     assert tracker.get_summary().usage == TokenUsage(330, 220, 110)
 
@@ -166,11 +200,44 @@ def test_tracks_success(client: LDClient):
     tracker = LDAIConfigTracker(client, "variation-key", "config-key", context)
     tracker.track_success()
 
-    client.track.assert_called_with(  # type: ignore
-        '$ld:ai:generation',
-        context,
-        {'variationKey': 'variation-key', 'configKey': 'config-key'},
-        1
-    )
+    calls = [
+        call('$ld:ai:generation', context, {'variationKey': 'variation-key', 'configKey': 'config-key'}, 1),
+        call('$ld:ai:generation:success', context, {'variationKey': 'variation-key', 'configKey': 'config-key'}, 1),
+    ]
+
+    client.track.assert_has_calls(calls)  # type: ignore
 
     assert tracker.get_summary().success is True
+
+
+def test_tracks_error(client: LDClient):
+    context = Context.create('user-key')
+    tracker = LDAIConfigTracker(client, "variation-key", "config-key", context)
+    tracker.track_error()
+
+    calls = [
+        call('$ld:ai:generation', context, {'variationKey': 'variation-key', 'configKey': 'config-key'}, 1),
+        call('$ld:ai:generation:error', context, {'variationKey': 'variation-key', 'configKey': 'config-key'}, 1),
+    ]
+
+    client.track.assert_has_calls(calls)  # type: ignore
+
+    assert tracker.get_summary().success is False
+
+
+def test_error_overwrites_success(client: LDClient):
+    context = Context.create('user-key')
+    tracker = LDAIConfigTracker(client, "variation-key", "config-key", context)
+    tracker.track_success()
+    tracker.track_error()
+
+    calls = [
+        call('$ld:ai:generation', context, {'variationKey': 'variation-key', 'configKey': 'config-key'}, 1),
+        call('$ld:ai:generation:success', context, {'variationKey': 'variation-key', 'configKey': 'config-key'}, 1),
+        call('$ld:ai:generation', context, {'variationKey': 'variation-key', 'configKey': 'config-key'}, 1),
+        call('$ld:ai:generation:error', context, {'variationKey': 'variation-key', 'configKey': 'config-key'}, 1),
+    ]
+
+    client.track.assert_has_calls(calls)  # type: ignore
+
+    assert tracker.get_summary().success is False

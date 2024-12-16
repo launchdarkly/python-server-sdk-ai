@@ -146,6 +146,21 @@ class LDAIConfigTracker:
         self._ld_client.track(
             '$ld:ai:generation', self._context, self.__get_track_data(), 1
         )
+        self._ld_client.track(
+            '$ld:ai:generation:success', self._context, self.__get_track_data(), 1
+        )
+
+    def track_error(self) -> None:
+        """
+        Track an unsuccessful AI generation attempt.
+        """
+        self._summary._success = False
+        self._ld_client.track(
+            '$ld:ai:generation', self._context, self.__get_track_data(), 1
+        )
+        self._ld_client.track(
+            '$ld:ai:generation:error', self._context, self.__get_track_data(), 1
+        )
 
     def track_openai_metrics(self, func):
         """
@@ -170,8 +185,7 @@ class LDAIConfigTracker:
         if status_code == 200:
             self.track_success()
         elif status_code >= 400:
-            # Potentially add error tracking in the future.
-            pass
+            self.track_error()
         if res.get('metrics', {}).get('latencyMs'):
             self.track_duration(res['metrics']['latencyMs'])
         if res.get('usage'):
