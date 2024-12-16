@@ -106,14 +106,20 @@ class LDAIConfigTracker:
         """
         Automatically track the duration of an AI operation.
 
+        An exception occurring during the execution of the function will still
+        track the duration. The exception will be re-thrown.
+
         :param func: Function to track.
         :return: Result of the tracked function.
         """
         start_time = time.time()
-        result = func()
-        end_time = time.time()
-        duration = int((end_time - start_time) * 1000)  # duration in milliseconds
-        self.track_duration(duration)
+        try:
+            result = func()
+        finally:
+            end_time = time.time()
+            duration = int((end_time - start_time) * 1000)  # duration in milliseconds
+            self.track_duration(duration)
+
         return result
 
     def track_feedback(self, feedback: Dict[str, FeedbackKind]) -> None:
@@ -169,9 +175,15 @@ class LDAIConfigTracker:
         :param func: Function to track.
         :return: Result of the tracked function.
         """
-        result = self.track_duration_of(func)
-        if hasattr(result, 'usage') and hasattr(result.usage, 'to_dict'):
-            self.track_tokens(_openai_to_token_usage(result.usage.to_dict()))
+        try:
+            result = self.track_duration_of(func)
+            self.track_success()
+            if hasattr(result, 'usage') and hasattr(result.usage, 'to_dict'):
+                self.track_tokens(_openai_to_token_usage(result.usage.to_dict()))
+        except Exception:
+            self.track_error()
+            raise
+
         return result
 
     def track_bedrock_converse_metrics(self, res: dict) -> dict:
