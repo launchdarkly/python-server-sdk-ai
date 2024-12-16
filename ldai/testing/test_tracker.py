@@ -1,7 +1,7 @@
+from time import sleep
 from unittest.mock import MagicMock, call
 
 import pytest
-from time import sleep
 from ldclient import Config, Context, LDClient
 from ldclient.integrations.test_data import TestData
 
