@@ -172,6 +172,16 @@ class LDAIConfigTracker:
         """
         Track OpenAI-specific operations.
 
+        This function will track the duration of the operation, the token
+        usage, and the success or error status.
+
+        If the provided function throws, then this method will also throw.
+
+        In the case the provided function throws, this function will record the
+        duration and an error.
+
+        A failed operation will not have any token usage data.
+
         :param func: Function to track.
         :return: Result of the tracked function.
         """
@@ -189,6 +199,10 @@ class LDAIConfigTracker:
     def track_bedrock_converse_metrics(self, res: dict) -> dict:
         """
         Track AWS Bedrock conversation operations.
+
+
+        This function will track the duration of the operation, the token
+        usage, and the success or error status.
 
         :param res: Response dictionary from Bedrock.
         :return: The original response dictionary.
