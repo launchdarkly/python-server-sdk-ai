@@ -2,6 +2,29 @@
 
 All notable changes to the LaunchDarkly Python AI package will be documented in this file. This project adheres to [Semantic Versioning](http://semver.org).
 
+## [0.6.0](https://github.com/launchdarkly/python-server-sdk-ai/compare/0.5.0...0.6.0) (2024-12-17)
+
+
+### ⚠ BREAKING CHANGES
+
+* Unify tracking token to use only `TokenUsage` ([#32](https://github.com/launchdarkly/python-server-sdk-ai/issues/32))
+* Change version_key_to variation_key ([#29](https://github.com/launchdarkly/python-server-sdk-ai/issues/29))
+
+### Features
+
+* Add `LDAIConfigTracker.get_summary` method ([#31](https://github.com/launchdarkly/python-server-sdk-ai/issues/31)) ([e425b1f](https://github.com/launchdarkly/python-server-sdk-ai/commit/e425b1f9e7bf27ab195b877e62af48012eb601c1))
+* Add `track_error` to mirror `track_success` ([#33](https://github.com/launchdarkly/python-server-sdk-ai/issues/33)) ([404f704](https://github.com/launchdarkly/python-server-sdk-ai/commit/404f704dd38f4fc15c718e3dc1027efbda5f36b6))
+
+
+### Bug Fixes
+
+* Unify tracking token to use only `TokenUsage` ([#32](https://github.com/launchdarkly/python-server-sdk-ai/issues/32)) ([80e1845](https://github.com/launchdarkly/python-server-sdk-ai/commit/80e18452a936356937660eabe7a186beae4d17bd))
+
+
+### Code Refactoring
+
+* Change version_key_to variation_key ([#29](https://github.com/launchdarkly/python-server-sdk-ai/issues/29)) ([fcc720a](https://github.com/launchdarkly/python-server-sdk-ai/commit/fcc720a101c97ccb92fd95509b3e7819d557dde5))
+
 ## [0.5.0](https://github.com/launchdarkly/python-server-sdk-ai/compare/0.4.0...0.5.0) (2024-12-09)
 
 
