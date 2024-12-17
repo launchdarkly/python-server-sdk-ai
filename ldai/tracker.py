@@ -106,14 +106,20 @@ class LDAIConfigTracker:
         """
         Automatically track the duration of an AI operation.
 
+        An exception occurring during the execution of the function will still
+        track the duration. The exception will be re-thrown.
+
         :param func: Function to track.
         :return: Result of the tracked function.
         """
         start_time = time.time()
-        result = func()
-        end_time = time.time()
-        duration = int((end_time - start_time) * 1000)  # duration in milliseconds
-        self.track_duration(duration)
+        try:
+            result = func()
+        finally:
+            end_time = time.time()
+            duration = int((end_time - start_time) * 1000)  # duration in milliseconds
+            self.track_duration(duration)
+
         return result
 
     def track_feedback(self, feedback: Dict[str, FeedbackKind]) -> None:
@@ -146,22 +152,57 @@ class LDAIConfigTracker:
         self._ld_client.track(
             '$ld:ai:generation', self._context, self.__get_track_data(), 1
         )
+        self._ld_client.track(
+            '$ld:ai:generation:success', self._context, self.__get_track_data(), 1
+        )
+
+    def track_error(self) -> None:
+        """
+        Track an unsuccessful AI generation attempt.
+        """
+        self._summary._success = False
+        self._ld_client.track(
+            '$ld:ai:generation', self._context, self.__get_track_data(), 1
+        )
+        self._ld_client.track(
+            '$ld:ai:generation:error', self._context, self.__get_track_data(), 1
+        )
 
     def track_openai_metrics(self, func):
         """
         Track OpenAI-specific operations.
 
+        This function will track the duration of the operation, the token
+        usage, and the success or error status.
+
+        If the provided function throws, then this method will also throw.
+
+        In the case the provided function throws, this function will record the
+        duration and an error.
+
+        A failed operation will not have any token usage data.
+
         :param func: Function to track.
         :return: Result of the tracked function.
         """
-        result = self.track_duration_of(func)
-        if hasattr(result, 'usage') and hasattr(result.usage, 'to_dict'):
-            self.track_tokens(_openai_to_token_usage(result.usage.to_dict()))
+        try:
+            result = self.track_duration_of(func)
+            self.track_success()
+            if hasattr(result, 'usage') and hasattr(result.usage, 'to_dict'):
+                self.track_tokens(_openai_to_token_usage(result.usage.to_dict()))
+        except Exception:
+            self.track_error()
+            raise
+
         return result
 
     def track_bedrock_converse_metrics(self, res: dict) -> dict:
         """
         Track AWS Bedrock conversation operations.
+
+
+        This function will track the duration of the operation, the token
+        usage, and the success or error status.
 
         :param res: Response dictionary from Bedrock.
         :return: The original response dictionary.
@@ -170,8 +211,7 @@ class LDAIConfigTracker:
         if status_code == 200:
             self.track_success()
         elif status_code >= 400:
-            # Potentially add error tracking in the future.
-            pass
+            self.track_error()
         if res.get('metrics', {}).get('latencyMs'):
             self.track_duration(res['metrics']['latencyMs'])
         if res.get('usage'):
