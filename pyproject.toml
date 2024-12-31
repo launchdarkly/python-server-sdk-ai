@@ -36,7 +36,7 @@ chevron = "=0.14.0"
 pytest = ">=2.8"
 pytest-cov = ">=2.4.0"
 pytest-mypy = "==0.10.3"
-mypy = "==1.14.0"
+mypy = "==1.14.1"
 pycodestyle = "^2.12.1"
 isort = "^5.13.2"
 
