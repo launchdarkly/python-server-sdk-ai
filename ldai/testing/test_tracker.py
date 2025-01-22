@@ -75,6 +75,21 @@ def test_tracks_duration_of(client: LDClient):
     assert calls[0].args[3] == pytest.approx(10, rel=10)
 
 
+def test_tracks_time_to_first_token(client: LDClient):
+    context = Context.create('user-key')
+    tracker = LDAIConfigTracker(client, "variation-key", "config-key", context)
+    tracker.track_time_to_first_token(100)
+
+    client.track.assert_called_with(  # type: ignore
+        '$ld:ai:tokens:ttf',
+        context,
+        {'variationKey': 'variation-key', 'configKey': 'config-key'},
+        100
+    )
+
+    assert tracker.get_summary().time_to_first_token == 100
+
+
 def test_tracks_duration_of_with_exception(client: LDClient):
     context = Context.create('user-key')
     tracker = LDAIConfigTracker(client, "variation-key", "config-key", context)
