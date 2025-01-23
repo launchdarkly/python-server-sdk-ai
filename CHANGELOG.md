@@ -2,6 +2,13 @@
 
 All notable changes to the LaunchDarkly Python AI package will be documented in this file. This project adheres to [Semantic Versioning](http://semver.org).
 
+## [0.7.0](https://github.com/launchdarkly/python-server-sdk-ai/compare/0.6.0...0.7.0) (2025-01-23)
+
+
+### Features
+
+* Add ability to track time to first token for LDAIConfigTracker ([#37](https://github.com/launchdarkly/python-server-sdk-ai/issues/37)) ([b4a5757](https://github.com/launchdarkly/python-server-sdk-ai/commit/b4a5757ab7a1a8149891977cdfc25bdd4f7bba09))
+
 ## [0.6.0](https://github.com/launchdarkly/python-server-sdk-ai/compare/0.5.0...0.6.0) (2024-12-17)
 
 
