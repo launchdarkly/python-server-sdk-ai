@@ -40,6 +40,7 @@ class LDAIMetricSummary:
         self._success = None
         self._feedback = None
         self._usage = None
+        self._time_to_first_token = None
 
     @property
     def duration(self) -> Optional[int]:
@@ -56,6 +57,10 @@ class LDAIMetricSummary:
     @property
     def usage(self) -> Optional[TokenUsage]:
         return self._usage
+
+    @property
+    def time_to_first_token(self) -> Optional[int]:
+        return self._time_to_first_token
 
 
 class LDAIConfigTracker:
@@ -100,6 +105,17 @@ class LDAIConfigTracker:
         self._summary._duration = duration
         self._ld_client.track(
             '$ld:ai:duration:total', self._context, self.__get_track_data(), duration
+        )
+
+    def track_time_to_first_token(self, time_to_first_token: int) -> None:
+        """
+        Manually track the time to first token of an AI operation.
+
+        :param time_to_first_token: Time to first token in milliseconds.
+        """
+        self._summary._time_to_first_token = time_to_first_token
+        self._ld_client.track(
+            '$ld:ai:tokens:ttf', self._context, self.__get_track_data(), time_to_first_token
         )
 
     def track_duration_of(self, func):
