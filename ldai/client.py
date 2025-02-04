@@ -186,6 +186,7 @@ class LDAIClient:
         tracker = LDAIConfigTracker(
             self._client,
             variation.get('_ldMeta', {}).get('variationKey', ''),
+            variation.get('_ldMeta', {}).get('version', 1),
             key,
             context,
         )

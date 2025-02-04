@@ -69,7 +69,7 @@ class LDAIConfigTracker:
     """
 
     def __init__(
-        self, ld_client: LDClient, variation_key: str, config_key: str, context: Context
+        self, ld_client: LDClient, variation_key: str, config_key: str, variation_version: int, context: Context
     ):
         """
         Initialize an AI configuration tracker.
@@ -82,6 +82,7 @@ class LDAIConfigTracker:
         self._ld_client = ld_client
         self._variation_key = variation_key
         self._config_key = config_key
+        self._variation_version = variation_version
         self._context = context
         self._summary = LDAIMetricSummary()
 
@@ -94,6 +95,7 @@ class LDAIConfigTracker:
         return {
             'variationKey': self._variation_key,
             'configKey': self._config_key,
+            'version': self._variation_version,
         }
 
     def track_duration(self, duration: int) -> None:
