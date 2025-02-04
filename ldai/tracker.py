@@ -69,7 +69,7 @@ class LDAIConfigTracker:
     """
 
     def __init__(
-        self, ld_client: LDClient, variation_key: str, config_key: str, variation_version: int, context: Context
+        self, ld_client: LDClient, variation_key: str, config_key: str, version: int, context: Context
     ):
         """
         Initialize an AI configuration tracker.
@@ -77,12 +77,13 @@ class LDAIConfigTracker:
         :param ld_client: LaunchDarkly client instance.
         :param variation_key: Variation key for tracking.
         :param config_key: Configuration key for tracking.
+        :param version: Version of the variation.
         :param context: Context for evaluation.
         """
         self._ld_client = ld_client
         self._variation_key = variation_key
         self._config_key = config_key
-        self._variation_version = variation_version
+        self._version = version
         self._context = context
         self._summary = LDAIMetricSummary()
 
@@ -95,7 +96,7 @@ class LDAIConfigTracker:
         return {
             'variationKey': self._variation_key,
             'configKey': self._config_key,
-            'version': self._variation_version,
+            'version': self._version,
         }
 
     def track_duration(self, duration: int) -> None:
