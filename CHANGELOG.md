@@ -2,6 +2,13 @@
 
 All notable changes to the LaunchDarkly Python AI package will be documented in this file. This project adheres to [Semantic Versioning](http://semver.org).
 
+## [0.8.0](https://github.com/launchdarkly/python-server-sdk-ai/compare/0.7.0...0.8.0) (2025-02-07)
+
+
+### Features
+
+* Add variation version to metric data ([#39](https://github.com/launchdarkly/python-server-sdk-ai/issues/39)) ([1b07d08](https://github.com/launchdarkly/python-server-sdk-ai/commit/1b07d08743c409689c5a084df8c39fce2400d2dd))
+
 ## [0.7.0](https://github.com/launchdarkly/python-server-sdk-ai/compare/0.6.0...0.7.0) (2025-01-23)
 
 
