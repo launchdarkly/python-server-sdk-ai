@@ -187,6 +187,7 @@ class LDAIClient:
             self._client,
             variation.get('_ldMeta', {}).get('variationKey', ''),
             key,
+            int(variation.get('_ldMeta', {}).get('version', 1)),
             context,
         )
 
