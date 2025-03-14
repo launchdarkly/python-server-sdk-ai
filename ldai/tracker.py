@@ -72,7 +72,7 @@ class LDAIConfigTracker:
         self, ld_client: LDClient, variation_key: str, config_key: str, version: int, context: Context
     ):
         """
-        Initialize an AI configuration tracker.
+        Initialize an AI Config tracker.
 
         :param ld_client: LaunchDarkly client instance.
         :param variation_key: Variation key for tracking.
