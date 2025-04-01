@@ -35,7 +35,7 @@ chevron = "=0.14.0"
 [tool.poetry.group.dev.dependencies]
 pytest = ">=2.8"
 pytest-cov = ">=2.4.0"
-pytest-mypy = "==0.10.3"
+pytest-mypy = "==1.0.0"
 mypy = "==1.14.1"
 pycodestyle = "^2.12.1"
 isort = "^5.13.2"
