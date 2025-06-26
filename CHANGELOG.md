@@ -2,6 +2,13 @@
 
 All notable changes to the LaunchDarkly Python AI package will be documented in this file. This project adheres to [Semantic Versioning](http://semver.org).
 
+## [0.9.1](https://github.com/launchdarkly/python-server-sdk-ai/compare/0.9.0...0.9.1) (2025-06-26)
+
+
+### Bug Fixes
+
+* Fix Bedrock response parsing ([#50](https://github.com/launchdarkly/python-server-sdk-ai/issues/50)) ([df90bc2](https://github.com/launchdarkly/python-server-sdk-ai/commit/df90bc24c98b5a57bf944225774989b689b65d93))
+
 ## [0.9.0](https://github.com/launchdarkly/python-server-sdk-ai/compare/0.8.1...0.9.0) (2025-06-26)
 
 
