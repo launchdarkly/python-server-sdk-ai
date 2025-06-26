@@ -69,7 +69,12 @@ class LDAIConfigTracker:
     """
 
     def __init__(
-        self, ld_client: LDClient, variation_key: str, config_key: str, version: int, context: Context
+        self,
+        ld_client: LDClient,
+        variation_key: str,
+        config_key: str,
+        version: int,
+        context: Context,
     ):
         """
         Initialize an AI Config tracker.
@@ -94,9 +99,9 @@ class LDAIConfigTracker:
         :return: Dictionary containing variation and config keys.
         """
         return {
-            'variationKey': self._variation_key,
-            'configKey': self._config_key,
-            'version': self._version,
+            "variationKey": self._variation_key,
+            "configKey": self._config_key,
+            "version": self._version,
         }
 
     def track_duration(self, duration: int) -> None:
@@ -107,7 +112,7 @@ class LDAIConfigTracker:
         """
         self._summary._duration = duration
         self._ld_client.track(
-            '$ld:ai:duration:total', self._context, self.__get_track_data(), duration
+            "$ld:ai:duration:total", self._context, self.__get_track_data(), duration
         )
 
     def track_time_to_first_token(self, time_to_first_token: int) -> None:
@@ -118,7 +123,10 @@ class LDAIConfigTracker:
         """
         self._summary._time_to_first_token = time_to_first_token
         self._ld_client.track(
-            '$ld:ai:tokens:ttf', self._context, self.__get_track_data(), time_to_first_token
+            "$ld:ai:tokens:ttf",
+            self._context,
+            self.__get_track_data(),
+            time_to_first_token,
         )
 
     def track_duration_of(self, func):
@@ -148,16 +156,16 @@ class LDAIConfigTracker:
         :param feedback: Dictionary containing feedback kind.
         """
         self._summary._feedback = feedback
-        if feedback['kind'] == FeedbackKind.Positive:
+        if feedback["kind"] == FeedbackKind.Positive:
             self._ld_client.track(
-                '$ld:ai:feedback:user:positive',
+                "$ld:ai:feedback:user:positive",
                 self._context,
                 self.__get_track_data(),
                 1,
             )
-        elif feedback['kind'] == FeedbackKind.Negative:
+        elif feedback["kind"] == FeedbackKind.Negative:
             self._ld_client.track(
-                '$ld:ai:feedback:user:negative',
+                "$ld:ai:feedback:user:negative",
                 self._context,
                 self.__get_track_data(),
                 1,
@@ -169,10 +177,10 @@ class LDAIConfigTracker:
         """
         self._summary._success = True
         self._ld_client.track(
-            '$ld:ai:generation', self._context, self.__get_track_data(), 1
+            "$ld:ai:generation", self._context, self.__get_track_data(), 1
         )
         self._ld_client.track(
-            '$ld:ai:generation:success', self._context, self.__get_track_data(), 1
+            "$ld:ai:generation:success", self._context, self.__get_track_data(), 1
         )
 
     def track_error(self) -> None:
@@ -181,10 +189,10 @@ class LDAIConfigTracker:
         """
         self._summary._success = False
         self._ld_client.track(
-            '$ld:ai:generation', self._context, self.__get_track_data(), 1
+            "$ld:ai:generation", self._context, self.__get_track_data(), 1
         )
         self._ld_client.track(
-            '$ld:ai:generation:error', self._context, self.__get_track_data(), 1
+            "$ld:ai:generation:error", self._context, self.__get_track_data(), 1
         )
 
     def track_openai_metrics(self, func):
@@ -207,7 +215,7 @@ class LDAIConfigTracker:
         try:
             result = self.track_duration_of(func)
             self.track_success()
-            if hasattr(result, 'usage') and hasattr(result.usage, 'to_dict'):
+            if hasattr(result, "usage") and hasattr(result.usage, "to_dict"):
                 self.track_tokens(_openai_to_token_usage(result.usage.to_dict()))
         except Exception:
             self.track_error()
@@ -226,15 +234,15 @@ class LDAIConfigTracker:
         :param res: Response dictionary from Bedrock.
         :return: The original response dictionary.
         """
-        status_code = res.get('$metadata', {}).get('httpStatusCode', 0)
+        status_code = res.get("ResponseMetadata", {}).get("HTTPStatusCode", 0)
         if status_code == 200:
             self.track_success()
         elif status_code >= 400:
             self.track_error()
-        if res.get('metrics', {}).get('latencyMs'):
-            self.track_duration(res['metrics']['latencyMs'])
-        if res.get('usage'):
-            self.track_tokens(_bedrock_to_token_usage(res['usage']))
+        if res.get("metrics", {}).get("latencyMs"):
+            self.track_duration(res["metrics"]["latencyMs"])
+        if res.get("usage"):
+            self.track_tokens(_bedrock_to_token_usage(res["usage"]))
         return res
 
     def track_tokens(self, tokens: TokenUsage) -> None:
@@ -246,21 +254,21 @@ class LDAIConfigTracker:
         self._summary._usage = tokens
         if tokens.total > 0:
             self._ld_client.track(
-                '$ld:ai:tokens:total',
+                "$ld:ai:tokens:total",
                 self._context,
                 self.__get_track_data(),
                 tokens.total,
             )
         if tokens.input > 0:
             self._ld_client.track(
-                '$ld:ai:tokens:input',
+                "$ld:ai:tokens:input",
                 self._context,
                 self.__get_track_data(),
                 tokens.input,
             )
         if tokens.output > 0:
             self._ld_client.track(
-                '$ld:ai:tokens:output',
+                "$ld:ai:tokens:output",
                 self._context,
                 self.__get_track_data(),
                 tokens.output,
@@ -283,9 +291,9 @@ def _bedrock_to_token_usage(data: dict) -> TokenUsage:
     :return: TokenUsage object containing usage data.
     """
     return TokenUsage(
-        total=data.get('totalTokens', 0),
-        input=data.get('inputTokens', 0),
-        output=data.get('outputTokens', 0),
+        total=data.get("totalTokens", 0),
+        input=data.get("inputTokens", 0),
+        output=data.get("outputTokens", 0),
     )
 
 
@@ -297,7 +305,7 @@ def _openai_to_token_usage(data: dict) -> TokenUsage:
     :return: TokenUsage object containing usage data.
     """
     return TokenUsage(
-        total=data.get('total_tokens', 0),
-        input=data.get('prompt_tokens', 0),
-        output=data.get('completion_tokens', 0),
+        total=data.get("total_tokens", 0),
+        input=data.get("prompt_tokens", 0),
+        output=data.get("completion_tokens", 0),
     )
