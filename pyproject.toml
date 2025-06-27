@@ -38,7 +38,7 @@ pytest-cov = ">=2.4.0"
 pytest-mypy = "==1.0.1"
 mypy = "==1.14.1"
 pycodestyle = "^2.12.1"
-isort = "^5.13.2"
+isort = ">=5.13.2,<7.0.0"
 
 
 [tool.poetry.group.docs]
