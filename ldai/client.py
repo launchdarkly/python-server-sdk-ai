@@ -235,8 +235,8 @@ class LDAIClient:
         with each agent having its instructions dynamically interpolated with the provided
         variables and context data.
 
-        Example:
-            ```python
+        Example::
+
             agents = client.agents(
                 ['customer-support', 'sales-assistant'],
                 context,
@@ -252,7 +252,6 @@ class LDAIClient:
             if support_agent.enabled:
                 print(support_agent.instructions)  # Instructions with interpolated variables
                 # Use support_agent.tracker for metrics tracking
-            ```
 
         :param keys: List of agent configuration keys to retrieve.
         :param context: The context to evaluate the agent configurations in.
