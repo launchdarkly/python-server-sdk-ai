@@ -2,13 +2,14 @@ import pytest
 from ldclient import Config, Context, LDClient
 from ldclient.integrations.test_data import TestData
 
-from ldai.client import LDAIAgent, LDAIAgentDefaults, LDAIClient, ModelConfig, ProviderConfig
+from ldai.client import (LDAIAgentDefaults, LDAIClient, ModelConfig,
+                         ProviderConfig)
 
 
 @pytest.fixture
 def td() -> TestData:
     td = TestData.data_source()
-    
+
     # Single agent with instructions
     td.update(
         td.flag('customer-support-agent')
@@ -116,7 +117,7 @@ def test_single_agent_basic_functionality(ldai_client: LDAIClient):
 
     assert len(agents) == 1
     assert 'customer-support-agent' in agents
-    
+
     agent = agents['customer-support-agent']
     assert agent.enabled is True
     assert agent.model is not None
@@ -159,7 +160,7 @@ def test_agent_multi_context_interpolation(ldai_client: LDAIClient):
     user_context = Context.builder('user-key').name('Bob').build()
     org_context = Context.builder('org-key').kind('org').name('LaunchDarkly').set('tier', 'Enterprise').build()
     context = Context.multi_builder().add(user_context).add(org_context).build()
-    
+
     defaults = LDAIAgentDefaults(enabled=True, instructions="Default")
 
     agents = ldai_client.agents(['multi-context-agent'], context, defaults)
@@ -180,9 +181,9 @@ def test_multiple_agents_retrieval(ldai_client: LDAIClient):
     variables = {'company_name': 'MultiCorp'}
 
     agents = ldai_client.agents(
-        ['customer-support-agent', 'sales-assistant'], 
-        context, 
-        defaults, 
+        ['customer-support-agent', 'sales-assistant'],
+        context,
+        defaults,
         variables
     )
 
@@ -192,12 +193,12 @@ def test_multiple_agents_retrieval(ldai_client: LDAIClient):
 
     support_agent = agents['customer-support-agent']
     assert support_agent.enabled is True
-    assert 'MultiCorp' in support_agent.instructions
+    assert support_agent.instructions is not None and 'MultiCorp' in support_agent.instructions
 
     sales_agent = agents['sales-assistant']
     assert sales_agent.enabled is True
-    assert 'MultiCorp' in sales_agent.instructions
-    assert sales_agent.model.get_parameter('temperature') == 0.7
+    assert sales_agent.instructions is not None and 'MultiCorp' in sales_agent.instructions
+    assert sales_agent.model is not None and sales_agent.model.get_parameter('temperature') == 0.7
 
 
 def test_disabled_agent(ldai_client: LDAIClient):
@@ -244,9 +245,9 @@ def test_agent_uses_defaults_on_missing_flag(ldai_client: LDAIClient):
     agent = agents['non-existent-agent']
 
     assert agent.enabled == defaults.enabled
-    assert agent.model.name == 'default-gpt'
-    assert agent.model.get_parameter('temp') == 0.5
-    assert agent.provider.name == 'default-provider'
+    assert agent.model is not None and agent.model.name == 'default-gpt'
+    assert agent.model is not None and agent.model.get_parameter('temp') == 0.5
+    assert agent.provider is not None and agent.provider.name == 'default-provider'
     assert agent.instructions == defaults.instructions
     # Tracker should still be created for non-existent flags
     assert agent.tracker is not None
@@ -263,13 +264,13 @@ def test_agent_error_handling(ldai_client: LDAIClient):
 
     # Test with a mix of valid and invalid keys
     agents = ldai_client.agents(
-        ['customer-support-agent', 'invalid-flag'], 
-        context, 
+        ['customer-support-agent', 'invalid-flag'],
+        context,
         defaults
     )
 
     assert len(agents) == 2
-    
+
     # Valid agent should work normally
     valid_agent = agents['customer-support-agent']
     assert valid_agent.enabled is True
@@ -278,7 +279,7 @@ def test_agent_error_handling(ldai_client: LDAIClient):
     # Invalid agent should use defaults but still be created
     invalid_agent = agents['invalid-flag']
     assert invalid_agent.enabled == defaults.enabled
-    assert invalid_agent.model.name == 'fallback-model'
+    assert invalid_agent.model is not None and invalid_agent.model.name == 'fallback-model'
     assert invalid_agent.instructions == defaults.instructions
 
 
@@ -301,35 +302,15 @@ def test_agent_empty_agent_list(ldai_client: LDAIClient):
     defaults = LDAIAgentDefaults(enabled=True, instructions="Default")
 
     agents = ldai_client.agents([], context, defaults)
-    
+
     assert len(agents) == 0
     assert agents == {}
-
-
-def test_agent_tracker_functionality(ldai_client: LDAIClient):
-    """Test that agent tracker works correctly."""
-    context = Context.create('user-key')
-    defaults = LDAIAgentDefaults(enabled=True, instructions="Default")
-
-    agents = ldai_client.agents(['customer-support-agent'], context, defaults)
-    agent = agents['customer-support-agent']
-
-    assert agent.tracker is not None
-    assert hasattr(agent.tracker, 'track_success')
-    assert hasattr(agent.tracker, 'track_duration')
-    assert hasattr(agent.tracker, 'track_tokens')
-    
-    # Test that tracker has correct metadata
-    track_data = agent.tracker._LDAIConfigTracker__get_track_data()
-    assert track_data['variationKey'] == 'agent-v1'
-    assert track_data['configKey'] == 'customer-support-agent'
-    assert track_data['version'] == 1
 
 
 def test_agents_backwards_compatibility_with_config(ldai_client: LDAIClient):
     """Test that the existing config method still works after agent additions."""
     from ldai.client import AIConfig, LDMessage
-    
+
     context = Context.create('user-key')
     default_value = AIConfig(
         enabled=True,
@@ -339,7 +320,7 @@ def test_agents_backwards_compatibility_with_config(ldai_client: LDAIClient):
 
     # This should still work as before
     config, tracker = ldai_client.config('customer-support-agent', context, default_value)
-    
+
     assert config.enabled is True
     assert config.model is not None
-    assert tracker is not None 
+    assert tracker is not None

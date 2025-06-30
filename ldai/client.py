@@ -13,7 +13,7 @@ class LDMessage:
     role: Literal['system', 'user', 'assistant']
     content: str
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> Dict[str, Any]:
         """
         Render the given message as a dictionary object.
         """
@@ -69,7 +69,7 @@ class ModelConfig:
 
         return self._custom.get(key)
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> Dict[str, Any]:
         """
         Render the given model config as a dictionary object.
         """
@@ -95,7 +95,7 @@ class ProviderConfig:
         """
         return self._name
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> Dict[str, Any]:
         """
         Render the given provider config as a dictionary object.
         """
@@ -111,7 +111,7 @@ class AIConfig:
     messages: Optional[List[LDMessage]] = None
     provider: Optional[ProviderConfig] = None
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> Dict[str, Any]:
         """
         Render the given default values as an AIConfig-compatible dictionary object.
         """
@@ -129,7 +129,7 @@ class AIConfig:
 class LDAIAgent:
     """
     Represents an AI agent configuration with instructions and model settings.
-    
+
     An agent is similar to an AIConfig but focuses on instructions rather than messages,
     making it suitable for AI assistant/agent use cases.
     """
@@ -139,11 +139,11 @@ class LDAIAgent:
     instructions: Optional[str] = None
     tracker: Optional[LDAIConfigTracker] = None
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> Dict[str, Any]:
         """
         Render the given agent as a dictionary object.
         """
-        result = {
+        result: Dict[str, Any] = {
             '_ldMeta': {
                 'enabled': self.enabled or False,
             },
@@ -159,7 +159,7 @@ class LDAIAgent:
 class LDAIAgentDefaults:
     """
     Default values for AI agent configurations.
-    
+
     Similar to LDAIAgent but without tracker and with optional enabled field,
     used as fallback values when agent configurations are not available.
     """
@@ -168,11 +168,11 @@ class LDAIAgentDefaults:
     provider: Optional[ProviderConfig] = None
     instructions: Optional[str] = None
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> Dict[str, Any]:
         """
         Render the given agent defaults as a dictionary object.
         """
-        result = {
+        result: Dict[str, Any] = {
             '_ldMeta': {
                 'enabled': self.enabled or False,
             },
@@ -210,7 +210,7 @@ class LDAIClient:
         :param variables: Additional variables for the model configuration.
         :return: The value of the model configuration along with a tracker used for gathering metrics.
         """
-        model, provider, messages, tracker, enabled = self.__evaluate(key, context, default_value.to_dict(), variables)
+        model, provider, messages, instructions, tracker, enabled = self.__evaluate(key, context, default_value.to_dict(), variables)
 
         config = AIConfig(
             enabled=bool(enabled),
@@ -247,7 +247,7 @@ class LDAIClient:
                 ),
                 {'company_name': 'Acme Corp'}
             )
-            
+
             support_agent = agents['customer-support']
             if support_agent.enabled:
                 print(support_agent.instructions)  # Instructions with interpolated variables
@@ -261,11 +261,11 @@ class LDAIClient:
         :return: Dictionary mapping agent keys to their LDAIAgent configurations.
         """
         result: LDAIAgents = {}
-        
+
         for key in keys:
             agent = self.__evaluate_agent(key, context, default_value, variables)
             result[key] = agent
-        
+
         return result
 
     def __evaluate(
@@ -274,10 +274,10 @@ class LDAIClient:
         context: Context,
         default_dict: Dict[str, Any],
         variables: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[Optional[ModelConfig], Optional[ProviderConfig], Optional[List[LDMessage]], Optional[str], LDAIConfigTracker]:
+    ) -> Tuple[Optional[ModelConfig], Optional[ProviderConfig], Optional[List[LDMessage]], Optional[str], LDAIConfigTracker, bool]:
         """
         Internal method to evaluate a configuration and extract components.
-        
+
         :param key: The configuration key.
         :param context: The evaluation context.
         :param default_dict: Default configuration as dictionary.
@@ -350,14 +350,14 @@ class LDAIClient:
     ) -> LDAIAgent:
         """
         Internal method to evaluate an agent configuration.
-        
+
         :param key: The agent configuration key.
         :param context: The evaluation context.
         :param default_value: Default agent values.
         :param variables: Variables for interpolation.
         :return: Configured LDAIAgent instance.
         """
-        model, provider, instructions, tracker, enabled = self.__evaluate(
+        model, provider, messages, instructions, tracker, enabled = self.__evaluate(
             key, context, default_value.to_dict(), variables
         )
 
