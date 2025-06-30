@@ -13,7 +13,7 @@ class LDMessage:
     role: Literal['system', 'user', 'assistant']
     content: str
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict:
         """
         Render the given message as a dictionary object.
         """
@@ -69,7 +69,7 @@ class ModelConfig:
 
         return self._custom.get(key)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict:
         """
         Render the given model config as a dictionary object.
         """
@@ -95,7 +95,7 @@ class ProviderConfig:
         """
         return self._name
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict:
         """
         Render the given provider config as a dictionary object.
         """
@@ -111,7 +111,7 @@ class AIConfig:
     messages: Optional[List[LDMessage]] = None
     provider: Optional[ProviderConfig] = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict:
         """
         Render the given default values as an AIConfig-compatible dictionary object.
         """
