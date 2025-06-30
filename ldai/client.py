@@ -125,6 +125,69 @@ class AIConfig:
         }
 
 
+@dataclass(frozen=True)
+class LDAIAgent:
+    """
+    Represents an AI agent configuration with instructions and model settings.
+    
+    An agent is similar to an AIConfig but focuses on instructions rather than messages,
+    making it suitable for AI assistant/agent use cases.
+    """
+    enabled: Optional[bool] = None
+    model: Optional[ModelConfig] = None
+    provider: Optional[ProviderConfig] = None
+    instructions: Optional[str] = None
+    tracker: Optional[LDAIConfigTracker] = None
+
+    def to_dict(self) -> dict:
+        """
+        Render the given agent as a dictionary object.
+        """
+        result = {
+            '_ldMeta': {
+                'enabled': self.enabled or False,
+            },
+            'model': self.model.to_dict() if self.model else None,
+            'provider': self.provider.to_dict() if self.provider else None,
+        }
+        if self.instructions is not None:
+            result['instructions'] = self.instructions
+        return result
+
+
+@dataclass(frozen=True)
+class LDAIAgentDefaults:
+    """
+    Default values for AI agent configurations.
+    
+    Similar to LDAIAgent but without tracker and with optional enabled field,
+    used as fallback values when agent configurations are not available.
+    """
+    enabled: Optional[bool] = None
+    model: Optional[ModelConfig] = None
+    provider: Optional[ProviderConfig] = None
+    instructions: Optional[str] = None
+
+    def to_dict(self) -> dict:
+        """
+        Render the given agent defaults as a dictionary object.
+        """
+        result = {
+            '_ldMeta': {
+                'enabled': self.enabled or False,
+            },
+            'model': self.model.to_dict() if self.model else None,
+            'provider': self.provider.to_dict() if self.provider else None,
+        }
+        if self.instructions is not None:
+            result['instructions'] = self.instructions
+        return result
+
+
+# Type alias for multiple agents
+LDAIAgents = Dict[str, LDAIAgent]
+
+
 class LDAIClient:
     """The LaunchDarkly AI SDK client object."""
 
@@ -147,13 +210,88 @@ class LDAIClient:
         :param variables: Additional variables for the model configuration.
         :return: The value of the model configuration along with a tracker used for gathering metrics.
         """
-        variation = self._client.variation(key, context, default_value.to_dict())
+        model, provider, messages, tracker, enabled = self.__evaluate(key, context, default_value.to_dict(), variables)
+
+        config = AIConfig(
+            enabled=bool(enabled),
+            model=model,
+            messages=messages,
+            provider=provider,
+        )
+
+        return config, tracker
+
+    def agents(
+        self,
+        keys: List[str],
+        context: Context,
+        default_value: LDAIAgentDefaults,
+        variables: Optional[Dict[str, Any]] = None,
+    ) -> LDAIAgents:
+        """
+        Get multiple AI agent configurations.
+
+        This method allows you to retrieve multiple agent configurations in a single call,
+        with each agent having its instructions dynamically interpolated with the provided
+        variables and context data.
+
+        Example:
+            ```python
+            agents = client.agents(
+                ['customer-support', 'sales-assistant'],
+                context,
+                LDAIAgentDefaults(
+                    enabled=True,
+                    model=ModelConfig('gpt-4'),
+                    instructions="You are a helpful assistant."
+                ),
+                {'company_name': 'Acme Corp'}
+            )
+            
+            support_agent = agents['customer-support']
+            if support_agent.enabled:
+                print(support_agent.instructions)  # Instructions with interpolated variables
+                # Use support_agent.tracker for metrics tracking
+            ```
+
+        :param keys: List of agent configuration keys to retrieve.
+        :param context: The context to evaluate the agent configurations in.
+        :param default_value: Default agent configuration values to use as fallback.
+        :param variables: Additional variables for template interpolation in instructions.
+        :return: Dictionary mapping agent keys to their LDAIAgent configurations.
+        """
+        result: LDAIAgents = {}
+        
+        for key in keys:
+            agent = self.__evaluate_agent(key, context, default_value, variables)
+            result[key] = agent
+        
+        return result
+
+    def __evaluate(
+        self,
+        key: str,
+        context: Context,
+        default_dict: Dict[str, Any],
+        variables: Optional[Dict[str, Any]] = None,
+    ) -> Tuple[Optional[ModelConfig], Optional[ProviderConfig], Optional[List[LDMessage]], Optional[str], LDAIConfigTracker]:
+        """
+        Internal method to evaluate a configuration and extract components.
+        
+        :param key: The configuration key.
+        :param context: The evaluation context.
+        :param default_dict: Default configuration as dictionary.
+        :param variables: Variables for interpolation.
+        :return: Tuple of (model, provider, messages, instructions, tracker, enabled).
+        """
+        variation = self._client.variation(key, context, default_dict)
 
         all_variables = {}
         if variables:
             all_variables.update(variables)
         all_variables['ldctx'] = context.to_dict()
 
+        # Extract messages
         messages = None
         if 'messages' in variation and isinstance(variation['messages'], list) and all(
             isinstance(entry, dict) for entry in variation['messages']
@@ -168,11 +306,18 @@ class LDAIClient:
                 for entry in variation['messages']
             ]
 
+        # Extract instructions
+        instructions = None
+        if 'instructions' in variation and isinstance(variation['instructions'], str):
+            instructions = self.__interpolate_template(variation['instructions'], all_variables)
+
+        # Extract provider config
         provider_config = None
         if 'provider' in variation and isinstance(variation['provider'], dict):
             provider = variation['provider']
             provider_config = ProviderConfig(provider.get('name', ''))
 
+        # Extract model config
         model = None
         if 'model' in variation and isinstance(variation['model'], dict):
             parameters = variation['model'].get('parameters', None)
@@ -183,6 +328,7 @@ class LDAIClient:
                 custom=custom
             )
 
+        # Create tracker
         tracker = LDAIConfigTracker(
             self._client,
             variation.get('_ldMeta', {}).get('variationKey', ''),
@@ -192,14 +338,36 @@ class LDAIClient:
         )
 
         enabled = variation.get('_ldMeta', {}).get('enabled', False)
-        config = AIConfig(
-            enabled=bool(enabled),
-            model=model,
-            messages=messages,
-            provider=provider_config,
+
+        return model, provider_config, messages, instructions, tracker, enabled
+
+    def __evaluate_agent(
+        self,
+        key: str,
+        context: Context,
+        default_value: LDAIAgentDefaults,
+        variables: Optional[Dict[str, Any]] = None,
+    ) -> LDAIAgent:
+        """
+        Internal method to evaluate an agent configuration.
+        
+        :param key: The agent configuration key.
+        :param context: The evaluation context.
+        :param default_value: Default agent values.
+        :param variables: Variables for interpolation.
+        :return: Configured LDAIAgent instance.
+        """
+        model, provider, instructions, tracker, enabled = self.__evaluate(
+            key, context, default_value.to_dict(), variables
         )
 
-        return config, tracker
+        return LDAIAgent(
+            enabled=bool(enabled) if enabled is not None else None,
+            model=model or default_value.model,
+            provider=provider or default_value.provider,
+            instructions=instructions,
+            tracker=tracker,
+        )
 
     def __interpolate_template(self, template: str, variables: Dict[str, Any]) -> str:
         """
