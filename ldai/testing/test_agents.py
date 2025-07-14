@@ -345,7 +345,7 @@ def test_agent_tracking_calls(ldai_client: LDAIClient):
     with patch.object(ldai_client._client, 'track') as mock_track:
         ldai_client.agent('customer-support-agent', context, defaults)
         mock_track.assert_called_with(
-            "$ld:ai:agent:single",
+            "$ld:ai:agent:function:single",
             context,
             'customer-support-agent',
             1
@@ -368,7 +368,7 @@ def test_agent_tracking_calls(ldai_client: LDAIClient):
     with patch.object(ldai_client._client, 'track') as mock_track:
         ldai_client.agents(agent_configs, context)
         mock_track.assert_called_with(
-            "$ld:ai:agent:multiple",
+            "$ld:ai:agent:function:multiple",
             context,
             2,
             2
