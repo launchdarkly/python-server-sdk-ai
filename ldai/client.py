@@ -184,6 +184,18 @@ class LDAIAgentDefaults:
         return result
 
 
+@dataclass
+class LDAIAgentConfig:
+    """
+    Configuration for individual agent in batch requests.
+
+    Combines agent key with its specific default configuration and variables.
+    """
+    agent_key: str
+    default_config: LDAIAgentDefaults
+    variables: Optional[Dict[str, Any]] = None
+
+
 # Type alias for multiple agents
 LDAIAgents = Dict[str, LDAIAgent]
 
@@ -221,49 +233,111 @@ class LDAIClient:
 
         return config, tracker
 
-    def agents(
+    def agent(
         self,
-        keys: List[str],
+        key: str,
         context: Context,
         default_value: LDAIAgentDefaults,
         variables: Optional[Dict[str, Any]] = None,
-    ) -> LDAIAgents:
+    ) -> LDAIAgent:
         """
-        Get multiple AI agent configurations.
+        Retrieve a single AI Config agent.
 
-        This method allows you to retrieve multiple agent configurations in a single call,
-        with each agent having its instructions dynamically interpolated with the provided
-        variables and context data.
+        This method retrieves a single agent configuration with instructions
+        dynamically interpolated using the provided variables and context data.
 
         Example::
 
-            agents = client.agents(
-                ['customer-support', 'sales-assistant'],
+            agent = client.agent(
+                'research_agent',
                 context,
                 LDAIAgentDefaults(
                     enabled=True,
                     model=ModelConfig('gpt-4'),
-                    instructions="You are a helpful assistant."
+                    instructions="You are a research assistant specializing in {{topic}}."
                 ),
-                {'company_name': 'Acme Corp'}
+                {'topic': 'climate change'}
             )
 
-            support_agent = agents['customer-support']
-            if support_agent.enabled:
-                print(support_agent.instructions)  # Instructions with interpolated variables
-                # Use support_agent.tracker for metrics tracking
+            if agent.enabled:
+                research_result = agent.instructions  # Interpolated instructions
+                agent.tracker.track_success()
 
-        :param keys: List of agent configuration keys to retrieve.
-        :param context: The context to evaluate the agent configurations in.
+        :param key: The agent configuration key to retrieve.
+        :param context: The context to evaluate the agent configuration in.
         :param default_value: Default agent configuration values to use as fallback.
         :param variables: Additional variables for template interpolation in instructions.
+        :return: Configured LDAIAgent instance.
+        """
+        # Track single agent usage
+        self._client.track(
+            "$ld:ai:agent:function:single",
+            context,
+            key,
+            1
+        )
+
+        return self.__evaluate_agent(key, context, default_value, variables)
+
+    def agents(
+        self,
+        agent_configs: List[LDAIAgentConfig],
+        context: Context,
+    ) -> LDAIAgents:
+        """
+        Retrieve multiple AI agent configurations.
+
+        This method allows you to retrieve multiple agent configurations in a single call,
+        with each agent having its own default configuration and variables for instruction
+        interpolation.
+
+        Example::
+
+            agents = client.agents([
+                LDAIAgentConfig(
+                    agent_key='research_agent',
+                    default_config=LDAIAgentDefaults(
+                        enabled=True,
+                        instructions='You are a research assistant.'
+                    ),
+                    variables={'topic': 'climate change'}
+                ),
+                LDAIAgentConfig(
+                    agent_key='writing_agent',
+                    default_config=LDAIAgentDefaults(
+                        enabled=True,
+                        instructions='You are a writing assistant.'
+                    ),
+                    variables={'style': 'academic'}
+                )
+            ], context)
+
+            research_result = agents["research_agent"].instructions
+            agents["research_agent"].tracker.track_success()
+
+        :param agent_configs: List of agent configurations to retrieve.
+        :param context: The context to evaluate the agent configurations in.
         :return: Dictionary mapping agent keys to their LDAIAgent configurations.
         """
+        # Track multiple agents usage
+        agent_count = len(agent_configs)
+        self._client.track(
+            "$ld:ai:agent:function:multiple",
+            context,
+            agent_count,
+            agent_count
+        )
+
         result: LDAIAgents = {}
 
-        for key in keys:
-            agent = self.__evaluate_agent(key, context, default_value, variables)
-            result[key] = agent
+        for config in agent_configs:
+            agent = self.__evaluate_agent(
+                config.agent_key,
+                context,
+                config.default_config,
+                config.variables
+            )
+            result[config.agent_key] = agent
 
         return result
 
@@ -360,20 +434,23 @@ class LDAIClient:
             key, context, default_value.to_dict(), variables
         )
 
+        # For agents, prioritize instructions over messages
+        final_instructions = instructions if instructions is not None else default_value.instructions
+
         return LDAIAgent(
-            enabled=bool(enabled) if enabled is not None else None,
+            enabled=bool(enabled) if enabled is not None else default_value.enabled,
             model=model or default_value.model,
             provider=provider or default_value.provider,
-            instructions=instructions,
+            instructions=final_instructions,
             tracker=tracker,
         )
 
     def __interpolate_template(self, template: str, variables: Dict[str, Any]) -> str:
         """
-        Interpolate the template with the given variables.
+        Interpolate the template with the given variables using Mustache format.
 
-        :template: The template string.
-        :variables: The variables to interpolate into the template.
+        :param template: The template string.
+        :param variables: The variables to interpolate into the template.
         :return: The interpolated string.
         """
         return chevron.render(template, variables)
