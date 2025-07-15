@@ -344,10 +344,13 @@ class LDAIClient:
         result: LDAIAgents = {}
 
         for config in agent_configs:
+            # Ensure default_value is set (should be handled by __post_init__, but satisfy type checker)
+            default_value = config.default_value or LDAIAgentDefaults(enabled=False)
+            
             agent = self.__evaluate_agent(
                 config.key,
                 context,
-                config.default_value,
+                default_value,
                 config.variables
             )
             result[config.key] = agent
