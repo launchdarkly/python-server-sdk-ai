@@ -282,14 +282,6 @@ class LDAIConfigTracker:
         """
         return self._summary
 
-    def get_track_data(self) -> Dict[str, Any]:
-        """
-        Get tracking data for events.
-
-        :return: Dictionary containing variation and config keys.
-        """
-        return self.__get_track_data()
-
 
 def _bedrock_to_token_usage(data: dict) -> TokenUsage:
     """

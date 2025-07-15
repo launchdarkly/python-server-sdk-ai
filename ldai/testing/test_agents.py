@@ -327,12 +327,6 @@ def test_agent_tracker_functionality(ldai_client: LDAIClient):
     assert hasattr(agent.tracker, 'track_duration')
     assert hasattr(agent.tracker, 'track_tokens')
 
-    # Test that tracker has correct metadata
-    track_data = agent.tracker.get_track_data()
-    assert track_data['variationKey'] == 'agent-v1'
-    assert track_data['configKey'] == 'customer-support-agent'
-    assert track_data['version'] == 1
-
 
 def test_agent_tracking_calls(ldai_client: LDAIClient):
     """Test that tracking calls are made for agent usage."""
@@ -423,7 +417,7 @@ def test_agent_config_dataclass():
 def test_agent_config_optional_default_value():
     """Test that LDAIAgentConfig defaults to {enabled: False} when default_value is not provided."""
     config = LDAIAgentConfig(key='test-agent')
-    
+
     assert config.key == 'test-agent'
     assert config.default_value is not None
     assert config.default_value.enabled is False
@@ -433,10 +427,10 @@ def test_agent_config_optional_default_value():
 def test_single_agent_optional_default_value(ldai_client: LDAIClient):
     """Test the single agent() method with optional default_value."""
     context = Context.create('user-key')
-    
+
     # Should work with no default_value provided (defaults to {enabled: False})
     agent = ldai_client.agent('non-existent-agent', context)
-    
+
     assert agent.enabled is False  # Should default to False
     assert agent.tracker is not None
 
@@ -456,11 +450,11 @@ def test_agents_method_with_optional_defaults(ldai_client: LDAIClient):
     agents = ldai_client.agents(agent_configs, context)
 
     assert len(agents) == 2
-    
+
     # First agent should use default {enabled: False} from auto-generated default_value
     support_agent = agents['customer-support-agent']
     assert support_agent.enabled is True  # From flag configuration
-    
+
     # Second agent should use custom default
     sales_agent = agents['sales-assistant']
     assert sales_agent.enabled is True
