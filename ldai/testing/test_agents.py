@@ -167,8 +167,8 @@ def test_agents_method_with_configs(ldai_client: LDAIClient):
 
     agent_configs = [
         LDAIAgentConfig(
-            agent_key='customer-support-agent',
-            default_config=LDAIAgentDefaults(
+            key='customer-support-agent',
+            default_value=LDAIAgentDefaults(
                 enabled=False,
                 model=ModelConfig('fallback-model'),
                 instructions="Default support"
@@ -176,8 +176,8 @@ def test_agents_method_with_configs(ldai_client: LDAIClient):
             variables={'company_name': 'Acme Corp'}
         ),
         LDAIAgentConfig(
-            agent_key='sales-assistant',
-            default_config=LDAIAgentDefaults(
+            key='sales-assistant',
+            default_value=LDAIAgentDefaults(
                 enabled=False,
                 model=ModelConfig('fallback-model'),
                 instructions="Default sales"
@@ -208,16 +208,16 @@ def test_agents_method_different_variables_per_agent(ldai_client: LDAIClient):
 
     agent_configs = [
         LDAIAgentConfig(
-            agent_key='personalized-agent',
-            default_config=LDAIAgentDefaults(
+            key='personalized-agent',
+            default_value=LDAIAgentDefaults(
                 enabled=True,
                 instructions="Default personal"
             ),
             variables={}  # Will use context only
         ),
         LDAIAgentConfig(
-            agent_key='customer-support-agent',
-            default_config=LDAIAgentDefaults(
+            key='customer-support-agent',
+            default_value=LDAIAgentDefaults(
                 enabled=True,
                 instructions="Default support"
             ),
@@ -242,8 +242,8 @@ def test_agents_with_multi_context_interpolation(ldai_client: LDAIClient):
 
     agent_configs = [
         LDAIAgentConfig(
-            agent_key='multi-context-agent',
-            default_config=LDAIAgentDefaults(
+            key='multi-context-agent',
+            default_value=LDAIAgentDefaults(
                 enabled=True,
                 instructions="Default multi-context"
             ),
@@ -275,8 +275,8 @@ def test_disabled_agent_multiple_method(ldai_client: LDAIClient):
 
     agent_configs = [
         LDAIAgentConfig(
-            agent_key='disabled-agent',
-            default_config=LDAIAgentDefaults(enabled=True, instructions="Default"),
+            key='disabled-agent',
+            default_value=LDAIAgentDefaults(enabled=True, instructions="Default"),
             variables={}
         )
     ]
@@ -354,13 +354,13 @@ def test_agent_tracking_calls(ldai_client: LDAIClient):
     # Test multiple agents tracking
     agent_configs = [
         LDAIAgentConfig(
-            agent_key='customer-support-agent',
-            default_config=defaults,
+            key='customer-support-agent',
+            default_value=defaults,
             variables={}
         ),
         LDAIAgentConfig(
-            agent_key='sales-assistant',
-            default_config=defaults,
+            key='sales-assistant',
+            default_value=defaults,
             variables={}
         )
     ]
@@ -397,24 +397,70 @@ def test_backwards_compatibility_with_config(ldai_client: LDAIClient):
 def test_agent_config_dataclass():
     """Test the LDAIAgentConfig dataclass functionality."""
     config = LDAIAgentConfig(
-        agent_key='test-agent',
-        default_config=LDAIAgentDefaults(
+        key='test-agent',
+        default_value=LDAIAgentDefaults(
             enabled=True,
             instructions="Test instructions"
         ),
         variables={'key': 'value'}
     )
 
-    assert config.agent_key == 'test-agent'
-    assert config.default_config.enabled is True
-    assert config.default_config.instructions == "Test instructions"
+    assert config.key == 'test-agent'
+    assert config.default_value.enabled is True
+    assert config.default_value.instructions == "Test instructions"
     assert config.variables == {'key': 'value'}
 
     # Test with no variables
     config_no_vars = LDAIAgentConfig(
-        agent_key='test-agent-2',
-        default_config=LDAIAgentDefaults(enabled=False)
+        key='test-agent-2',
+        default_value=LDAIAgentDefaults(enabled=False)
     )
 
-    assert config_no_vars.agent_key == 'test-agent-2'
+    assert config_no_vars.key == 'test-agent-2'
     assert config_no_vars.variables is None
+
+
+def test_agent_config_optional_default_value():
+    """Test that LDAIAgentConfig defaults to {enabled: False} when default_value is not provided."""
+    config = LDAIAgentConfig(key='test-agent')
+    
+    assert config.key == 'test-agent'
+    assert config.default_value is not None
+    assert config.default_value.enabled is False
+    assert config.variables is None
+
+
+def test_single_agent_optional_default_value(ldai_client: LDAIClient):
+    """Test the single agent() method with optional default_value."""
+    context = Context.create('user-key')
+    
+    # Should work with no default_value provided (defaults to {enabled: False})
+    agent = ldai_client.agent('non-existent-agent', context)
+    
+    assert agent.enabled is False  # Should default to False
+    assert agent.tracker is not None
+
+
+def test_agents_method_with_optional_defaults(ldai_client: LDAIClient):
+    """Test agents method with optional default_value configurations."""
+    context = Context.create('user-key')
+
+    agent_configs = [
+        LDAIAgentConfig(key='customer-support-agent'),  # No default_value
+        LDAIAgentConfig(
+            key='sales-assistant',
+            default_value=LDAIAgentDefaults(enabled=True, instructions="Custom sales assistant")
+        )
+    ]
+
+    agents = ldai_client.agents(agent_configs, context)
+
+    assert len(agents) == 2
+    
+    # First agent should use default {enabled: False} from auto-generated default_value
+    support_agent = agents['customer-support-agent']
+    assert support_agent.enabled is True  # From flag configuration
+    
+    # Second agent should use custom default
+    sales_agent = agents['sales-assistant']
+    assert sales_agent.enabled is True

@@ -191,9 +191,14 @@ class LDAIAgentConfig:
 
     Combines agent key with its specific default configuration and variables.
     """
-    agent_key: str
-    default_config: LDAIAgentDefaults
+    key: str
+    default_value: Optional[LDAIAgentDefaults] = None
     variables: Optional[Dict[str, Any]] = None
+
+    def __post_init__(self):
+        """Set default value if not provided."""
+        if self.default_value is None:
+            self.default_value = LDAIAgentDefaults(enabled=False)
 
 
 # Type alias for multiple agents
@@ -237,7 +242,7 @@ class LDAIClient:
         self,
         key: str,
         context: Context,
-        default_value: LDAIAgentDefaults,
+        default_value: Optional[LDAIAgentDefaults] = None,
         variables: Optional[Dict[str, Any]] = None,
     ) -> LDAIAgent:
         """
@@ -248,6 +253,7 @@ class LDAIClient:
 
         Example::
 
+            # With explicit default configuration
             agent = client.agent(
                 'research_agent',
                 context,
@@ -259,6 +265,9 @@ class LDAIClient:
                 {'topic': 'climate change'}
             )
 
+            # Or with optional default (defaults to {enabled: False})
+            agent = client.agent('research_agent', context, variables={'topic': 'climate change'})
+
             if agent.enabled:
                 research_result = agent.instructions  # Interpolated instructions
                 agent.tracker.track_success()
@@ -269,6 +278,10 @@ class LDAIClient:
         :param variables: Additional variables for template interpolation in instructions.
         :return: Configured LDAIAgent instance.
         """
+        # Set default value if not provided
+        if default_value is None:
+            default_value = LDAIAgentDefaults(enabled=False)
+
         # Track single agent usage
         self._client.track(
             "$ld:ai:agent:function:single",
@@ -295,16 +308,16 @@ class LDAIClient:
 
             agents = client.agents([
                 LDAIAgentConfig(
-                    agent_key='research_agent',
-                    default_config=LDAIAgentDefaults(
+                    key='research_agent',
+                    default_value=LDAIAgentDefaults(
                         enabled=True,
                         instructions='You are a research assistant.'
                     ),
                     variables={'topic': 'climate change'}
                 ),
                 LDAIAgentConfig(
-                    agent_key='writing_agent',
-                    default_config=LDAIAgentDefaults(
+                    key='writing_agent',
+                    default_value=LDAIAgentDefaults(
                         enabled=True,
                         instructions='You are a writing assistant.'
                     ),
@@ -332,12 +345,12 @@ class LDAIClient:
 
         for config in agent_configs:
             agent = self.__evaluate_agent(
-                config.agent_key,
+                config.key,
                 context,
-                config.default_config,
+                config.default_value,
                 config.variables
             )
-            result[config.agent_key] = agent
+            result[config.key] = agent
 
         return result
 
