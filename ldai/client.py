@@ -155,7 +155,7 @@ class LDAIAgent:
         return result
 
 
-@dataclass
+@dataclass(frozen=True)
 class LDAIAgentDefaults:
     """
     Default values for AI agent configurations.
