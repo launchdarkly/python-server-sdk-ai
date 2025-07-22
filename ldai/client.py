@@ -155,7 +155,7 @@ class LDAIAgent:
         return result
 
 
-@dataclass(frozen=True)
+@dataclass
 class LDAIAgentDefaults:
     """
     Default values for AI agent configurations.
@@ -192,13 +192,8 @@ class LDAIAgentConfig:
     Combines agent key with its specific default configuration and variables.
     """
     key: str
-    default_value: Optional[LDAIAgentDefaults] = None
+    default_value: LDAIAgentDefaults
     variables: Optional[Dict[str, Any]] = None
-
-    def __post_init__(self):
-        """Set default value if not provided."""
-        if self.default_value is None:
-            self.default_value = LDAIAgentDefaults(enabled=False)
 
 
 # Type alias for multiple agents
@@ -240,10 +235,8 @@ class LDAIClient:
 
     def agent(
         self,
-        key: str,
+        config: LDAIAgentConfig,
         context: Context,
-        default_value: Optional[LDAIAgentDefaults] = None,
-        variables: Optional[Dict[str, Any]] = None,
     ) -> LDAIAgent:
         """
         Retrieve a single AI Config agent.
@@ -253,44 +246,33 @@ class LDAIClient:
 
         Example::
 
-            # With explicit default configuration
-            agent = client.agent(
-                'research_agent',
-                context,
-                LDAIAgentDefaults(
+            agent = client.agent(LDAIAgentConfig(
+                key='research_agent',
+                default_value=LDAIAgentDefaults(
                     enabled=True,
                     model=ModelConfig('gpt-4'),
                     instructions="You are a research assistant specializing in {{topic}}."
                 ),
-                {'topic': 'climate change'}
-            )
-
-            # Or with optional default (defaults to {enabled: False})
-            agent = client.agent('research_agent', context, variables={'topic': 'climate change'})
+                variables={'topic': 'climate change'}
+            ), context)
 
             if agent.enabled:
                 research_result = agent.instructions  # Interpolated instructions
                 agent.tracker.track_success()
 
-        :param key: The agent configuration key to retrieve.
+        :param config: The agent configuration to use.
         :param context: The context to evaluate the agent configuration in.
-        :param default_value: Default agent configuration values to use as fallback.
-        :param variables: Additional variables for template interpolation in instructions.
         :return: Configured LDAIAgent instance.
         """
-        # Set default value if not provided
-        if default_value is None:
-            default_value = LDAIAgentDefaults(enabled=False)
-
         # Track single agent usage
         self._client.track(
             "$ld:ai:agent:function:single",
             context,
-            key,
+            config.key,
             1
         )
 
-        return self.__evaluate_agent(key, context, default_value, variables)
+        return self.__evaluate_agent(config.key, context, config.default_value, config.variables)
 
     def agents(
         self,
@@ -344,13 +326,10 @@ class LDAIClient:
         result: LDAIAgents = {}
 
         for config in agent_configs:
-            # Ensure default_value is set (should be handled by __post_init__, but satisfy type checker)
-            default_value = config.default_value or LDAIAgentDefaults(enabled=False)
-
             agent = self.__evaluate_agent(
                 config.key,
                 context,
-                default_value,
+                config.default_value,
                 config.variables
             )
             result[config.key] = agent
