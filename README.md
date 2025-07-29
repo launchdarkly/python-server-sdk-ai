@@ -8,7 +8,7 @@
 
 ## Supported Python versions
 
-This version of the library has a minimum Python version of 3.8.
+This version of the library has a minimum Python version of 3.9.
 
 ## Getting started
 
