@@ -402,6 +402,8 @@ class LDAIClient:
             variation.get('_ldMeta', {}).get('variationKey', ''),
             key,
             int(variation.get('_ldMeta', {}).get('version', 1)),
+            model.name if model else '',
+            provider_config.name if provider_config else '',
             context,
         )
 

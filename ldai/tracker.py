@@ -74,6 +74,8 @@ class LDAIConfigTracker:
         variation_key: str,
         config_key: str,
         version: int,
+        model_name: str,
+        provider_name: str,
         context: Context,
     ):
         """
@@ -83,12 +85,16 @@ class LDAIConfigTracker:
         :param variation_key: Variation key for tracking.
         :param config_key: Configuration key for tracking.
         :param version: Version of the variation.
+        :param model_name: Name of the model used.
+        :param provider_name: Name of the provider used.
         :param context: Context for evaluation.
         """
         self._ld_client = ld_client
         self._variation_key = variation_key
         self._config_key = config_key
         self._version = version
+        self._model_name = model_name
+        self._provider_name = provider_name
         self._context = context
         self._summary = LDAIMetricSummary()
 
@@ -102,6 +108,8 @@ class LDAIConfigTracker:
             "variationKey": self._variation_key,
             "configKey": self._config_key,
             "version": self._version,
+            "modelName": self._model_name,
+            "providerName": self._provider_name,
         }
 
     def track_duration(self, duration: int) -> None:
