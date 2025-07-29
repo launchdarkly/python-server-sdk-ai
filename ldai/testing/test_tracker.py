@@ -423,12 +423,6 @@ def test_error_overwrites_success(client: LDClient):
             1,
         ),
         call(
-            "$ld:ai:generation",
-            context,
-            {"variationKey": "variation-key", "configKey": "config-key", "version": 3},
-            1,
-        ),
-        call(
             "$ld:ai:generation:error",
             context,
             {"variationKey": "variation-key", "configKey": "config-key", "version": 3},
