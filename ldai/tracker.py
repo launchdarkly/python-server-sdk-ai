@@ -177,9 +177,6 @@ class LDAIConfigTracker:
         """
         self._summary._success = True
         self._ld_client.track(
-            "$ld:ai:generation", self._context, self.__get_track_data(), 1
-        )
-        self._ld_client.track(
             "$ld:ai:generation:success", self._context, self.__get_track_data(), 1
         )
 
@@ -188,9 +185,6 @@ class LDAIConfigTracker:
         Track an unsuccessful AI generation attempt.
         """
         self._summary._success = False
-        self._ld_client.track(
-            "$ld:ai:generation", self._context, self.__get_track_data(), 1
-        )
         self._ld_client.track(
             "$ld:ai:generation:error", self._context, self.__get_track_data(), 1
         )

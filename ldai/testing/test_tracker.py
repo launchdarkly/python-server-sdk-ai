@@ -177,12 +177,6 @@ def test_tracks_bedrock_metrics(client: LDClient):
 
     calls = [
         call(
-            "$ld:ai:generation",
-            context,
-            {"variationKey": "variation-key", "configKey": "config-key", "version": 3},
-            1,
-        ),
-        call(
             "$ld:ai:generation:success",
             context,
             {"variationKey": "variation-key", "configKey": "config-key", "version": 3},
@@ -239,12 +233,6 @@ def test_tracks_bedrock_metrics_with_error(client: LDClient):
     tracker.track_bedrock_converse_metrics(bedrock_result)
 
     calls = [
-        call(
-            "$ld:ai:generation",
-            context,
-            {"variationKey": "variation-key", "configKey": "config-key", "version": 3},
-            1,
-        ),
         call(
             "$ld:ai:generation:error",
             context,
@@ -304,12 +292,6 @@ def test_tracks_openai_metrics(client: LDClient):
 
     calls = [
         call(
-            "$ld:ai:generation",
-            context,
-            {"variationKey": "variation-key", "configKey": "config-key", "version": 3},
-            1,
-        ),
-        call(
             "$ld:ai:generation:success",
             context,
             {"variationKey": "variation-key", "configKey": "config-key", "version": 3},
@@ -355,12 +337,6 @@ def test_tracks_openai_metrics_with_exception(client: LDClient):
 
     calls = [
         call(
-            "$ld:ai:generation",
-            context,
-            {"variationKey": "variation-key", "configKey": "config-key", "version": 3},
-            1,
-        ),
-        call(
             "$ld:ai:generation:error",
             context,
             {"variationKey": "variation-key", "configKey": "config-key", "version": 3},
@@ -402,12 +378,6 @@ def test_tracks_success(client: LDClient):
 
     calls = [
         call(
-            "$ld:ai:generation",
-            context,
-            {"variationKey": "variation-key", "configKey": "config-key", "version": 3},
-            1,
-        ),
-        call(
             "$ld:ai:generation:success",
             context,
             {"variationKey": "variation-key", "configKey": "config-key", "version": 3},
@@ -426,12 +396,6 @@ def test_tracks_error(client: LDClient):
     tracker.track_error()
 
     calls = [
-        call(
-            "$ld:ai:generation",
-            context,
-            {"variationKey": "variation-key", "configKey": "config-key", "version": 3},
-            1,
-        ),
         call(
             "$ld:ai:generation:error",
             context,
@@ -453,19 +417,7 @@ def test_error_overwrites_success(client: LDClient):
 
     calls = [
         call(
-            "$ld:ai:generation",
-            context,
-            {"variationKey": "variation-key", "configKey": "config-key", "version": 3},
-            1,
-        ),
-        call(
             "$ld:ai:generation:success",
-            context,
-            {"variationKey": "variation-key", "configKey": "config-key", "version": 3},
-            1,
-        ),
-        call(
-            "$ld:ai:generation",
             context,
             {"variationKey": "variation-key", "configKey": "config-key", "version": 3},
             1,
