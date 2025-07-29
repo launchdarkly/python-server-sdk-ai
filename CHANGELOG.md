@@ -2,6 +2,20 @@
 
 All notable changes to the LaunchDarkly Python AI package will be documented in this file. This project adheres to [Semantic Versioning](http://semver.org).
 
+## [0.10.0](https://github.com/launchdarkly/python-server-sdk-ai/compare/0.9.1...0.10.0) (2025-07-29)
+
+
+### Features
+
+* Added agent support to SDK ([97aa9f4](https://github.com/launchdarkly/python-server-sdk-ai/commit/97aa9f4580ba53aaca40938ff4525c1fe54800e8))
+* Added agent support to SDK ([#54](https://github.com/launchdarkly/python-server-sdk-ai/issues/54)) ([df8cc20](https://github.com/launchdarkly/python-server-sdk-ai/commit/df8cc20fe35edcb7a84874a156039cf906c45e2d))
+* Update AI tracker to include model & provider name for metrics generation ([#58](https://github.com/launchdarkly/python-server-sdk-ai/issues/58)) ([d62a779](https://github.com/launchdarkly/python-server-sdk-ai/commit/d62a779912d0b42d5965ce652d02f0258533040a))
+
+
+### Bug Fixes
+
+* Remove deprecated track generation event ([#57](https://github.com/launchdarkly/python-server-sdk-ai/issues/57)) ([ed02047](https://github.com/launchdarkly/python-server-sdk-ai/commit/ed02047ac22ae3f091168abcf5543e9e1ff87242))
+
 ## [0.9.1](https://github.com/launchdarkly/python-server-sdk-ai/compare/0.9.0...0.9.1) (2025-06-26)
 
 
