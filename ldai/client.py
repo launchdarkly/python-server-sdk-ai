@@ -222,6 +222,8 @@ class LDAIClient:
         :param variables: Additional variables for the model configuration.
         :return: The value of the model configuration along with a tracker used for gathering metrics.
         """
+        self._client.track('$ld:ai:config:function:single', context, key, 1)
+
         model, provider, messages, instructions, tracker, enabled = self.__evaluate(key, context, default_value.to_dict(), variables)
 
         config = AIConfig(
