@@ -303,3 +303,28 @@ def test_model_initial_config_enabled(ldai_client: LDAIClient):
     assert config.model is None
     assert config.messages is None
     assert config.provider is None
+
+
+def test_config_method_tracking(ldai_client: LDAIClient):
+    from unittest.mock import Mock
+    
+    mock_client = Mock()
+    mock_client.variation.return_value = {
+        '_ldMeta': {'enabled': True, 'variationKey': 'test-variation', 'version': 1},
+        'model': {'name': 'test-model'},
+        'provider': {'name': 'test-provider'},
+        'messages': []
+    }
+    
+    client = LDAIClient(mock_client)
+    context = Context.create('user-key')
+    default_value = AIConfig(enabled=False, model=ModelConfig('fake-model'), messages=[])
+    
+    config, tracker = client.config('test-config-key', context, default_value)
+    
+    mock_client.track.assert_called_once_with(
+        '$ld:ai:config:function:single',
+        context,
+        'test-config-key',
+        1
+    )
