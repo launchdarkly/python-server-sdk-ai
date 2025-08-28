@@ -7,7 +7,7 @@ All notable changes to the LaunchDarkly Python AI package will be documented in 
 
 ### Bug Fixes
 
-* add usage tracking to config method ([#60](https://github.com/launchdarkly/python-server-sdk-ai/issues/60)) ([e7294ca](https://github.com/launchdarkly/python-server-sdk-ai/commit/e7294ca14b298fc18933e055369a25be9aee4783))
+* Add usage tracking to config method ([#60](https://github.com/launchdarkly/python-server-sdk-ai/issues/60)) ([e7294ca](https://github.com/launchdarkly/python-server-sdk-ai/commit/e7294ca14b298fc18933e055369a25be9aee4783))
 
 ## [0.10.0](https://github.com/launchdarkly/python-server-sdk-ai/compare/0.9.1...0.10.0) (2025-07-29)
 
