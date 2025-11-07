@@ -1,3 +1,4 @@
+import warnings
 from dataclasses import dataclass
 from typing import Any, Dict, List, Literal, Optional
 
@@ -332,4 +333,28 @@ class AIAgentConfigRequest:
 
 # Type alias for multiple agents
 AIAgents = Dict[str, AIAgentConfig]
+
+
+# ============================================================================
+# Deprecated Type Aliases for Backward Compatibility
+# ============================================================================
+
+# Note: These are type aliases that point to the new types.
+# Since Python uses duck typing, these will work at runtime even if type checkers complain.
+# The old AIConfig had optional enabled, so it maps to AICompletionConfigDefault
+# The old AIConfig return type had required enabled, so it maps to AICompletionConfig
+
+# Deprecated: Use AICompletionConfigDefault instead
+# This was the old AIConfig with optional enabled (used as input/default)
+# Note: We map to AICompletionConfigDefault since the old AIConfig had optional enabled
+AIConfig = AICompletionConfigDefault
+
+# Deprecated: Use AIAgentConfigDefault instead
+LDAIAgentDefaults = AIAgentConfigDefault
+
+# Deprecated: Use AIAgentConfigRequest instead
+LDAIAgentConfig = AIAgentConfigRequest
+
+# Deprecated: Use AIAgentConfig instead (note: this was the old return type)
+LDAIAgent = AIAgentConfig
 

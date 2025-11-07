@@ -18,6 +18,11 @@ from ldai.models import (
     LDMessage,
     ModelConfig,
     ProviderConfig,
+    # Deprecated aliases for backward compatibility
+    AIConfig,
+    LDAIAgent,
+    LDAIAgentConfig,
+    LDAIAgentDefaults,
 )
 
 __all__ = [
@@ -35,4 +40,9 @@ __all__ = [
     'LDMessage',
     'ModelConfig',
     'ProviderConfig',
+    # Deprecated exports
+    'AIConfig',
+    'LDAIAgent',
+    'LDAIAgentConfig',
+    'LDAIAgentDefaults',
 ]
