@@ -2,7 +2,7 @@ import pytest
 from ldclient import Config, Context, LDClient
 from ldclient.integrations.test_data import TestData
 
-from ldai.client import AIConfig, LDAIClient, LDMessage, ModelConfig
+from ldai import AIConfig, LDAIClient, LDMessage, ModelConfig
 
 
 @pytest.fixture
