@@ -80,7 +80,7 @@ class AIProviderFactory:
             provider_set.add(provider_name)  # type: ignore
 
         # Then try multi-provider packages, but avoid duplicates
-        multi_provider_packages: List[SupportedAIProvider] = ['langchain', 'vercel']
+        multi_provider_packages: List[SupportedAIProvider] = ['langchain']
         for provider in multi_provider_packages:
             provider_set.add(provider)
 
@@ -100,10 +100,23 @@ class AIProviderFactory:
         :param logger: Optional logger
         :return: AIProvider instance or None if creation failed
         """
+        # Handle built-in providers (part of this package)
+        if provider_type == 'langchain':
+            try:
+                from ldai.providers.langchain import LangChainProvider
+                return await LangChainProvider.create(ai_config, logger)
+            except ImportError as error:
+                if logger:
+                    logger.warn(
+                        f"Error creating LangChainProvider: {error}. "
+                        f"Make sure langchain and langchain-core packages are installed."
+                    )
+                return None
+
+        # For future external providers, use dynamic import
         provider_mappings = {
-            'openai': ('launchdarkly_server_sdk_ai_openai', 'OpenAIProvider'),
-            'langchain': ('launchdarkly_server_sdk_ai_langchain', 'LangChainProvider'),
-            'vercel': ('launchdarkly_server_sdk_ai_vercel', 'VercelProvider'),
+            # 'openai': ('launchdarkly_server_sdk_ai_openai', 'OpenAIProvider'),
+            # 'vercel': ('launchdarkly_server_sdk_ai_vercel', 'VercelProvider'),
         }
 
         if provider_type not in provider_mappings:
