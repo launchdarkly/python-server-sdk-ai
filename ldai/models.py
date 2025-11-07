@@ -100,18 +100,64 @@ class ProviderConfig:
         }
 
 
+# ============================================================================
+# Judge Types
+# ============================================================================
+
 @dataclass(frozen=True)
-class AIConfig:
+class Judge:
+    """
+    Configuration for a single judge attachment.
+    """
+    key: str
+    sampling_rate: float
+
+    def to_dict(self) -> dict:
+        """
+        Render the judge as a dictionary object.
+        """
+        return {
+            'key': self.key,
+            'samplingRate': self.sampling_rate,
+        }
+
+
+@dataclass(frozen=True)
+class JudgeConfiguration:
+    """
+    Configuration for judge attachment to AI Configs.
+    """
+    judges: List[Judge]
+
+    def to_dict(self) -> dict:
+        """
+        Render the judge configuration as a dictionary object.
+        """
+        return {
+            'judges': [judge.to_dict() for judge in self.judges],
+        }
+
+
+# ============================================================================
+# Completion Config Types
+# ============================================================================
+
+@dataclass(frozen=True)
+class AICompletionConfigDefault:
+    """
+    Default Completion AI Config (default mode).
+    """
     enabled: Optional[bool] = None
     model: Optional[ModelConfig] = None
     messages: Optional[List[LDMessage]] = None
     provider: Optional[ProviderConfig] = None
+    judge_configuration: Optional[JudgeConfiguration] = None
 
     def to_dict(self) -> dict:
         """
-        Render the given default values as an AIConfig-compatible dictionary object.
+        Render the given default values as an AICompletionConfigDefault-compatible dictionary object.
         """
-        return {
+        result = {
             '_ldMeta': {
                 'enabled': self.enabled or False,
             },
@@ -119,79 +165,180 @@ class AIConfig:
             'messages': [message.to_dict() for message in self.messages] if self.messages else None,
             'provider': self.provider.to_dict() if self.provider else None,
         }
+        if self.judge_configuration is not None:
+            result['judgeConfiguration'] = self.judge_configuration.to_dict()
+        return result
 
 
 @dataclass(frozen=True)
-class LDAIAgent:
+class AICompletionConfig:
     """
-    Represents an AI agent configuration with instructions and model settings.
+    Completion AI Config (default mode).
+    """
+    enabled: bool
+    model: Optional[ModelConfig] = None
+    messages: Optional[List[LDMessage]] = None
+    provider: Optional[ProviderConfig] = None
+    tracker: Optional[LDAIConfigTracker] = None
+    judge_configuration: Optional[JudgeConfiguration] = None
 
-    An agent is similar to an AIConfig but focuses on instructions rather than messages,
-    making it suitable for AI assistant/agent use cases.
+    def to_dict(self) -> dict:
+        """
+        Render the given completion config as a dictionary object.
+        """
+        result = {
+            '_ldMeta': {
+                'enabled': self.enabled,
+            },
+            'model': self.model.to_dict() if self.model else None,
+            'messages': [message.to_dict() for message in self.messages] if self.messages else None,
+            'provider': self.provider.to_dict() if self.provider else None,
+        }
+        if self.judge_configuration is not None:
+            result['judgeConfiguration'] = self.judge_configuration.to_dict()
+        return result
+
+
+# ============================================================================
+# Agent Config Types
+# ============================================================================
+
+
+@dataclass(frozen=True)
+class AIAgentConfigDefault:
+    """
+    Default Agent-specific AI Config with instructions.
     """
     enabled: Optional[bool] = None
+    model: Optional[ModelConfig] = None
+    provider: Optional[ProviderConfig] = None
+    instructions: Optional[str] = None
+    judge_configuration: Optional[JudgeConfiguration] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        """
+        Render the given agent config default as a dictionary object.
+        """
+        result: Dict[str, Any] = {
+            '_ldMeta': {
+                'enabled': self.enabled or False,
+            },
+            'model': self.model.to_dict() if self.model else None,
+            'provider': self.provider.to_dict() if self.provider else None,
+        }
+        if self.instructions is not None:
+            result['instructions'] = self.instructions
+        if self.judge_configuration is not None:
+            result['judgeConfiguration'] = self.judge_configuration.to_dict()
+        return result
+
+
+@dataclass(frozen=True)
+class AIAgentConfig:
+    """
+    Agent-specific AI Config with instructions.
+    """
+    enabled: bool
     model: Optional[ModelConfig] = None
     provider: Optional[ProviderConfig] = None
     instructions: Optional[str] = None
     tracker: Optional[LDAIConfigTracker] = None
+    judge_configuration: Optional[JudgeConfiguration] = None
 
     def to_dict(self) -> Dict[str, Any]:
         """
-        Render the given agent as a dictionary object.
+        Render the given agent config as a dictionary object.
         """
         result: Dict[str, Any] = {
             '_ldMeta': {
-                'enabled': self.enabled or False,
+                'enabled': self.enabled,
             },
             'model': self.model.to_dict() if self.model else None,
             'provider': self.provider.to_dict() if self.provider else None,
         }
         if self.instructions is not None:
             result['instructions'] = self.instructions
+        if self.judge_configuration is not None:
+            result['judgeConfiguration'] = self.judge_configuration.to_dict()
+        return result
+
+
+# ============================================================================
+# Judge Config Types
+# ============================================================================
+
+@dataclass(frozen=True)
+class AIJudgeConfigDefault:
+    """
+    Default Judge-specific AI Config with required evaluation metric key.
+    """
+    enabled: Optional[bool] = None
+    model: Optional[ModelConfig] = None
+    messages: Optional[List[LDMessage]] = None
+    provider: Optional[ProviderConfig] = None
+    evaluation_metric_keys: Optional[List[str]] = None
+
+    def to_dict(self) -> dict:
+        """
+        Render the given judge config default as a dictionary object.
+        """
+        result = {
+            '_ldMeta': {
+                'enabled': self.enabled or False,
+            },
+            'model': self.model.to_dict() if self.model else None,
+            'messages': [message.to_dict() for message in self.messages] if self.messages else None,
+            'provider': self.provider.to_dict() if self.provider else None,
+        }
+        if self.evaluation_metric_keys is not None:
+            result['evaluationMetricKeys'] = self.evaluation_metric_keys
         return result
 
 
 @dataclass(frozen=True)
-class LDAIAgentDefaults:
+class AIJudgeConfig:
     """
-    Default values for AI agent configurations.
-
-    Similar to LDAIAgent but without tracker and with optional enabled field,
-    used as fallback values when agent configurations are not available.
+    Judge-specific AI Config with required evaluation metric key.
     """
-    enabled: Optional[bool] = None
+    enabled: bool
+    evaluation_metric_keys: List[str]
     model: Optional[ModelConfig] = None
+    messages: Optional[List[LDMessage]] = None
     provider: Optional[ProviderConfig] = None
-    instructions: Optional[str] = None
+    tracker: Optional[LDAIConfigTracker] = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict:
         """
-        Render the given agent defaults as a dictionary object.
+        Render the given judge config as a dictionary object.
         """
-        result: Dict[str, Any] = {
+        result = {
             '_ldMeta': {
-                'enabled': self.enabled or False,
+                'enabled': self.enabled,
             },
+            'evaluationMetricKeys': self.evaluation_metric_keys,
             'model': self.model.to_dict() if self.model else None,
+            'messages': [message.to_dict() for message in self.messages] if self.messages else None,
             'provider': self.provider.to_dict() if self.provider else None,
         }
-        if self.instructions is not None:
-            result['instructions'] = self.instructions
         return result
 
 
+# ============================================================================
+# Agent Request Config
+# ============================================================================
+
 @dataclass
-class LDAIAgentConfig:
+class AIAgentConfigRequest:
     """
-    Configuration for individual agent in batch requests.
+    Configuration for a single agent request.
 
     Combines agent key with its specific default configuration and variables.
     """
     key: str
-    default_value: LDAIAgentDefaults
+    default_value: AIAgentConfigDefault
     variables: Optional[Dict[str, Any]] = None
 
 
 # Type alias for multiple agents
-LDAIAgents = Dict[str, LDAIAgent]
+AIAgents = Dict[str, AIAgentConfig]
 
