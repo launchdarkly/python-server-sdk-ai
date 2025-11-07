@@ -1,6 +1,6 @@
 import warnings
 from dataclasses import dataclass
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional, Union
 
 from ldai.tracker import LDAIConfigTracker
 
@@ -333,6 +333,9 @@ class AIAgentConfigRequest:
 
 # Type alias for multiple agents
 AIAgents = Dict[str, AIAgentConfig]
+
+# Type alias for all AI Config variants
+AIConfigKind = Union[AIAgentConfig, AICompletionConfig, AIJudgeConfig]
 
 
 # ============================================================================
