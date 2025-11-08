@@ -1,5 +1,5 @@
 import warnings
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Dict, List, Literal, Optional, Union
 
 from ldai.tracker import LDAIConfigTracker
@@ -302,7 +302,7 @@ class AIJudgeConfig(AIConfig):
     """
     Judge-specific AI Config with required evaluation metric key.
     """
-    evaluation_metric_keys: List[str]
+    evaluation_metric_keys: List[str] = field(default_factory=list)
     messages: Optional[List[LDMessage]] = None
 
     def to_dict(self) -> dict:
