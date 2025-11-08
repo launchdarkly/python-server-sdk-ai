@@ -1,3 +1,4 @@
+import logging
 from typing import Any, Dict, List, Optional, Tuple
 
 import chevron
@@ -29,6 +30,7 @@ class LDAIClient:
 
     def __init__(self, client: LDClient):
         self._client = client
+        self._logger = logging.getLogger('ldclient.ai')
 
     def completion_config(
         self,
@@ -184,11 +186,11 @@ class LDAIClient:
                 return None
 
             # Create AI provider for the judge
-            provider = await AIProviderFactory.create(judge_config, None, default_ai_provider)
+            provider = await AIProviderFactory.create(judge_config, self._logger, default_ai_provider)
             if not provider:
                 return None
 
-            return AIJudge(judge_config, judge_config.tracker, provider, None)
+            return AIJudge(judge_config, judge_config.tracker, provider, self._logger)
         except Exception as error:
             # Would log error if logger available
             return None
@@ -279,14 +281,15 @@ class LDAIClient:
                 print(f"Conversation has {len(messages)} messages")
         """
         self._client.track('$ld:ai:config:function:createChat', context, key, 1)
-
+        if self._logger:
+            self._logger.debug(f"Creating chat for key: {key}")
         config = self.completion_config(key, context, default_value, variables)
 
         if not config.enabled or not config.tracker:
             # Would log info if logger available
             return None
 
-        provider = await AIProviderFactory.create(config, None, default_ai_provider)
+        provider = await AIProviderFactory.create(config, self._logger, default_ai_provider)
         if not provider:
             return None
 
@@ -299,7 +302,7 @@ class LDAIClient:
                 default_ai_provider,
             )
 
-        return TrackedChat(config, config.tracker, provider, judges, None)
+        return TrackedChat(config, config.tracker, provider, judges, self._logger)
 
     def agent_config(
         self,
