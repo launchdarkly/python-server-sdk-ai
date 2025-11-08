@@ -18,6 +18,8 @@ class EvaluationSchemaBuilder:
         :return: Schema dictionary for structured output
         """
         return {
+            'title': 'EvaluationResponse',
+            'description': f"Response containing evaluation results for {', '.join(evaluation_metric_keys)} metrics",
             'type': 'object',
             'properties': {
                 'evaluations': {
