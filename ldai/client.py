@@ -4,6 +4,7 @@ import chevron
 from ldclient import Context
 from ldclient.client import LDClient
 
+from ldai.chat import TrackedChat
 from ldai.judge import AIJudge
 from ldai.models import (
     AIAgentConfig,
@@ -191,6 +192,114 @@ class LDAIClient:
         except Exception as error:
             # Would log error if logger available
             return None
+
+    async def _initialize_judges(
+        self,
+        judge_configs: List[JudgeConfiguration.Judge],
+        context: Context,
+        variables: Optional[Dict[str, Any]] = None,
+        default_ai_provider: Optional[SupportedAIProvider] = None,
+    ) -> Dict[str, AIJudge]:
+        """
+        Initialize judges from judge configurations.
+        
+        :param judge_configs: List of judge configurations
+        :param context: Standard Context used when evaluating flags
+        :param variables: Dictionary of values for instruction interpolation
+        :param default_ai_provider: Optional default AI provider to use
+        :return: Dictionary of judge instances keyed by their configuration keys
+        """
+        judges: Dict[str, AIJudge] = {}
+        
+        async def create_judge_for_config(judge_key: str):
+            judge = await self.create_judge(
+                judge_key,
+                context,
+                AIJudgeConfigDefault(enabled=False),
+                variables,
+                default_ai_provider,
+            )
+            return judge_key, judge
+        
+        judge_promises = [
+            create_judge_for_config(judge_config.key)
+            for judge_config in judge_configs
+        ]
+        
+        import asyncio
+        results = await asyncio.gather(*judge_promises, return_exceptions=True)
+        
+        for result in results:
+            if isinstance(result, Exception):
+                continue
+            judge_key, judge = result
+            if judge:
+                judges[judge_key] = judge
+        
+        return judges
+
+    async def create_chat(
+        self,
+        key: str,
+        context: Context,
+        default_value: AICompletionConfigDefault,
+        variables: Optional[Dict[str, Any]] = None,
+        default_ai_provider: Optional[SupportedAIProvider] = None,
+    ) -> Optional[TrackedChat]:
+        """
+        Creates and returns a new TrackedChat instance for AI chat conversations.
+
+        :param key: The key identifying the AI completion configuration to use
+        :param context: Standard Context used when evaluating flags
+        :param default_value: A default value representing a standard AI config result
+        :param variables: Dictionary of values for instruction interpolation
+        :param default_ai_provider: Optional default AI provider to use
+        :return: TrackedChat instance or None if disabled/unsupported
+
+        Example::
+
+            chat = await client.create_chat(
+                "customer-support-chat",
+                context,
+                AICompletionConfigDefault(
+                    enabled=True,
+                    model=ModelConfig("gpt-4"),
+                    provider=ProviderConfig("openai"),
+                    messages=[LDMessage(role='system', content='You are a helpful assistant.')]
+                ),
+                variables={'customerName': 'John'}
+            )
+
+            if chat:
+                response = await chat.invoke("I need help with my order")
+                print(response.message.content)
+                
+                # Access conversation history
+                messages = chat.get_messages()
+                print(f"Conversation has {len(messages)} messages")
+        """
+        self._client.track('$ld:ai:config:function:createChat', context, key, 1)
+
+        config = self.completion_config(key, context, default_value, variables)
+
+        if not config.enabled or not config.tracker:
+            # Would log info if logger available
+            return None
+
+        provider = await AIProviderFactory.create(config, None, default_ai_provider)
+        if not provider:
+            return None
+
+        judges = {}
+        if config.judge_configuration and config.judge_configuration.judges:
+            judges = await self._initialize_judges(
+                config.judge_configuration.judges,
+                context,
+                variables,
+                default_ai_provider,
+            )
+
+        return TrackedChat(config, config.tracker, provider, judges, None)
 
     def agent_config(
         self,

@@ -27,6 +27,9 @@ from ldai.models import (
 # Export judge
 from ldai.judge import AIJudge
 
+# Export chat
+from ldai.chat import TrackedChat
+
 # Export judge types
 from ldai.providers.types import EvalScore, JudgeResponse
 
@@ -41,6 +44,7 @@ __all__ = [
     'AIJudgeConfig',
     'AIJudgeConfigDefault',
     'AIJudge',
+    'TrackedChat',
     'EvalScore',
     'JudgeConfiguration',
     'JudgeResponse',
