@@ -106,29 +106,29 @@ class ProviderConfig:
 # ============================================================================
 
 @dataclass(frozen=True)
-class Judge:
-    """
-    Configuration for a single judge attachment.
-    """
-    key: str
-    sampling_rate: float
-
-    def to_dict(self) -> dict:
-        """
-        Render the judge as a dictionary object.
-        """
-        return {
-            'key': self.key,
-            'samplingRate': self.sampling_rate,
-        }
-
-
-@dataclass(frozen=True)
 class JudgeConfiguration:
     """
     Configuration for judge attachment to AI Configs.
     """
-    judges: List[Judge]
+    
+    @dataclass(frozen=True)
+    class Judge:
+        """
+        Configuration for a single judge attachment.
+        """
+        key: str
+        sampling_rate: float
+
+        def to_dict(self) -> dict:
+            """
+            Render the judge as a dictionary object.
+            """
+            return {
+                'key': self.key,
+                'samplingRate': self.sampling_rate,
+            }
+    
+    judges: List['JudgeConfiguration.Judge']
 
     def to_dict(self) -> dict:
         """

@@ -13,7 +13,6 @@ from ldai.models import (
     AICompletionConfigDefault,
     AIJudgeConfig,
     AIJudgeConfigDefault,
-    Judge,
     JudgeConfiguration,
     LDMessage,
     ModelConfig,
@@ -25,6 +24,12 @@ from ldai.models import (
     LDAIAgentDefaults,
 )
 
+# Export judge
+from ldai.judge import AIJudge
+
+# Export judge types
+from ldai.providers.types import EvalScore, JudgeResponse
+
 __all__ = [
     'LDAIClient',
     'AIAgentConfig',
@@ -35,8 +40,10 @@ __all__ = [
     'AICompletionConfigDefault',
     'AIJudgeConfig',
     'AIJudgeConfigDefault',
-    'Judge',
+    'AIJudge',
+    'EvalScore',
     'JudgeConfiguration',
+    'JudgeResponse',
     'LDMessage',
     'ModelConfig',
     'ProviderConfig',

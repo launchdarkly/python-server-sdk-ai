@@ -4,6 +4,7 @@ import chevron
 from ldclient import Context
 from ldclient.client import LDClient
 
+from ldai.judge import AIJudge
 from ldai.models import (
     AIAgentConfig,
     AIAgentConfigDefault,
@@ -13,12 +14,12 @@ from ldai.models import (
     AICompletionConfigDefault,
     AIJudgeConfig,
     AIJudgeConfigDefault,
-    Judge,
     JudgeConfiguration,
     LDMessage,
     ModelConfig,
     ProviderConfig,
 )
+from ldai.providers.ai_provider_factory import AIProviderFactory, SupportedAIProvider
 from ldai.tracker import LDAIConfigTracker
 
 
@@ -117,6 +118,79 @@ class LDAIClient:
         )
 
         return config
+
+    async def create_judge(
+        self,
+        key: str,
+        context: Context,
+        default_value: AIJudgeConfigDefault,
+        variables: Optional[Dict[str, Any]] = None,
+        default_ai_provider: Optional[SupportedAIProvider] = None,
+    ) -> Optional[AIJudge]:
+        """
+        Creates and returns a new Judge instance for AI evaluation.
+
+        :param key: The key identifying the AI judge configuration to use
+        :param context: Standard Context used when evaluating flags
+        :param default_value: A default value representing a standard AI config result
+        :param variables: Dictionary of values for instruction interpolation.
+            The variables `message_history` and `response_to_evaluate` are reserved for the judge and will be ignored.
+        :param default_ai_provider: Optional default AI provider to use.
+        :return: Judge instance or None if disabled/unsupported
+
+        Example::
+
+            judge = client.create_judge(
+                "relevance-judge",
+                context,
+                AIJudgeConfigDefault(
+                    enabled=True,
+                    model=ModelConfig("gpt-4"),
+                    provider=ProviderConfig("openai"),
+                    evaluation_metric_keys=['$ld:ai:judge:relevance'],
+                    messages=[LDMessage(role='system', content='You are a relevance judge.')]
+                ),
+                variables={'metric': "relevance"}
+            )
+
+            if judge:
+                result = await judge.evaluate("User question", "AI response")
+                if result and result.evals:
+                    relevance_eval = result.evals.get('$ld:ai:judge:relevance')
+                    if relevance_eval:
+                        print('Relevance score:', relevance_eval.score)
+        """
+        self._client.track('$ld:ai:judge:function:createJudge', context, key, 1)
+
+        try:
+            # Warn if reserved variables are provided
+            if variables:
+                if 'message_history' in variables:
+                    # Note: Python doesn't have a logger on the client, but we could add one
+                    pass  # Would log warning if logger available
+                if 'response_to_evaluate' in variables:
+                    pass  # Would log warning if logger available
+
+            # Overwrite reserved variables to ensure they remain as placeholders for judge evaluation
+            extended_variables = dict(variables) if variables else {}
+            extended_variables['message_history'] = '{{message_history}}'
+            extended_variables['response_to_evaluate'] = '{{response_to_evaluate}}'
+
+            judge_config = self.judge_config(key, context, default_value, extended_variables)
+
+            if not judge_config.enabled or not judge_config.tracker:
+                # Would log info if logger available
+                return None
+
+            # Create AI provider for the judge
+            provider = await AIProviderFactory.create(judge_config, None, default_ai_provider)
+            if not provider:
+                return None
+
+            return AIJudge(judge_config, judge_config.tracker, provider, None)
+        except Exception as error:
+            # Would log error if logger available
+            return None
 
     def agent_config(
         self,
@@ -337,7 +411,7 @@ class LDAIClient:
             judge_config = variation['judgeConfiguration']
             if 'judges' in judge_config and isinstance(judge_config['judges'], list):
                 judges = [
-                    Judge(
+                    JudgeConfiguration.Judge(
                         key=judge['key'],
                         sampling_rate=judge['samplingRate']
                     )
