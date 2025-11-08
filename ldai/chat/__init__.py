@@ -1,5 +1,6 @@
 """TrackedChat implementation for managing AI chat conversations."""
 
+import asyncio
 from typing import Any, Dict, List, Optional
 
 from ldai.models import AICompletionConfig, LDMessage
@@ -65,39 +66,39 @@ class TrackedChat:
             lambda: self._provider.invoke_model(all_messages),
         )
 
-        # Evaluate with judges if configured
+        # Start judge evaluations as async tasks (don't await them)
         if (
             self._ai_config.judge_configuration
             and self._ai_config.judge_configuration.judges
             and len(self._ai_config.judge_configuration.judges) > 0
         ):
-            evaluations = await self._evaluate_with_judges(self._messages, response)
-            response.evaluations = evaluations
+            evaluation_tasks = self._start_judge_evaluations(self._messages, response)
+            response.evaluations = evaluation_tasks
 
         # Add the response message to conversation history
         self._messages.append(response.message)
         return response
 
-    async def _evaluate_with_judges(
+    def _start_judge_evaluations(
         self,
         messages: List[LDMessage],
         response: ChatResponse,
-    ) -> List[Optional[JudgeResponse]]:
+    ) -> List[asyncio.Task[Optional[JudgeResponse]]]:
         """
-        Evaluates the response with all configured judges.
+        Start judge evaluations as async tasks without awaiting them.
         
-        Returns a list of evaluation results.
+        Returns a list of async tasks that can be awaited later.
         
         :param messages: Array of messages representing the conversation history
         :param response: The AI response to be evaluated
-        :return: List of judge evaluation results (may contain None for failed evaluations)
+        :return: List of async tasks that will return judge evaluation results
         """
         if not self._ai_config.judge_configuration or not self._ai_config.judge_configuration.judges:
             return []
 
         judge_configs = self._ai_config.judge_configuration.judges
 
-        # Start all judge evaluations in parallel
+        # Start all judge evaluations as tasks
         async def evaluate_judge(judge_config):
             judge = self._judges.get(judge_config.key)
             if not judge:
@@ -116,16 +117,13 @@ class TrackedChat:
 
             return eval_result
 
-        # Ensure all evaluations complete even if some fail
-        import asyncio
-        evaluation_promises = [evaluate_judge(judge_config) for judge_config in judge_configs]
-        results = await asyncio.gather(*evaluation_promises, return_exceptions=True)
-        
-        # Map exceptions to None
-        return [
-            None if isinstance(result, Exception) else result
-            for result in results
+        # Create tasks for each judge evaluation
+        tasks = [
+            asyncio.create_task(evaluate_judge(judge_config))
+            for judge_config in judge_configs
         ]
+        
+        return tasks
 
     def get_config(self) -> AICompletionConfig:
         """
