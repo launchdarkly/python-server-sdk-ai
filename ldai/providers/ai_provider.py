@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional, Union
 
 from ldai.models import AIConfigKind, LDMessage
-from ldai.providers.types import ChatResponse, StructuredResponse
+from ldai.providers.types import ChatResponse, LDAIMetrics, StructuredResponse
 
 
 class AIProvider(ABC):
@@ -42,9 +42,6 @@ class AIProvider(ABC):
         if self.logger:
             self.logger.warn('invokeModel not implemented by this provider')
         
-        from ldai.models import LDMessage
-        from ldai.providers.types import LDAIMetrics
-        
         return ChatResponse(
             message=LDMessage(role='assistant', content=''),
             metrics=LDAIMetrics(success=False, usage=None),
@@ -70,8 +67,6 @@ class AIProvider(ABC):
         """
         if self.logger:
             self.logger.warn('invokeStructuredModel not implemented by this provider')
-        
-        from ldai.providers.types import LDAIMetrics
         
         return StructuredResponse(
             data={},
