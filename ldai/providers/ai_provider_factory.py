@@ -113,6 +113,8 @@ class AIProviderFactory:
                     )
                 return None
 
+        # TODO: REL-10773 OpenAI provider
+        # TODO: REL-10776 Vercel provider
         # For future external providers, use dynamic import
         provider_mappings = {
             # 'openai': ('launchdarkly_server_sdk_ai_openai', 'OpenAIProvider'),
