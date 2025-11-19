@@ -45,7 +45,8 @@ jobs:
 
       - name: Publish core package to PyPI
         if: ${{ inputs.dry_run == false }}
-        uses: pypa/gh-action-pypi-publish@release/v1
+        # https://github.com/pypa/gh-action-pypi-publish/releases/tag/v1.8.13
+        uses: pypa/gh-action-pypi-publish@3cc2c35166dfc1e5ea3bb0491ffdeedcaa50d7c
         with:
           password: ${{ env.PYPI_AUTH_TOKEN }}
           packages-dir: packages/core/dist/
@@ -79,7 +80,9 @@ jobs:
 
       - name: Publish langchain package to PyPI
         if: ${{ inputs.dry_run == false }}
-        uses: pypa/gh-action-pypi-publish@release/v1
+        # Pinned to v1.8.13 (2024-06-14) for security
+        # https://github.com/pypa/gh-action-pypi-publish/releases/tag/v1.8.13
+        uses: pypa/gh-action-pypi-publish@3cc2c35166dfc1e5ea3bb0491ffdeedcaa50d7c
         with:
           password: ${{ env.PYPI_AUTH_TOKEN }}
           packages-dir: packages/langchain/dist/
