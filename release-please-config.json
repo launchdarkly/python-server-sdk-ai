@@ -7,7 +7,7 @@
       "versioning": "default",
       "bump-minor-pre-major": true,
       "include-v-in-tag": false,
-      "extra-files": ["packages/core/ldai/__init__.py", "packages/core/PROVENANCE.md"],
+      "extra-files": ["packages/core/ldai/__init__.py", "PROVENANCE.md"],
       "include-component-in-tag": true,
       "component": "core"
     },
@@ -17,6 +17,7 @@
       "versioning": "default",
       "bump-minor-pre-major": true,
       "include-v-in-tag": false,
+      "extra-files": ["PROVENANCE.md"],
       "include-component-in-tag": true,
       "component": "langchain"
     }
