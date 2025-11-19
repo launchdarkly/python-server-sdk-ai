@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -223,7 +224,6 @@ class LDAIClient:
             for judge_config in judge_configs
         ]
 
-        import asyncio
         results = await asyncio.gather(*judge_promises, return_exceptions=True)
 
         for result in results:
