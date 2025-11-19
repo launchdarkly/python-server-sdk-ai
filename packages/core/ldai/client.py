@@ -48,7 +48,7 @@ class LDAIClient:
         )
 
         config = AICompletionConfig(
-            enabled=bool(enabled),
+            enabled=enabled,
             model=model,
             messages=messages,
             provider=provider,
@@ -105,7 +105,7 @@ class LDAIClient:
         evaluation_metric_keys = variation.get('evaluationMetricKeys', default_value.evaluation_metric_keys or [])
 
         config = AIJudgeConfig(
-            enabled=bool(enabled),
+            enabled=enabled,
             evaluation_metric_keys=evaluation_metric_keys,
             model=model,
             messages=messages,
@@ -553,7 +553,7 @@ class LDAIClient:
         final_instructions = instructions if instructions is not None else default_value.instructions
 
         return AIAgentConfig(
-            enabled=bool(enabled) if enabled is not None else (default_value.enabled or False),
+            enabled=enabled,
             model=model or default_value.model,
             provider=provider or default_value.provider,
             instructions=final_instructions,
