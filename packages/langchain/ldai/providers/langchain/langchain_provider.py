@@ -1,5 +1,7 @@
 """LangChain implementation of AIProvider for LaunchDarkly AI SDK."""
 
+import json
+import logging
 from typing import Any, Dict, List, Optional
 
 from langchain_core.language_models.chat_models import BaseChatModel
@@ -18,27 +20,25 @@ class LangChainProvider(AIProvider):
     This provider integrates LangChain models with LaunchDarkly's tracking capabilities.
     """
 
-    def __init__(self, llm: BaseChatModel, logger: Optional[Any] = None):
+    def __init__(self, llm: BaseChatModel):
         """
         Initialize the LangChain provider.
         
         :param llm: LangChain BaseChatModel instance
-        :param logger: Optional logger for logging provider operations
         """
-        super().__init__(logger)
+        super().__init__()
         self._llm = llm
 
     @staticmethod
-    async def create(ai_config: AIConfigKind, logger: Optional[Any] = None) -> 'LangChainProvider':
+    async def create(ai_config: AIConfigKind) -> 'LangChainProvider':
         """
         Static factory method to create a LangChain AIProvider from an AI configuration.
         
         :param ai_config: The LaunchDarkly AI configuration
-        :param logger: Optional logger for the provider
         :return: Configured LangChainProvider instance
         """
         llm = await LangChainProvider.create_langchain_model(ai_config)
-        return LangChainProvider(llm, logger)
+        return LangChainProvider(llm)
 
     async def invoke_model(self, messages: List[LDMessage]) -> ChatResponse:
         """
@@ -63,16 +63,14 @@ class LangChainProvider(AIProvider):
                 content = response.content
             else:
                 # Log warning for non-string content (likely multimodal)
-                if self.logger:
-                    self.logger.warn(
-                        f"Multimodal response not supported, expecting a string. "
-                        f"Content type: {type(response.content)}, Content: {response.content}"
-                    )
+                self._logger.warning(
+                    f"Multimodal response not supported, expecting a string. "
+                    f"Content type: {type(response.content)}, Content: {response.content}"
+                )
                 # Update metrics to reflect content loss
                 metrics.success = False
 
             # Create the assistant message
-            from ldai.models import LDMessage
             assistant_message = LDMessage(role='assistant', content=content)
 
             return ChatResponse(
@@ -80,10 +78,8 @@ class LangChainProvider(AIProvider):
                 metrics=metrics,
             )
         except Exception as error:
-            if self.logger:
-                self.logger.warn(f'LangChain model invocation failed: {error}')
+            self._logger.warning(f'LangChain model invocation failed: {error}')
 
-            from ldai.models import LDMessage
             return ChatResponse(
                 message=LDMessage(role='assistant', content=''),
                 metrics=LDAIMetrics(success=False, usage=None),
@@ -114,7 +110,6 @@ class LangChainProvider(AIProvider):
                 # Fallback: invoke normally and try to parse as JSON
                 response_obj = await self._llm.ainvoke(langchain_messages)
                 if isinstance(response_obj, AIMessage):
-                    import json
                     try:
                         response = json.loads(response_obj.content)
                     except json.JSONDecodeError:
@@ -128,15 +123,13 @@ class LangChainProvider(AIProvider):
                 usage=TokenUsage(total=0, input=0, output=0),
             )
 
-            import json
             return StructuredResponse(
                 data=response if isinstance(response, dict) else {'result': response},
                 raw_response=json.dumps(response) if not isinstance(response, str) else response,
                 metrics=metrics,
             )
         except Exception as error:
-            if self.logger:
-                self.logger.warn(f'LangChain structured model invocation failed: {error}')
+            self._logger.warning(f'LangChain structured model invocation failed: {error}')
 
             return StructuredResponse(
                 data={},
@@ -191,9 +184,9 @@ class LangChainProvider(AIProvider):
             token_usage = response.response_metadata.get('token_usage')
             if token_usage:
                 usage = TokenUsage(
-                    total=token_usage.get('total_tokens', 0) or token_usage.get('totalTokens', 0) or 0,
-                    input=token_usage.get('prompt_tokens', 0) or token_usage.get('promptTokens', 0) or 0,
-                    output=token_usage.get('completion_tokens', 0) or token_usage.get('completionTokens', 0) or 0,
+                    total=token_usage.get('total_tokens') or token_usage.get('totalTokens') or 0,
+                    input=token_usage.get('prompt_tokens') or token_usage.get('promptTokens') or 0,
+                    output=token_usage.get('completion_tokens') or token_usage.get('completionTokens') or 0,
                 )
 
         # LangChain responses that complete successfully are considered successful by default

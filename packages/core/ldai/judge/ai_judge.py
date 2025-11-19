@@ -1,7 +1,8 @@
 """Judge implementation for AI evaluation."""
 
+import logging
 import random
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 import chevron
 
@@ -26,7 +27,6 @@ class AIJudge:
         ai_config: AIJudgeConfig,
         ai_config_tracker: LDAIConfigTracker,
         ai_provider: AIProvider,
-        logger: Optional[Any] = None,
     ):
         """
         Initialize the Judge.
@@ -34,12 +34,11 @@ class AIJudge:
         :param ai_config: The judge AI configuration
         :param ai_config_tracker: The tracker for the judge configuration
         :param ai_provider: The AI provider to use for evaluation
-        :param logger: Optional logger for logging
         """
         self._ai_config = ai_config
         self._ai_config_tracker = ai_config_tracker
         self._ai_provider = ai_provider
-        self._logger = logger
+        self._logger = logging.getLogger(f'{__name__}.{self.__class__.__name__}')
         self._evaluation_response_structure = EvaluationSchemaBuilder.build(
             ai_config.evaluation_metric_keys
         )
@@ -60,20 +59,17 @@ class AIJudge:
         """
         try:
             if not self._ai_config.evaluation_metric_keys or len(self._ai_config.evaluation_metric_keys) == 0:
-                if self._logger:
-                    self._logger.warn(
-                        'Judge configuration is missing required evaluationMetricKeys'
-                    )
+                self._logger.warning(
+                    'Judge configuration is missing required evaluationMetricKeys'
+                )
                 return None
 
             if not self._ai_config.messages:
-                if self._logger:
-                    self._logger.warn('Judge configuration must include messages')
+                self._logger.warning('Judge configuration must include messages')
                 return None
 
             if random.random() > sampling_rate:
-                if self._logger:
-                    self._logger.debug(f'Judge evaluation skipped due to sampling rate: {sampling_rate}')
+                self._logger.debug(f'Judge evaluation skipped due to sampling rate: {sampling_rate}')
                 return None
 
             messages = self._construct_evaluation_messages(input_text, output_text)
@@ -89,8 +85,7 @@ class AIJudge:
             evals = self._parse_evaluation_response(response.data)
 
             if len(evals) != len(self._ai_config.evaluation_metric_keys):
-                if self._logger:
-                    self._logger.warn('Judge evaluation did not return all evaluations')
+                self._logger.warning('Judge evaluation did not return all evaluations')
                 success = False
 
             return JudgeResponse(
@@ -98,17 +93,16 @@ class AIJudge:
                 success=success,
             )
         except Exception as error:
-            if self._logger:
-                self._logger.error(f'Judge evaluation failed: {error}')
+            self._logger.error(f'Judge evaluation failed: {error}')
             return JudgeResponse(
                 evals={},
                 success=False,
-                error=str(error) if isinstance(error, Exception) else 'Unknown error',
+                error=str(error),
             )
 
     async def evaluate_messages(
         self,
-        messages: list[LDMessage],
+        messages: List[LDMessage],
         response: ChatResponse,
         sampling_ratio: float = 1.0,
     ) -> Optional[JudgeResponse]:
@@ -149,7 +143,7 @@ class AIJudge:
         """
         return self._ai_provider
 
-    def _construct_evaluation_messages(self, input_text: str, output_text: str) -> list[LDMessage]:
+    def _construct_evaluation_messages(self, input_text: str, output_text: str) -> List[LDMessage]:
         """
         Constructs evaluation messages by combining judge's config messages with input/output.
 
@@ -160,7 +154,7 @@ class AIJudge:
         if not self._ai_config.messages:
             return []
 
-        messages: list[LDMessage] = []
+        messages: List[LDMessage] = []
         for msg in self._ai_config.messages:
             # Interpolate message content with reserved variables
             content = self._interpolate_message(msg.content, {
@@ -192,8 +186,7 @@ class AIJudge:
         results: Dict[str, EvalScore] = {}
 
         if not data.get('evaluations') or not isinstance(data['evaluations'], dict):
-            if self._logger:
-                self._logger.warn('Invalid response: missing or invalid evaluations object')
+            self._logger.warning('Invalid response: missing or invalid evaluations object')
             return results
 
         evaluations = data['evaluations']
@@ -202,27 +195,24 @@ class AIJudge:
             evaluation = evaluations.get(metric_key)
 
             if not evaluation or not isinstance(evaluation, dict):
-                if self._logger:
-                    self._logger.warn(f'Missing evaluation for metric key: {metric_key}')
+                self._logger.warning(f'Missing evaluation for metric key: {metric_key}')
                 continue
 
             score = evaluation.get('score')
             reasoning = evaluation.get('reasoning')
 
             if not isinstance(score, (int, float)) or score < 0 or score > 1:
-                if self._logger:
-                    self._logger.warn(
-                        f'Invalid score evaluated for {metric_key}: {score}. '
-                        'Score must be a number between 0 and 1 inclusive'
-                    )
+                self._logger.warning(
+                    f'Invalid score evaluated for {metric_key}: {score}. '
+                    'Score must be a number between 0 and 1 inclusive'
+                )
                 continue
 
             if not isinstance(reasoning, str):
-                if self._logger:
-                    self._logger.warn(
-                        f'Invalid reasoning evaluated for {metric_key}: {reasoning}. '
-                        'Reasoning must be a string'
-                    )
+                self._logger.warning(
+                    f'Invalid reasoning evaluated for {metric_key}: {reasoning}. '
+                    'Reasoning must be a string'
+                )
                 continue
 
             results[metric_key] = EvalScore(score=float(score), reasoning=reasoning)

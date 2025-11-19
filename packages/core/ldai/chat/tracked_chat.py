@@ -1,7 +1,8 @@
 """TrackedChat implementation for managing AI chat conversations."""
 
 import asyncio
-from typing import Any, Dict, List, Optional
+import logging
+from typing import Dict, List, Optional
 
 from ldai.judge import AIJudge
 from ldai.models import AICompletionConfig, LDMessage
@@ -25,7 +26,6 @@ class TrackedChat:
         tracker: LDAIConfigTracker,
         provider: AIProvider,
         judges: Optional[Dict[str, AIJudge]] = None,
-        logger: Optional[Any] = None,
     ):
         """
         Initialize the TrackedChat.
@@ -34,13 +34,12 @@ class TrackedChat:
         :param tracker: The tracker for the completion configuration
         :param provider: The AI provider to use for chat
         :param judges: Optional dictionary of judge instances keyed by their configuration keys
-        :param logger: Optional logger for logging
         """
         self._ai_config = ai_config
         self._tracker = tracker
         self._provider = provider
         self._judges = judges or {}
-        self._logger = logger
+        self._logger = logging.getLogger(f'{__name__}.{self.__class__.__name__}')
         self._messages: List[LDMessage] = []
 
     async def invoke(self, prompt: str) -> ChatResponse:
@@ -99,10 +98,9 @@ class TrackedChat:
         async def evaluate_judge(judge_config):
             judge = self._judges.get(judge_config.key)
             if not judge:
-                if self._logger:
-                    self._logger.warn(
-                        f"Judge configuration is not enabled: {judge_config.key}",
-                    )
+                self._logger.warning(
+                    f"Judge configuration is not enabled: {judge_config.key}",
+                )
                 return None
 
             eval_result = await judge.evaluate_messages(

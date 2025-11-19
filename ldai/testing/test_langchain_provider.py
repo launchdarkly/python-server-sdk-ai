@@ -133,12 +133,17 @@ class TestInvokeModel:
         )
         mock_llm.ainvoke.return_value = mock_response
         
-        provider = LangChainProvider(mock_llm)
+        mock_logger = Mock()
+        provider = LangChainProvider(mock_llm, logger=mock_logger)
         messages = [LDMessage(role='user', content='Describe this image')]
         
         response = await provider.invoke_model(messages)
         
-        # Should mark as failure due to multimodal content not being supported
+        # Should warn about multimodal content
+        mock_logger.warn.assert_called_once()
+        assert 'Multimodal response not supported' in str(mock_logger.warn.call_args)
+        
+        # Should mark as failure
         assert response.metrics.success is False
         assert response.message.content == ''
 
@@ -148,10 +153,15 @@ class TestInvokeModel:
         mock_llm = AsyncMock()
         mock_llm.ainvoke.side_effect = Exception('Model API error')
         
-        provider = LangChainProvider(mock_llm)
+        mock_logger = Mock()
+        provider = LangChainProvider(mock_llm, logger=mock_logger)
         messages = [LDMessage(role='user', content='Hello')]
         
         response = await provider.invoke_model(messages)
+        
+        # Should log the error
+        mock_logger.warn.assert_called_once()
+        assert 'LangChain model invocation failed' in str(mock_logger.warn.call_args)
         
         # Should return failure response
         assert response.message.role == 'assistant'
@@ -209,11 +219,16 @@ class TestInvokeStructuredModel:
         mock_llm = Mock()
         mock_llm.with_structured_output.side_effect = Exception('Structured output error')
         
-        provider = LangChainProvider(mock_llm)
+        mock_logger = Mock()
+        provider = LangChainProvider(mock_llm, logger=mock_logger)
         messages = [LDMessage(role='user', content='Question')]
         schema = {'answer': 'string'}
         
         response = await provider.invoke_structured_model(messages, schema)
+        
+        # Should log the error
+        mock_logger.warn.assert_called_once()
+        assert 'LangChain structured model invocation failed' in str(mock_logger.warn.call_args)
         
         # Should return failure response
         assert response.data == {}

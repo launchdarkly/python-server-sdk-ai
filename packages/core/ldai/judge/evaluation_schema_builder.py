@@ -1,6 +1,6 @@
 """Internal class for building dynamic evaluation response schemas."""
 
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 
 class EvaluationSchemaBuilder:

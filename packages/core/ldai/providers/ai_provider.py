@@ -1,7 +1,8 @@
 """Abstract base class for AI providers."""
 
+import logging
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional
 
 from ldai.models import AIConfigKind, LDMessage
 from ldai.providers.types import ChatResponse, LDAIMetrics, StructuredResponse
@@ -18,13 +19,13 @@ class AIProvider(ABC):
     for better extensibility and backwards compatibility.
     """
 
-    def __init__(self, logger: Optional[Any] = None):
+    def __init__(self):
         """
         Initialize the AI provider.
-
-        :param logger: Optional logger for logging provider operations.
+        
+        Creates a logger for this provider instance.
         """
-        self.logger = logger
+        self._logger = logging.getLogger(f'{__name__}.{self.__class__.__name__}')
 
     async def invoke_model(self, messages: List[LDMessage]) -> ChatResponse:
         """
@@ -39,8 +40,7 @@ class AIProvider(ABC):
         :param messages: Array of LDMessage objects representing the conversation
         :return: ChatResponse containing the model's response
         """
-        if self.logger:
-            self.logger.warn('invokeModel not implemented by this provider')
+        self._logger.warning('invokeModel not implemented by this provider')
 
         return ChatResponse(
             message=LDMessage(role='assistant', content=''),
@@ -65,8 +65,7 @@ class AIProvider(ABC):
         :param response_structure: Dictionary of output configurations keyed by output name
         :return: StructuredResponse containing the structured data
         """
-        if self.logger:
-            self.logger.warn('invokeStructuredModel not implemented by this provider')
+        self._logger.warning('invokeStructuredModel not implemented by this provider')
 
         return StructuredResponse(
             data={},
@@ -76,7 +75,7 @@ class AIProvider(ABC):
 
     @staticmethod
     @abstractmethod
-    async def create(ai_config: AIConfigKind, logger: Optional[Any] = None) -> 'AIProvider':
+    async def create(ai_config: AIConfigKind) -> 'AIProvider':
         """
         Static method that constructs an instance of the provider.
 
@@ -84,7 +83,6 @@ class AIProvider(ABC):
         that accepts an AIConfigKind and returns a configured instance.
 
         :param ai_config: The LaunchDarkly AI configuration
-        :param logger: Optional logger for the provider
         :return: Configured provider instance
         """
         raise NotImplementedError('Provider implementations must override the static create method')

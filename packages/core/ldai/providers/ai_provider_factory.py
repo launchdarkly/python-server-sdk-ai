@@ -1,7 +1,8 @@
 """Factory for creating AIProvider instances based on the provider configuration."""
 
 import importlib
-from typing import Any, List, Literal, Optional, Type
+import logging
+from typing import List, Literal, Optional, Type
 
 from ldai.models import AIConfigKind
 from ldai.providers.ai_provider import AIProvider
@@ -21,10 +22,11 @@ class AIProviderFactory:
     Factory for creating AIProvider instances based on the provider configuration.
     """
 
+    _logger = logging.getLogger(__name__)
+
     @staticmethod
     async def create(
         ai_config: AIConfigKind,
-        logger: Optional[Any] = None,
         default_ai_provider: Optional[SupportedAIProvider] = None,
     ) -> Optional[AIProvider]:
         """
@@ -34,7 +36,6 @@ class AIProviderFactory:
         Returns None if the provider is not supported.
 
         :param ai_config: The AI configuration
-        :param logger: Optional logger for logging provider initialization
         :param default_ai_provider: Optional default AI provider to use
         :return: AIProvider instance or None if not supported
         """
@@ -44,15 +45,14 @@ class AIProviderFactory:
 
         # Try each provider in order
         for provider_type in providers_to_try:
-            provider = await AIProviderFactory._try_create_provider(provider_type, ai_config, logger)
+            provider = await AIProviderFactory._try_create_provider(provider_type, ai_config)
             if provider:
                 return provider
 
         # If no provider was successfully created, log a warning
-        if logger:
-            logger.warn(
-                f"Provider is not supported or failed to initialize: {provider_name or 'unknown'}"
-            )
+        AIProviderFactory._logger.warning(
+            f"Provider is not supported or failed to initialize: {provider_name or 'unknown'}"
+        )
         return None
 
     @staticmethod
@@ -89,27 +89,24 @@ class AIProviderFactory:
     async def _try_create_provider(
         provider_type: SupportedAIProvider,
         ai_config: AIConfigKind,
-        logger: Optional[Any] = None,
     ) -> Optional[AIProvider]:
         """
         Try to create a provider of the specified type.
 
         :param provider_type: Type of provider to create
         :param ai_config: AI configuration
-        :param logger: Optional logger
         :return: AIProvider instance or None if creation failed
         """
         # Handle built-in providers (part of this package)
         if provider_type == 'langchain':
             try:
                 from ldai.providers.langchain import LangChainProvider
-                return await LangChainProvider.create(ai_config, logger)
+                return await LangChainProvider.create(ai_config)
             except ImportError as error:
-                if logger:
-                    logger.warn(
-                        f"Error creating LangChainProvider: {error}. "
-                        f"Make sure langchain and langchain-core packages are installed."
-                    )
+                AIProviderFactory._logger.warning(
+                    f"Error creating LangChainProvider: {error}. "
+                    f"Make sure langchain and langchain-core packages are installed."
+                )
                 return None
 
         # TODO: REL-10773 OpenAI provider
@@ -125,7 +122,7 @@ class AIProviderFactory:
 
         package_name, provider_class_name = provider_mappings[provider_type]
         return await AIProviderFactory._create_provider(
-            package_name, provider_class_name, ai_config, logger
+            package_name, provider_class_name, ai_config
         )
 
     @staticmethod
@@ -133,7 +130,6 @@ class AIProviderFactory:
         package_name: str,
         provider_class_name: str,
         ai_config: AIConfigKind,
-        logger: Optional[Any] = None,
     ) -> Optional[AIProvider]:
         """
         Create a provider instance dynamically.
@@ -141,7 +137,6 @@ class AIProviderFactory:
         :param package_name: Name of the package containing the provider
         :param provider_class_name: Name of the provider class
         :param ai_config: AI configuration
-        :param logger: Optional logger
         :return: AIProvider instance or None if creation failed
         """
         try:
@@ -150,18 +145,16 @@ class AIProviderFactory:
             module = importlib.import_module(package_name)
             provider_class: Type[AIProvider] = getattr(module, provider_class_name)
 
-            provider = await provider_class.create(ai_config, logger)
-            if logger:
-                logger.debug(
-                    f"Successfully created AIProvider for: {ai_config.provider.name if ai_config.provider else 'unknown'} "
-                    f"with package {package_name}"
-                )
+            provider = await provider_class.create(ai_config)
+            AIProviderFactory._logger.debug(
+                f"Successfully created AIProvider for: {ai_config.provider.name if ai_config.provider else 'unknown'} "
+                f"with package {package_name}"
+            )
             return provider
         except (ImportError, AttributeError, Exception) as error:
             # If the provider is not available or creation fails, return None
-            if logger:
-                logger.warn(
-                    f"Error creating AIProvider for: {ai_config.provider.name if ai_config.provider else 'unknown'} "
-                    f"with package {package_name}: {error}"
-                )
+            AIProviderFactory._logger.warning(
+                f"Error creating AIProvider for: {ai_config.provider.name if ai_config.provider else 'unknown'} "
+                f"with package {package_name}: {error}"
+            )
             return None

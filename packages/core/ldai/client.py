@@ -158,31 +158,34 @@ class LDAIClient:
         self._client.track('$ld:ai:judge:function:createJudge', context, key, 1)
 
         try:
+            # Overwrite reserved variables to ensure they remain as placeholders for judge evaluation
+            extended_variables = dict(variables) if variables else {}
+            
             # Warn if reserved variables are provided
             if variables:
                 if 'message_history' in variables:
-                    # Note: Python doesn't have a logger on the client, but we could add one
-                    pass  # Would log warning if logger available
+                    self._logger.warning(
+                        'Variable "message_history" is reserved for judge evaluation and will be overwritten'
+                    )
                 if 'response_to_evaluate' in variables:
-                    pass  # Would log warning if logger available
-
-            # Overwrite reserved variables to ensure they remain as placeholders for judge evaluation
-            extended_variables = dict(variables) if variables else {}
+                    self._logger.warning(
+                        'Variable "response_to_evaluate" is reserved for judge evaluation and will be overwritten'
+                    )
+            
             extended_variables['message_history'] = '{{message_history}}'
             extended_variables['response_to_evaluate'] = '{{response_to_evaluate}}'
 
             judge_config = self.judge_config(key, context, default_value, extended_variables)
 
             if not judge_config.enabled or not judge_config.tracker:
-                # Would log info if logger available
                 return None
 
             # Create AI provider for the judge
-            provider = await AIProviderFactory.create(judge_config, self._logger, default_ai_provider)
+            provider = await AIProviderFactory.create(judge_config, default_ai_provider)
             if not provider:
                 return None
 
-            return AIJudge(judge_config, judge_config.tracker, provider, self._logger)
+            return AIJudge(judge_config, judge_config.tracker, provider)
         except Exception as error:
             # Would log error if logger available
             return None
@@ -278,10 +281,9 @@ class LDAIClient:
         config = self.completion_config(key, context, default_value, variables)
 
         if not config.enabled or not config.tracker:
-            # Would log info if logger available
             return None
 
-        provider = await AIProviderFactory.create(config, self._logger, default_ai_provider)
+        provider = await AIProviderFactory.create(config, default_ai_provider)
         if not provider:
             return None
 
@@ -294,7 +296,7 @@ class LDAIClient:
                 default_ai_provider,
             )
 
-        return TrackedChat(config, config.tracker, provider, judges, self._logger)
+        return TrackedChat(config, config.tracker, provider, judges)
 
     def agent_config(
         self,
