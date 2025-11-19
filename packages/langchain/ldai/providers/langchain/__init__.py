@@ -3,4 +3,3 @@
 from ldai.providers.langchain.langchain_provider import LangChainProvider
 
 __all__ = ['LangChainProvider']
-

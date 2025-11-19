@@ -160,7 +160,7 @@ class LDAIClient:
         try:
             # Overwrite reserved variables to ensure they remain as placeholders for judge evaluation
             extended_variables = dict(variables) if variables else {}
-            
+
             # Warn if reserved variables are provided
             if variables:
                 if 'message_history' in variables:
@@ -171,7 +171,7 @@ class LDAIClient:
                     self._logger.warning(
                         'Variable "response_to_evaluate" is reserved for judge evaluation and will be overwritten'
                     )
-            
+
             extended_variables['message_history'] = '{{message_history}}'
             extended_variables['response_to_evaluate'] = '{{response_to_evaluate}}'
 

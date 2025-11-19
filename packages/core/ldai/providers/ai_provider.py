@@ -22,7 +22,7 @@ class AIProvider(ABC):
     def __init__(self):
         """
         Initialize the AI provider.
-        
+
         Creates a logger for this provider instance.
         """
         self._logger = logging.getLogger(f'{__name__}.{self.__class__.__name__}')
