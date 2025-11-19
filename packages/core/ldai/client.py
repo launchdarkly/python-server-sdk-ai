@@ -187,7 +187,7 @@ class LDAIClient:
 
             return AIJudge(judge_config, judge_config.tracker, provider)
         except Exception as error:
-            # Would log error if logger available
+            self._logger.error(f'Failed to create judge: {error}')
             return None
 
     async def _initialize_judges(
