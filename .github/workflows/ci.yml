@@ -43,6 +43,9 @@ jobs:
 
       - uses: ./.github/actions/build-docs
 
+      - name: Reinstall packages after build
+        run: make install
+
       - name: Run tests
         run: make test
 
