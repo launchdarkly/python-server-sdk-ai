@@ -13,7 +13,7 @@ class EvaluationSchemaBuilder:
     def build(evaluation_metric_keys: list[str]) -> Dict[str, Any]:
         """
         Build an evaluation response schema from evaluation metric keys.
-        
+
         :param evaluation_metric_keys: List of evaluation metric keys
         :return: Schema dictionary for structured output
         """
@@ -38,7 +38,7 @@ class EvaluationSchemaBuilder:
     def _build_key_properties(evaluation_metric_keys: list[str]) -> Dict[str, Any]:
         """
         Build properties for each evaluation metric key.
-        
+
         :param evaluation_metric_keys: List of evaluation metric keys
         :return: Dictionary of properties for each key
         """
@@ -51,7 +51,7 @@ class EvaluationSchemaBuilder:
     def _build_key_schema(key: str) -> Dict[str, Any]:
         """
         Build schema for a single evaluation metric key.
-        
+
         :param key: Evaluation metric key
         :return: Schema dictionary for the key
         """
@@ -72,4 +72,3 @@ class EvaluationSchemaBuilder:
             'required': ['score', 'reasoning'],
             'additionalProperties': False,
         }
-

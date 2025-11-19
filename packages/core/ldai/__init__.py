@@ -5,38 +5,21 @@ __version__ = "0.10.1"  # x-release-please-version
 # to extend ldai.providers.* even though ldai itself has an __init__.py
 import sys
 from pkgutil import extend_path
+
 __path__ = extend_path(__path__, __name__)
-
-# Export main client
-from ldai.client import LDAIClient
-
-# Export models for convenience
-from ldai.models import (
-    AIAgentConfig,
-    AIAgentConfigDefault,
-    AIAgentConfigRequest,
-    AIAgents,
-    AICompletionConfig,
-    AICompletionConfigDefault,
-    AIJudgeConfig,
-    AIJudgeConfigDefault,
-    JudgeConfiguration,
-    LDMessage,
-    ModelConfig,
-    ProviderConfig,
-    # Deprecated aliases for backward compatibility
-    AIConfig,
-    LDAIAgent,
-    LDAIAgentConfig,
-    LDAIAgentDefaults,
-)
-
-# Export judge
-from ldai.judge import AIJudge
 
 # Export chat
 from ldai.chat import TrackedChat
-
+# Export main client
+from ldai.client import LDAIClient
+# Export judge
+from ldai.judge import AIJudge
+# Export models for convenience
+from ldai.models import (  # Deprecated aliases for backward compatibility
+    AIAgentConfig, AIAgentConfigDefault, AIAgentConfigRequest, AIAgents,
+    AICompletionConfig, AICompletionConfigDefault, AIConfig, AIJudgeConfig,
+    AIJudgeConfigDefault, JudgeConfiguration, LDAIAgent, LDAIAgentConfig,
+    LDAIAgentDefaults, LDMessage, ModelConfig, ProviderConfig)
 # Export judge types
 from ldai.providers.types import EvalScore, JudgeResponse
 

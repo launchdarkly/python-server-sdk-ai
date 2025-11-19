@@ -3,10 +3,10 @@
 import asyncio
 from typing import Any, Dict, List, Optional
 
+from ldai.judge import AIJudge
 from ldai.models import AICompletionConfig, LDMessage
 from ldai.providers.ai_provider import AIProvider
 from ldai.providers.types import ChatResponse, JudgeResponse
-from ldai.judge import AIJudge
 from ldai.tracker import LDAIConfigTracker
 
 
@@ -14,7 +14,7 @@ class TrackedChat:
     """
     Concrete implementation of TrackedChat that provides chat functionality
     by delegating to an AIProvider implementation.
-    
+
     This class handles conversation management and tracking, while delegating
     the actual model invocation to the provider.
     """
@@ -29,7 +29,7 @@ class TrackedChat:
     ):
         """
         Initialize the TrackedChat.
-        
+
         :param ai_config: The completion AI configuration
         :param tracker: The tracker for the completion configuration
         :param provider: The AI provider to use for chat
@@ -46,9 +46,9 @@ class TrackedChat:
     async def invoke(self, prompt: str) -> ChatResponse:
         """
         Invoke the chat model with a prompt string.
-        
+
         This method handles conversation management and tracking, delegating to the provider's invoke_model method.
-        
+
         :param prompt: The user prompt to send to the chat model
         :return: ChatResponse containing the model's response and metrics
         """
@@ -83,9 +83,9 @@ class TrackedChat:
     ) -> List[asyncio.Task[Optional[JudgeResponse]]]:
         """
         Start judge evaluations as async tasks without awaiting them.
-        
+
         Returns a list of async tasks that can be awaited later.
-        
+
         :param messages: Array of messages representing the conversation history
         :param response: The AI response to be evaluated
         :return: List of async tasks that will return judge evaluation results
@@ -119,13 +119,13 @@ class TrackedChat:
             asyncio.create_task(evaluate_judge(judge_config))
             for judge_config in judge_configs
         ]
-        
+
         return tasks
 
     def get_config(self) -> AICompletionConfig:
         """
         Get the underlying AI configuration used to initialize this TrackedChat.
-        
+
         :return: The AI completion configuration
         """
         return self._ai_config
@@ -133,7 +133,7 @@ class TrackedChat:
     def get_tracker(self) -> LDAIConfigTracker:
         """
         Get the underlying AI configuration tracker used to initialize this TrackedChat.
-        
+
         :return: The tracker instance
         """
         return self._tracker
@@ -141,9 +141,9 @@ class TrackedChat:
     def get_provider(self) -> AIProvider:
         """
         Get the underlying AI provider instance.
-        
+
         This provides direct access to the provider for advanced use cases.
-        
+
         :return: The AI provider instance
         """
         return self._provider
@@ -151,9 +151,9 @@ class TrackedChat:
     def get_judges(self) -> Dict[str, AIJudge]:
         """
         Get the judges associated with this TrackedChat.
-        
+
         Returns a dictionary of judge instances keyed by their configuration keys.
-        
+
         :return: Dictionary of judge instances
         """
         return self._judges
@@ -161,10 +161,10 @@ class TrackedChat:
     def append_messages(self, messages: List[LDMessage]) -> None:
         """
         Append messages to the conversation history.
-        
+
         Adds messages to the conversation history without invoking the model,
         which is useful for managing multi-turn conversations or injecting context.
-        
+
         :param messages: Array of messages to append to the conversation history
         """
         self._messages.extend(messages)
@@ -172,7 +172,7 @@ class TrackedChat:
     def get_messages(self, include_config_messages: bool = False) -> List[LDMessage]:
         """
         Get all messages in the conversation history.
-        
+
         :param include_config_messages: Whether to include the config messages from the AIConfig.
                                        Defaults to False.
         :return: Array of messages. When include_config_messages is True, returns both config
@@ -183,4 +183,3 @@ class TrackedChat:
             config_messages = self._ai_config.messages or []
             return config_messages + self._messages
         return list(self._messages)
-

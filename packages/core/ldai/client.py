@@ -7,21 +7,13 @@ from ldclient.client import LDClient
 
 from ldai.chat import TrackedChat
 from ldai.judge import AIJudge
-from ldai.models import (
-    AIAgentConfig,
-    AIAgentConfigDefault,
-    AIAgentConfigRequest,
-    AIAgents,
-    AICompletionConfig,
-    AICompletionConfigDefault,
-    AIJudgeConfig,
-    AIJudgeConfigDefault,
-    JudgeConfiguration,
-    LDMessage,
-    ModelConfig,
-    ProviderConfig,
-)
-from ldai.providers.ai_provider_factory import AIProviderFactory, SupportedAIProvider
+from ldai.models import (AIAgentConfig, AIAgentConfigDefault,
+                         AIAgentConfigRequest, AIAgents, AICompletionConfig,
+                         AICompletionConfigDefault, AIJudgeConfig,
+                         AIJudgeConfigDefault, JudgeConfiguration, LDMessage,
+                         ModelConfig, ProviderConfig)
+from ldai.providers.ai_provider_factory import (AIProviderFactory,
+                                                SupportedAIProvider)
 from ldai.tracker import LDAIConfigTracker
 
 
@@ -204,7 +196,7 @@ class LDAIClient:
     ) -> Dict[str, AIJudge]:
         """
         Initialize judges from judge configurations.
-        
+
         :param judge_configs: List of judge configurations
         :param context: Standard Context used when evaluating flags
         :param variables: Dictionary of values for instruction interpolation
@@ -212,7 +204,7 @@ class LDAIClient:
         :return: Dictionary of judge instances keyed by their configuration keys
         """
         judges: Dict[str, AIJudge] = {}
-        
+
         async def create_judge_for_config(judge_key: str):
             judge = await self.create_judge(
                 judge_key,
@@ -222,22 +214,22 @@ class LDAIClient:
                 default_ai_provider,
             )
             return judge_key, judge
-        
+
         judge_promises = [
             create_judge_for_config(judge_config.key)
             for judge_config in judge_configs
         ]
-        
+
         import asyncio
         results = await asyncio.gather(*judge_promises, return_exceptions=True)
-        
+
         for result in results:
             if isinstance(result, Exception):
                 continue
-            judge_key, judge = result
+            judge_key, judge = result  # type: ignore[misc]
             if judge:
                 judges[judge_key] = judge
-        
+
         return judges
 
     async def create_chat(
@@ -275,7 +267,7 @@ class LDAIClient:
             if chat:
                 response = await chat.invoke("I need help with my order")
                 print(response.message.content)
-                
+
                 # Access conversation history
                 messages = chat.get_messages()
                 print(f"Conversation has {len(messages)} messages")

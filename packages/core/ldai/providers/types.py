@@ -89,4 +89,3 @@ class JudgeResponse:
         if self.error is not None:
             result['error'] = self.error
         return result
-

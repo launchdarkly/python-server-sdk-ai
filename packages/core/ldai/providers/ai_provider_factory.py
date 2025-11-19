@@ -6,7 +6,6 @@ from typing import Any, List, Literal, Optional, Type
 from ldai.models import AIConfigKind
 from ldai.providers.ai_provider import AIProvider
 
-
 # List of supported AI providers
 SUPPORTED_AI_PROVIDERS = [
     # Multi-provider packages should be last in the list
@@ -30,10 +29,10 @@ class AIProviderFactory:
     ) -> Optional[AIProvider]:
         """
         Create an AIProvider instance based on the AI configuration.
-        
+
         This method attempts to load provider-specific implementations dynamically.
         Returns None if the provider is not supported.
-        
+
         :param ai_config: The AI configuration
         :param logger: Optional logger for logging provider initialization
         :param default_ai_provider: Optional default AI provider to use
@@ -63,7 +62,7 @@ class AIProviderFactory:
     ) -> List[SupportedAIProvider]:
         """
         Determine which providers to try based on default_ai_provider and provider_name.
-        
+
         :param default_ai_provider: Optional default provider to use
         :param provider_name: Optional provider name from config
         :return: List of providers to try in order
@@ -84,7 +83,7 @@ class AIProviderFactory:
         for provider in multi_provider_packages:
             provider_set.add(provider)
 
-        return list(provider_set)
+        return list(provider_set)  # type: ignore[arg-type]
 
     @staticmethod
     async def _try_create_provider(
@@ -94,7 +93,7 @@ class AIProviderFactory:
     ) -> Optional[AIProvider]:
         """
         Try to create a provider of the specified type.
-        
+
         :param provider_type: Type of provider to create
         :param ai_config: AI configuration
         :param logger: Optional logger
@@ -138,7 +137,7 @@ class AIProviderFactory:
     ) -> Optional[AIProvider]:
         """
         Create a provider instance dynamically.
-        
+
         :param package_name: Name of the package containing the provider
         :param provider_class_name: Name of the provider class
         :param ai_config: AI configuration
@@ -166,4 +165,3 @@ class AIProviderFactory:
                     f"with package {package_name}: {error}"
                 )
             return None
-

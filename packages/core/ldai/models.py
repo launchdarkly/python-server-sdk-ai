@@ -110,7 +110,7 @@ class JudgeConfiguration:
     """
     Configuration for judge attachment to AI Configs.
     """
-    
+
     @dataclass(frozen=True)
     class Judge:
         """
@@ -127,7 +127,7 @@ class JudgeConfiguration:
                 'key': self.key,
                 'samplingRate': self.sampling_rate,
             }
-    
+
     judges: List['JudgeConfiguration.Judge']
 
     def to_dict(self) -> dict:
@@ -347,10 +347,9 @@ AIConfigKind = Union[AIAgentConfig, AICompletionConfig, AIJudgeConfig]
 # The old AIConfig had optional enabled, so it maps to AICompletionConfigDefault
 # The old AIConfig return type had required enabled, so it maps to AICompletionConfig
 
-# Deprecated: Use AICompletionConfigDefault instead
-# This was the old AIConfig with optional enabled (used as input/default)
-# Note: We map to AICompletionConfigDefault since the old AIConfig had optional enabled
-AIConfig = AICompletionConfigDefault
+# Note: AIConfig is now the base class for all config types (defined above at line 169)
+# For default configs (with optional enabled), use AICompletionConfigDefault instead
+# For required configs (with required enabled), use AICompletionConfig instead
 
 # Deprecated: Use AIAgentConfigDefault instead
 LDAIAgentDefaults = AIAgentConfigDefault
@@ -360,4 +359,3 @@ LDAIAgentConfig = AIAgentConfigRequest
 
 # Deprecated: Use AIAgentConfig instead (note: this was the old return type)
 LDAIAgent = AIAgentConfig
-
