@@ -28,7 +28,16 @@ jobs:
       - name: Install poetry
         uses: abatilo/actions-poetry@7b6d33e44b4f08d7021a1dee3c044e9c253d6439
 
-      - uses: ./.github/actions/build
+      - name: Build core package
+        uses: ./.github/actions/build
+        with:
+          package-path: packages/core
+
+      - name: Build langchain package
+        uses: ./.github/actions/build
+        with:
+          package-path: packages/langchain
+
       - uses: ./.github/actions/build-docs
 
       - name: Run tests
@@ -58,8 +67,8 @@ jobs:
       - name: Install poetry
         uses: abatilo/actions-poetry@7b6d33e44b4f08d7021a1dee3c044e9c253d6439
 
-      - name: Install requirements
-        run: poetry install
+      - name: Install packages
+        run: make install
 
       - name: Run tests
         run: make test
