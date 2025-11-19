@@ -28,6 +28,9 @@ jobs:
       - name: Install poetry
         uses: abatilo/actions-poetry@7b6d33e44b4f08d7021a1dee3c044e9c253d6439
 
+      - name: Install packages
+        run: make install
+
       - name: Build core package
         uses: ./.github/actions/build
         with:
