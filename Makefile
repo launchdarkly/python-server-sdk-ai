@@ -76,5 +76,4 @@ build-langchain: #! Build langchain package
 .PHONY: docs
 docs: #! Generate sphinx-based documentation
 	@cd packages/core && poetry install --with docs
-	@cd docs
-	@cd packages/core && poetry run $(SPHINXBUILD) -M html "$(SOURCEDIR)" "$(BUILDDIR)" $(SPHINXOPTS) $(O)
+	@cd packages/core && poetry run $(SPHINXBUILD) -M html "../../$(SOURCEDIR)" "../../$(BUILDDIR)" $(SPHINXOPTS) $(O)
