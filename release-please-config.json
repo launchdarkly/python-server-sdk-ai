@@ -1,12 +1,24 @@
 {
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
   "packages": {
-    ".": {
+    "packages/core": {
       "release-type": "python",
+      "package-name": "launchdarkly-server-sdk-ai",
       "versioning": "default",
       "bump-minor-pre-major": true,
       "include-v-in-tag": false,
-      "extra-files": ["ldai/__init__.py", "PROVENANCE.md"],
-      "include-component-in-tag": false
+      "extra-files": ["packages/core/ldai/__init__.py", "packages/core/PROVENANCE.md"],
+      "include-component-in-tag": true,
+      "component": "core"
+    },
+    "packages/langchain": {
+      "release-type": "python",
+      "package-name": "launchdarkly-server-sdk-ai-langchain",
+      "versioning": "default",
+      "bump-minor-pre-major": true,
+      "include-v-in-tag": false,
+      "include-component-in-tag": true,
+      "component": "langchain"
     }
   }
 }

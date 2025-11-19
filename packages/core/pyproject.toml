@@ -1,0 +1,69 @@
+[tool.poetry]
+name = "launchdarkly-server-sdk-ai"
+version = "0.10.1"
+description = "LaunchDarkly SDK for AI"
+authors = ["LaunchDarkly <dev@launchdarkly.com>"]
+license = "Apache-2.0"
+readme = "README.md"
+homepage = "https://docs.launchdarkly.com/sdk/ai/python"
+repository = "https://github.com/launchdarkly/python-server-sdk-ai"
+documentation = "https://launchdarkly-python-sdk-ai.readthedocs.io/en/latest/"
+classifiers = [
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development",
+    "Topic :: Software Development :: Libraries",
+]
+packages = [ { include = "ldai" } ]
+
+[tool.poetry.dependencies]
+python = ">=3.9,<4"
+launchdarkly-server-sdk = ">=9.4.0"
+chevron = "=0.14.0"
+
+
+[tool.poetry.group.dev.dependencies]
+pytest = ">=2.8"
+pytest-cov = ">=2.4.0"
+pytest-mypy = "==1.0.1"
+pytest-asyncio = ">=0.21.0"
+mypy = "==1.18.2"
+pycodestyle = "^2.12.1"
+isort = ">=5.13.2,<7.0.0"
+
+
+[tool.poetry.group.docs]
+optional = true
+
+[tool.poetry.group.docs.dependencies]
+sphinx = ">=6,<8"
+sphinx-rtd-theme = ">=1.3,<4.0"
+certifi = ">=2018.4.16"
+expiringdict = ">=1.1.4"
+pyrfc3339 = ">=1.0"
+jsonpickle = ">1.4.1"
+semver = ">=2.7.9"
+urllib3 = ">=1.26.0"
+jinja2 = "3.1.6"
+
+[tool.mypy]
+python_version = "3.9"
+ignore_missing_imports = true
+install_types = true
+non_interactive = true
+
+
+[tool.pytest.ini_options]
+addopts = ["-ra"]
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

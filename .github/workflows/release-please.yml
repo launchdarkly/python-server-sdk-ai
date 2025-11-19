@@ -5,36 +5,40 @@ on:
     branches: [ main ]
 
 jobs:
-  release-package:
+  release-please:
     runs-on: ubuntu-latest
     permissions:
-      id-token: write # Needed if using OIDC to get release secrets.
-      contents: write # Contents and pull-requests are for release-please to make releases.
+      contents: write
       pull-requests: write
     outputs:
-      release-created: ${{ steps.release.outputs.release_created }}
-      upload-tag-name: ${{ steps.release.outputs.tag_name }}
-      package-hashes: ${{ steps.build.outputs.package-hashes}}
+      releases_created: ${{ steps.release.outputs.releases_created }}
+      core_release_created: ${{ steps.release.outputs['packages/core--release_created'] }}
+      langchain_release_created: ${{ steps.release.outputs['packages/langchain--release_created'] }}
     steps:
       - uses: googleapis/release-please-action@v4
         id: release
-
-      - uses: actions/checkout@v4
-        if: ${{ steps.release.outputs.releases_created == 'true' }}
         with:
-          fetch-depth: 0 # If you only need the current version keep this.
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  release-core:
+    needs: release-please
+    if: ${{ needs.release-please.outputs.core_release_created == 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
 
       - uses: actions/setup-python@v5
-        if: ${{ steps.release.outputs.releases_created == 'true' }}
         with:
           python-version: 3.9
 
       - name: Install poetry
-        if: ${{ steps.release.outputs.releases_created == 'true' }}
         uses: abatilo/actions-poetry@7b6d33e44b4f08d7021a1dee3c044e9c253d6439
 
       - uses: launchdarkly/gh-actions/actions/release-secrets@release-secrets-v1.2.0
-        if: ${{ steps.release.outputs.releases_created == 'true' }}
         name: 'Get PyPI token'
         with:
           aws_assume_role: ${{ vars.AWS_ROLE_ARN }}
@@ -42,26 +46,47 @@ jobs:
 
       - uses: ./.github/actions/build
         id: build
-        if: ${{ steps.release.outputs.releases_created == 'true' }}
+        with:
+          package-path: packages/core
 
       - uses: ./.github/actions/build-docs
-        if: ${{ steps.release.outputs.releases_created == 'true' }}
 
-      - name: Publish package distributions to PyPI
-        if: ${{ steps.release.outputs.releases_created == 'true' }}
+      - name: Publish core package to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
-          password: ${{env.PYPI_AUTH_TOKEN}}
+          password: ${{ env.PYPI_AUTH_TOKEN }}
+          packages-dir: packages/core/dist/
 
-  release-provenance:
-    needs: [ 'release-package' ]
-    if: ${{ needs.release-package.outputs.release-created == 'true' }}
+  release-langchain:
+    needs: release-please
+    if: ${{ needs.release-please.outputs.langchain_release_created == 'true' }}
+    runs-on: ubuntu-latest
     permissions:
-      actions: read
       id-token: write
       contents: write
-    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v2.0.0
-    with:
-      base64-subjects: "${{ needs.release-package.outputs.package-hashes }}"
-      upload-assets: true
-      upload-tag-name: ${{ needs.release-package.outputs.upload-tag-name }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: 3.9
+
+      - name: Install poetry
+        uses: abatilo/actions-poetry@7b6d33e44b4f08d7021a1dee3c044e9c253d6439
+
+      - uses: launchdarkly/gh-actions/actions/release-secrets@release-secrets-v1.2.0
+        name: 'Get PyPI token'
+        with:
+          aws_assume_role: ${{ vars.AWS_ROLE_ARN }}
+          ssm_parameter_pairs: '/production/common/releasing/pypi/token = PYPI_AUTH_TOKEN'
+
+      - uses: ./.github/actions/build
+        id: build
+        with:
+          package-path: packages/langchain
+
+      - name: Publish langchain package to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          password: ${{ env.PYPI_AUTH_TOKEN }}
+          packages-dir: packages/langchain/dist/
