@@ -402,10 +402,11 @@ class LDAIClient:
         """
         # Track multiple agents usage
         agent_count = len(agent_configs)
+        config_keys = [config.key for config in agent_configs]
         self._client.track(
             "$ld:ai:agent:function:multiple",
             context,
-            agent_count,
+            {"configKeys": config_keys},
             agent_count
         )
 
