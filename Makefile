@@ -40,5 +40,4 @@ lint: install
 .PHONY: docs
 docs: #! Generate sphinx-based documentation
 	@cd packages/sdk/server-ai && poetry install --with docs
-	@cd docs
-	@cd packages/sdk/server-ai && poetry run $(SPHINXBUILD) -M html "$(SOURCEDIR)" "$(BUILDDIR)" $(SPHINXOPTS) $(O)
+	@cd packages/sdk/server-ai && poetry run $(SPHINXBUILD) -M html "../../../$(SOURCEDIR)" "../../../$(BUILDDIR)" $(SPHINXOPTS) $(O)
