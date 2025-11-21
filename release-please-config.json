@@ -1,6 +1,6 @@
 {
   "packages": {
-    ".": {
+    "packages/sdk/server-ai": {
       "release-type": "python",
       "versioning": "default",
       "bump-minor-pre-major": true,

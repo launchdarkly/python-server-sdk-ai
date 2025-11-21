@@ -15,7 +15,7 @@ help: #! Show this help message
 
 .PHONY: install
 install:
-	@poetry install
+	@cd packages/sdk/server-ai && poetry install
 
 #
 # Quality control checks
@@ -24,14 +24,14 @@ install:
 .PHONY: test
 test: #! Run unit tests
 test: install
-	@poetry run pytest $(PYTEST_FLAGS)
+	@cd packages/sdk/server-ai && poetry run pytest $(PYTEST_FLAGS)
 
 .PHONY: lint
 lint: #! Run type analysis and linting checks
 lint: install
-	@poetry run mypy ldai
-	@poetry run isort --check --atomic ldai
-	@poetry run pycodestyle ldai
+	@cd packages/sdk/server-ai && poetry run mypy src/ldai
+	@cd packages/sdk/server-ai && poetry run isort --check --atomic src/ldai
+	@cd packages/sdk/server-ai && poetry run pycodestyle src/ldai
 
 #
 # Documentation generation
@@ -39,6 +39,6 @@ lint: install
 
 .PHONY: docs
 docs: #! Generate sphinx-based documentation
-	@poetry install --with docs
+	@cd packages/sdk/server-ai && poetry install --with docs
 	@cd docs
-	@poetry run $(SPHINXBUILD) -M html "$(SOURCEDIR)" "$(BUILDDIR)" $(SPHINXOPTS) $(O)
+	@cd packages/sdk/server-ai && poetry run $(SPHINXBUILD) -M html "$(SOURCEDIR)" "$(BUILDDIR)" $(SPHINXOPTS) $(O)
