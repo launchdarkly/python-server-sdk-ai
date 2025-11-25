@@ -5,7 +5,7 @@
       "versioning": "default",
       "bump-minor-pre-major": true,
       "include-v-in-tag": false,
-      "extra-files": ["ldai/__init__.py", "PROVENANCE.md"],
+      "extra-files": ["src/ldai/__init__.py", "PROVENANCE.md"],
       "include-component-in-tag": false
     }
   }
