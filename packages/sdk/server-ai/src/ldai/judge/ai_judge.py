@@ -6,11 +6,11 @@ from typing import Any, Dict, List, Optional
 
 import chevron
 
+from ldai.chat.types import ChatResponse
 from ldai.judge.evaluation_schema_builder import EvaluationSchemaBuilder
-from ldai.judge.types import EvalScore, JudgeResponse
+from ldai.judge.types import EvalScore, JudgeResponse, StructuredResponse
 from ldai.models import AIJudgeConfig, LDMessage
 from ldai.providers.ai_provider import AIProvider
-from ldai.providers.types import ChatResponse, StructuredResponse
 from ldai.tracker import LDAIConfigTracker
 
 

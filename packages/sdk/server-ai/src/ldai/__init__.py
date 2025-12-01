@@ -9,11 +9,11 @@ from pkgutil import extend_path
 __path__ = extend_path(__path__, __name__)
 
 # Export chat
-from ldai.chat import TrackedChat
+from ldai.chat import ChatResponse, TrackedChat
 # Export main client
 from ldai.client import LDAIClient
 # Export judge
-from ldai.judge import AIJudge, EvalScore, JudgeResponse
+from ldai.judge import AIJudge, EvalScore, JudgeResponse, StructuredResponse
 # Export models for convenience
 from ldai.models import (  # Deprecated aliases for backward compatibility
     AIAgentConfig, AIAgentConfigDefault, AIAgentConfigRequest, AIAgents,
@@ -33,9 +33,11 @@ __all__ = [
     'AIJudgeConfigDefault',
     'AIJudge',
     'TrackedChat',
+    'ChatResponse',
     'EvalScore',
     'JudgeConfiguration',
     'JudgeResponse',
+    'StructuredResponse',
     'LDMessage',
     'ModelConfig',
     'ProviderConfig',

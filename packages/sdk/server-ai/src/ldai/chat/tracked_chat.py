@@ -4,11 +4,11 @@ import asyncio
 import logging
 from typing import Dict, List, Optional
 
+from ldai.chat.types import ChatResponse
 from ldai.judge import AIJudge
 from ldai.judge.types import JudgeResponse
 from ldai.models import AICompletionConfig, LDMessage
 from ldai.providers.ai_provider import AIProvider
-from ldai.providers.types import ChatResponse
 from ldai.tracker import LDAIConfigTracker
 
 

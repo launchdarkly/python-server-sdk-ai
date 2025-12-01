@@ -3,6 +3,8 @@
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
+from ldai.metrics import LDAIMetrics
+
 
 @dataclass
 class EvalScore:
@@ -42,3 +44,13 @@ class JudgeResponse:
         if self.error is not None:
             result['error'] = self.error
         return result
+
+
+@dataclass
+class StructuredResponse:
+    """
+    Structured response from AI models.
+    """
+    data: dict[str, Any]
+    raw_response: str
+    metrics: LDAIMetrics

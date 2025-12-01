@@ -1,4 +1,4 @@
-"""Types for AI provider responses."""
+"""Types for chat responses."""
 
 from dataclasses import dataclass
 from typing import Any, List, Optional
@@ -15,13 +15,3 @@ class ChatResponse:
     message: LDMessage
     metrics: LDAIMetrics
     evaluations: Optional[List[Any]] = None  # List of JudgeResponse, will be populated later
-
-
-@dataclass
-class StructuredResponse:
-    """
-    Structured response from AI models.
-    """
-    data: dict[str, Any]
-    raw_response: str
-    metrics: LDAIMetrics
