@@ -16,6 +16,7 @@ SUPPORTED_AI_PROVIDERS = [
 # Type representing the supported AI providers
 SupportedAIProvider = Literal['langchain']
 
+
 class AIProviderFactory:
     """
     Factory for creating AIProvider instances based on the provider configuration.
