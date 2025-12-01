@@ -6,4 +6,5 @@ runs:
   steps:
     - name: Build Documentation
       shell: bash
+      working-directory: packages/sdk/server-ai
       run: make docs

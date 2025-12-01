@@ -32,9 +32,11 @@ jobs:
       - uses: ./.github/actions/build-docs
 
       - name: Run tests
+        working-directory: packages/sdk/server-ai
         run: make test
 
       - name: Verify typehints
+        working-directory: packages/sdk/server-ai
         run: make lint
 
   windows:
@@ -63,4 +65,5 @@ jobs:
         run: poetry install
 
       - name: Run tests
+        working-directory: packages/sdk/server-ai
         run: make test
