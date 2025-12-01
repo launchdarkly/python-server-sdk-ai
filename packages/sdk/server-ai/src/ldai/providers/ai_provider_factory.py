@@ -16,7 +16,6 @@ SUPPORTED_AI_PROVIDERS = [
 # Type representing the supported AI providers
 SupportedAIProvider = Literal['langchain']
 
-
 class AIProviderFactory:
     """
     Factory for creating AIProvider instances based on the provider configuration.
@@ -108,9 +107,6 @@ class AIProviderFactory:
                     f"Make sure langchain and langchain-core packages are installed."
                 )
                 return None
-
-        # TODO: REL-10773 OpenAI provider
-        # TODO: REL-10776 Vercel provider
         # For future external providers, use dynamic import
         provider_mappings = {
             # 'openai': ('launchdarkly_server_sdk_ai_openai', 'OpenAIProvider'),
