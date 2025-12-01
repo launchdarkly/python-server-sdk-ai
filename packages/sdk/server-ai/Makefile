@@ -3,7 +3,7 @@ PYTEST_FLAGS=-W error::SyntaxWarning
 SPHINXOPTS    = -W --keep-going
 SPHINXBUILD   = sphinx-build
 SPHINXPROJ    = launchdarkly-server-sdk
-SOURCEDIR     = docs
+SOURCEDIR     = ../../../docs
 BUILDDIR      = $(SOURCEDIR)/build
 
 .PHONY: help
@@ -15,7 +15,7 @@ help: #! Show this help message
 
 .PHONY: install
 install:
-	@cd packages/sdk/server-ai && poetry install
+	poetry install
 
 #
 # Quality control checks
@@ -24,14 +24,14 @@ install:
 .PHONY: test
 test: #! Run unit tests
 test: install
-	@cd packages/sdk/server-ai && poetry run pytest $(PYTEST_FLAGS)
+	poetry run pytest $(PYTEST_FLAGS)
 
 .PHONY: lint
 lint: #! Run type analysis and linting checks
 lint: install
-	@cd packages/sdk/server-ai && poetry run mypy src/ldai
-	@cd packages/sdk/server-ai && poetry run isort --check --atomic src/ldai
-	@cd packages/sdk/server-ai && poetry run pycodestyle src/ldai
+	poetry run mypy src/ldai
+	poetry run isort --check --atomic src/ldai
+	poetry run pycodestyle src/ldai
 
 #
 # Documentation generation
@@ -39,5 +39,6 @@ lint: install
 
 .PHONY: docs
 docs: #! Generate sphinx-based documentation
-	@cd packages/sdk/server-ai && poetry install --with docs
-	@cd packages/sdk/server-ai && poetry run $(SPHINXBUILD) -M html "../../../$(SOURCEDIR)" "../../../$(BUILDDIR)" $(SPHINXOPTS) $(O)
+	poetry install --with docs
+	poetry run $(SPHINXBUILD) -M html "$(SOURCEDIR)" "$(BUILDDIR)" $(SPHINXOPTS) $(O)
+
