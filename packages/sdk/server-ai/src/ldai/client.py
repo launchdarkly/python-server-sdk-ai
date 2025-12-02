@@ -7,12 +7,12 @@ from ldclient import Context
 from ldclient.client import LDClient
 
 from ldai.chat import TrackedChat
+from ldai.config import LDMessage, ModelConfig, ProviderConfig
 from ldai.judge import AIJudge
 from ldai.models import (AIAgentConfig, AIAgentConfigDefault,
                          AIAgentConfigRequest, AIAgents, AICompletionConfig,
                          AICompletionConfigDefault, AIJudgeConfig,
-                         AIJudgeConfigDefault, JudgeConfiguration, LDMessage,
-                         ModelConfig, ProviderConfig)
+                         AIJudgeConfigDefault, JudgeConfiguration)
 from ldai.providers.ai_provider_factory import (AIProviderFactory,
                                                 SupportedAIProvider)
 from ldai.tracker import LDAIConfigTracker

@@ -3,8 +3,8 @@
 from dataclasses import dataclass
 from typing import Any, List, Optional
 
+from ldai.config.types import LDMessage
 from ldai.metrics import LDAIMetrics
-from ldai.models import LDMessage
 
 
 @dataclass

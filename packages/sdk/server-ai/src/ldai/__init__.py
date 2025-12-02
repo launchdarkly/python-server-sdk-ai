@@ -12,6 +12,7 @@ __path__ = extend_path(__path__, __name__)
 from ldai.chat import ChatResponse, TrackedChat
 # Export main client
 from ldai.client import LDAIClient
+from ldai.config import LDMessage, ModelConfig, ProviderConfig
 # Export judge
 from ldai.judge import AIJudge, EvalScore, JudgeResponse, StructuredResponse
 # Export models for convenience
@@ -19,7 +20,7 @@ from ldai.models import (  # Deprecated aliases for backward compatibility
     AIAgentConfig, AIAgentConfigDefault, AIAgentConfigRequest, AIAgents,
     AICompletionConfig, AICompletionConfigDefault, AIConfig, AIJudgeConfig,
     AIJudgeConfigDefault, JudgeConfiguration, LDAIAgent, LDAIAgentConfig,
-    LDAIAgentDefaults, LDMessage, ModelConfig, ProviderConfig)
+    LDAIAgentDefaults)
 
 __all__ = [
     'LDAIClient',

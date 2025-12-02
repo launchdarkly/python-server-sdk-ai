@@ -5,9 +5,10 @@ import logging
 from typing import Dict, List, Optional
 
 from ldai.chat.types import ChatResponse
+from ldai.config.types import LDMessage
 from ldai.judge import AIJudge
 from ldai.judge.types import JudgeResponse
-from ldai.models import AICompletionConfig, LDMessage
+from ldai.models import AICompletionConfig
 from ldai.providers.ai_provider import AIProvider
 from ldai.tracker import LDAIConfigTracker
 

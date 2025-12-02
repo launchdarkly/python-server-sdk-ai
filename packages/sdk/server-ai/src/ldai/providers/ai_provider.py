@@ -5,9 +5,10 @@ from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional
 
 from ldai.chat.types import ChatResponse
+from ldai.config.types import LDMessage
 from ldai.judge.types import StructuredResponse
 from ldai.metrics import LDAIMetrics
-from ldai.models import AIConfigKind, LDMessage
+from ldai.models import AIConfigKind
 
 
 class AIProvider(ABC):
