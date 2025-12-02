@@ -32,9 +32,11 @@ jobs:
       - uses: ./.github/actions/build-docs
 
       - name: Run tests
+        working-directory: packages/sdk/server-ai
         run: make test
 
       - name: Verify typehints
+        working-directory: packages/sdk/server-ai
         run: make lint
 
   windows:
@@ -59,7 +61,9 @@ jobs:
         uses: abatilo/actions-poetry@7b6d33e44b4f08d7021a1dee3c044e9c253d6439
 
       - name: Install requirements
+        working-directory: packages/sdk/server-ai
         run: poetry install
 
       - name: Run tests
+        working-directory: packages/sdk/server-ai
         run: make test

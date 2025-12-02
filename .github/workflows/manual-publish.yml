@@ -40,6 +40,7 @@ jobs:
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           password: ${{env.PYPI_AUTH_TOKEN}}
+          packages-dir: packages/sdk/server-ai/dist/
 
   release-provenance:
     needs: [ 'build-publish' ]

@@ -5,7 +5,8 @@ import pytest
 from ldclient import Config, Context, LDClient
 from ldclient.integrations.test_data import TestData
 
-from ldai.tracker import FeedbackKind, LDAIConfigTracker, TokenUsage
+from ldai.metrics import FeedbackKind, TokenUsage
+from ldai.tracker import LDAIConfigTracker
 
 
 @pytest.fixture
@@ -276,7 +277,8 @@ def test_tracks_bedrock_metrics_with_error(client: LDClient):
     assert tracker.get_summary().usage == TokenUsage(330, 220, 110)
 
 
-def test_tracks_openai_metrics(client: LDClient):
+@pytest.mark.asyncio
+async def test_tracks_openai_metrics(client: LDClient):
     context = Context.create("user-key")
     tracker = LDAIConfigTracker(client, "variation-key", "config-key", 3, "fakeModel", "fakeProvider", context)
 
@@ -292,7 +294,10 @@ def test_tracks_openai_metrics(client: LDClient):
                 "completion_tokens": 110,
             }
 
-    tracker.track_openai_metrics(lambda: Result())
+    async def get_result():
+        return Result()
+
+    await tracker.track_openai_metrics(get_result)
 
     calls = [
         call(
@@ -326,15 +331,16 @@ def test_tracks_openai_metrics(client: LDClient):
     assert tracker.get_summary().usage == TokenUsage(330, 220, 110)
 
 
-def test_tracks_openai_metrics_with_exception(client: LDClient):
+@pytest.mark.asyncio
+async def test_tracks_openai_metrics_with_exception(client: LDClient):
     context = Context.create("user-key")
     tracker = LDAIConfigTracker(client, "variation-key", "config-key", 3, "fakeModel", "fakeProvider", context)
 
-    def raise_exception():
+    async def raise_exception():
         raise ValueError("Something went wrong")
 
     try:
-        tracker.track_openai_metrics(raise_exception)
+        await tracker.track_openai_metrics(raise_exception)
         assert False, "Should have thrown an exception"
     except ValueError:
         pass

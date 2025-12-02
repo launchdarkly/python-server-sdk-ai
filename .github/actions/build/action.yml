@@ -10,10 +10,11 @@ runs:
   steps:
     - name: Build distribution files
       shell: bash
+      working-directory: packages/sdk/server-ai
       run: poetry build
     - name: Hash build files for provenance
       id: package-hashes
       shell: bash
-      working-directory: ./dist
+      working-directory: packages/sdk/server-ai/dist
       run: |
         echo "package-hashes=$(sha256sum * | base64 -w0)" >> "$GITHUB_OUTPUT"

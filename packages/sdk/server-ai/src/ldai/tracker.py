@@ -1,66 +1,9 @@
 import time
-from dataclasses import dataclass
-from enum import Enum
-from typing import Dict, Optional
+from typing import Any, Callable, Dict, Optional, TypeVar
 
 from ldclient import Context, LDClient
 
-
-class FeedbackKind(Enum):
-    """
-    Types of feedback that can be provided for AI operations.
-    """
-
-    Positive = "positive"
-    Negative = "negative"
-
-
-@dataclass
-class TokenUsage:
-    """
-    Tracks token usage for AI operations.
-
-    :param total: Total number of tokens used.
-    :param input: Number of tokens in the prompt.
-    :param output: Number of tokens in the completion.
-    """
-
-    total: int
-    input: int
-    output: int
-
-
-class LDAIMetricSummary:
-    """
-    Summary of metrics which have been tracked.
-    """
-
-    def __init__(self):
-        self._duration = None
-        self._success = None
-        self._feedback = None
-        self._usage = None
-        self._time_to_first_token = None
-
-    @property
-    def duration(self) -> Optional[int]:
-        return self._duration
-
-    @property
-    def success(self) -> Optional[bool]:
-        return self._success
-
-    @property
-    def feedback(self) -> Optional[Dict[str, FeedbackKind]]:
-        return self._feedback
-
-    @property
-    def usage(self) -> Optional[TokenUsage]:
-        return self._usage
-
-    @property
-    def time_to_first_token(self) -> Optional[int]:
-        return self._time_to_first_token
+from ldai.metrics import FeedbackKind, LDAIMetricSummary, TokenUsage
 
 
 class LDAIConfigTracker:
@@ -144,7 +87,7 @@ class LDAIConfigTracker:
         An exception occurring during the execution of the function will still
         track the duration. The exception will be re-thrown.
 
-        :param func: Function to track.
+        :param func: Function to track (synchronous only).
         :return: Result of the tracked function.
         """
         start_time = time.time()
@@ -156,6 +99,90 @@ class LDAIConfigTracker:
             self.track_duration(duration)
 
         return result
+
+    async def track_metrics_of(self, metrics_extractor, func):
+        """
+        Track metrics for a generic AI operation.
+
+        This function will track the duration of the operation, extract metrics using the provided
+        metrics extractor function, and track success or error status accordingly.
+
+        If the provided function throws, then this method will also throw.
+        In the case the provided function throws, this function will record the duration and an error.
+        A failed operation will not have any token usage data.
+
+        :param metrics_extractor: Function that extracts LDAIMetrics from the operation result
+        :param func: Async function which executes the operation
+        :return: The result of the operation
+        """
+        start_time = time.time()
+        result = None
+        try:
+            result = await func()
+        except Exception as err:
+            end_time = time.time()
+            duration = int((end_time - start_time) * 1000)
+            self.track_duration(duration)
+            self.track_error()
+            raise err
+
+        # Track duration after successful call
+        end_time = time.time()
+        duration = int((end_time - start_time) * 1000)
+        self.track_duration(duration)
+
+        # Extract metrics after successful AI call
+        from ldai.metrics import LDAIMetrics
+        metrics = metrics_extractor(result)
+
+        # Track success/error based on metrics
+        if metrics.success:
+            self.track_success()
+        else:
+            self.track_error()
+
+        # Track token usage if available
+        if metrics.usage:
+            self.track_tokens(metrics.usage)
+
+        return result
+
+    def track_eval_scores(self, scores: Dict[str, Any]) -> None:
+        """
+        Track evaluation scores for multiple metrics.
+
+        :param scores: Dictionary mapping metric keys to their evaluation scores (EvalScore objects)
+        """
+        from ldai.judge.types import EvalScore
+
+        # Track each evaluation score individually
+        for metric_key, eval_score in scores.items():
+            if isinstance(eval_score, EvalScore):
+                self._ld_client.track(
+                    metric_key,
+                    self._context,
+                    self.__get_track_data(),
+                    eval_score.score
+                )
+
+    def track_judge_response(self, judge_response: Any) -> None:
+        """
+        Track a judge response, including evaluation scores and success status.
+
+        :param judge_response: JudgeResponse object containing evals and success status
+        """
+        from ldai.judge.types import JudgeResponse
+
+        if isinstance(judge_response, JudgeResponse):
+            # Track evaluation scores
+            if judge_response.evals:
+                self.track_eval_scores(judge_response.evals)
+
+            # Track success/error based on judge response
+            if judge_response.success:
+                self.track_success()
+            else:
+                self.track_error()
 
     def track_feedback(self, feedback: Dict[str, FeedbackKind]) -> None:
         """
@@ -197,7 +224,7 @@ class LDAIConfigTracker:
             "$ld:ai:generation:error", self._context, self.__get_track_data(), 1
         )
 
-    def track_openai_metrics(self, func):
+    async def track_openai_metrics(self, func):
         """
         Track OpenAI-specific operations.
 
@@ -211,15 +238,22 @@ class LDAIConfigTracker:
 
         A failed operation will not have any token usage data.
 
-        :param func: Function to track.
+        :param func: Async function to track.
         :return: Result of the tracked function.
         """
+        start_time = time.time()
         try:
-            result = self.track_duration_of(func)
+            result = await func()
+            end_time = time.time()
+            duration = int((end_time - start_time) * 1000)
+            self.track_duration(duration)
             self.track_success()
             if hasattr(result, "usage") and hasattr(result.usage, "to_dict"):
                 self.track_tokens(_openai_to_token_usage(result.usage.to_dict()))
         except Exception:
+            end_time = time.time()
+            duration = int((end_time - start_time) * 1000)
+            self.track_duration(duration)
             self.track_error()
             raise
 
