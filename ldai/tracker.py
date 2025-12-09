@@ -211,7 +211,7 @@ class LDAIConfigTracker:
         :param scores: Dictionary mapping metric keys to their evaluation scores (EvalScore objects)
         """
         from ldai.providers.types import EvalScore
-        
+
         # Track each evaluation score individually
         for metric_key, eval_score in scores.items():
             if isinstance(eval_score, EvalScore):
@@ -229,12 +229,12 @@ class LDAIConfigTracker:
         :param judge_response: JudgeResponse object containing evals and success status
         """
         from ldai.providers.types import JudgeResponse
-        
+
         if isinstance(judge_response, JudgeResponse):
             # Track evaluation scores
             if judge_response.evals:
                 self.track_eval_scores(judge_response.evals)
-            
+
             # Track success/error based on judge response
             if judge_response.success:
                 self.track_success()

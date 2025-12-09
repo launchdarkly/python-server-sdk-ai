@@ -110,7 +110,7 @@ class JudgeConfiguration:
     """
     Configuration for judge attachment to AI Configs.
     """
-    
+
     @dataclass(frozen=True)
     class Judge:
         """
@@ -127,7 +127,7 @@ class JudgeConfiguration:
                 'key': self.key,
                 'samplingRate': self.sampling_rate,
             }
-    
+
     judges: List['JudgeConfiguration.Judge']
 
     def to_dict(self) -> dict:
@@ -342,15 +342,10 @@ AIConfigKind = Union[AIAgentConfig, AICompletionConfig, AIJudgeConfig]
 # Deprecated Type Aliases for Backward Compatibility
 # ============================================================================
 
-# Note: These are type aliases that point to the new types.
-# Since Python uses duck typing, these will work at runtime even if type checkers complain.
-# The old AIConfig had optional enabled, so it maps to AICompletionConfigDefault
-# The old AIConfig return type had required enabled, so it maps to AICompletionConfig
-
-# Deprecated: Use AICompletionConfigDefault instead
-# This was the old AIConfig with optional enabled (used as input/default)
-# Note: We map to AICompletionConfigDefault since the old AIConfig had optional enabled
-AIConfig = AICompletionConfigDefault
+# Note: AIConfig is now defined above as a base class (line 169).
+# For backward compatibility, code should migrate to:
+# - Use AICompletionConfigDefault for default/input values
+# - Use AICompletionConfig for return values
 
 # Deprecated: Use AIAgentConfigDefault instead
 LDAIAgentDefaults = AIAgentConfigDefault
@@ -360,4 +355,3 @@ LDAIAgentConfig = AIAgentConfigRequest
 
 # Deprecated: Use AIAgentConfig instead (note: this was the old return type)
 LDAIAgent = AIAgentConfig
-

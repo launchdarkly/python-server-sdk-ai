@@ -3,7 +3,8 @@
 from typing import Any, Dict, List, Optional
 
 from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
+from langchain_core.messages import (AIMessage, BaseMessage, HumanMessage,
+                                     SystemMessage)
 
 from ldai.models import AIConfigKind, LDMessage
 from ldai.providers.ai_provider import AIProvider
@@ -14,14 +15,14 @@ from ldai.tracker import TokenUsage
 class LangChainProvider(AIProvider):
     """
     LangChain implementation of AIProvider.
-    
+
     This provider integrates LangChain models with LaunchDarkly's tracking capabilities.
     """
 
     def __init__(self, llm: BaseChatModel, logger: Optional[Any] = None):
         """
         Initialize the LangChain provider.
-        
+
         :param llm: LangChain BaseChatModel instance
         :param logger: Optional logger for logging provider operations
         """
@@ -36,7 +37,7 @@ class LangChainProvider(AIProvider):
     async def create(ai_config: AIConfigKind, logger: Optional[Any] = None) -> 'LangChainProvider':
         """
         Static factory method to create a LangChain AIProvider from an AI configuration.
-        
+
         :param ai_config: The LaunchDarkly AI configuration
         :param logger: Optional logger for the provider
         :return: Configured LangChainProvider instance
@@ -51,7 +52,7 @@ class LangChainProvider(AIProvider):
     async def invoke_model(self, messages: List[LDMessage]) -> ChatResponse:
         """
         Invoke the LangChain model with an array of messages.
-        
+
         :param messages: Array of LDMessage objects representing the conversation
         :return: ChatResponse containing the model's response
         """
@@ -60,10 +61,15 @@ class LangChainProvider(AIProvider):
             langchain_messages = LangChainProvider.convert_messages_to_langchain(messages)
 
             # Get the LangChain response
-            response: AIMessage = await self._llm.ainvoke(langchain_messages)
+            response: BaseMessage = await self._llm.ainvoke(langchain_messages)
 
             # Generate metrics early (assumes success by default)
-            metrics = LangChainProvider.get_ai_metrics_from_response(response)
+            # Most chat models return AIMessage, but we handle BaseMessage generically
+            if isinstance(response, AIMessage):
+                metrics = LangChainProvider.get_ai_metrics_from_response(response)
+            else:
+                # For non-AIMessage responses, create default metrics
+                metrics = LDAIMetrics(success=True, usage=TokenUsage(total=0, input=0, output=0))
 
             # Extract text content from the response
             content: str = ''
@@ -104,7 +110,7 @@ class LangChainProvider(AIProvider):
     ) -> StructuredResponse:
         """
         Invoke the LangChain model with structured output support.
-        
+
         :param messages: Array of LDMessage objects representing the conversation
         :param response_structure: Dictionary of output configurations keyed by output name
         :return: StructuredResponse containing the structured data
@@ -124,7 +130,10 @@ class LangChainProvider(AIProvider):
                 if isinstance(response_obj, AIMessage):
                     import json
                     try:
-                        response = json.loads(response_obj.content)
+                        if isinstance(response_obj.content, str):
+                            response = json.loads(response_obj.content)
+                        else:
+                            response = {'content': response_obj.content}
                     except json.JSONDecodeError:
                         response = {'content': response_obj.content}
                 else:
@@ -158,7 +167,7 @@ class LangChainProvider(AIProvider):
     def get_chat_model(self) -> BaseChatModel:
         """
         Get the underlying LangChain model instance.
-        
+
         :return: The LangChain BaseChatModel instance
         """
         return self._llm
@@ -171,10 +180,10 @@ class LangChainProvider(AIProvider):
     def map_provider(ld_provider_name: str) -> str:
         """
         Map LaunchDarkly provider names to LangChain provider names.
-        
+
         This method enables seamless integration between LaunchDarkly's standardized
         provider naming and LangChain's naming conventions.
-        
+
         :param ld_provider_name: LaunchDarkly provider name
         :return: LangChain provider name
         """
@@ -190,10 +199,10 @@ class LangChainProvider(AIProvider):
     def get_ai_metrics_from_response(response: AIMessage) -> LDAIMetrics:
         """
         Get AI metrics from a LangChain provider response.
-        
+
         This method extracts token usage information and success status from LangChain responses
         and returns a LaunchDarkly LDAIMetrics object.
-        
+
         :param response: The response from the LangChain model
         :return: LDAIMetrics with success status and token usage
         """
@@ -215,10 +224,10 @@ class LangChainProvider(AIProvider):
     def convert_messages_to_langchain(messages: List[LDMessage]) -> List[BaseMessage]:
         """
         Convert LaunchDarkly messages to LangChain messages.
-        
+
         This helper method enables developers to work directly with LangChain message types
         while maintaining compatibility with LaunchDarkly's standardized message format.
-        
+
         :param messages: List of LDMessage objects
         :return: List of LangChain message objects
         """
@@ -238,10 +247,10 @@ class LangChainProvider(AIProvider):
     async def create_langchain_model(ai_config: AIConfigKind) -> BaseChatModel:
         """
         Create a LangChain model from an AI configuration.
-        
+
         This public helper method enables developers to initialize their own LangChain models
         using LaunchDarkly AI configurations.
-        
+
         :param ai_config: The LaunchDarkly AI configuration
         :return: A configured LangChain BaseChatModel
         """
@@ -256,22 +265,27 @@ class LangChainProvider(AIProvider):
         try:
             # Try to import init_chat_model from langchain.chat_models
             # This is available in langchain >= 0.1.0
+            # Use importlib to avoid mypy no-redef error with fallback imports
+            import importlib
+            init_chat_model = None
             try:
-                from langchain.chat_models import init_chat_model
-            except ImportError:
+                module = importlib.import_module('langchain.chat_models')
+                init_chat_model = getattr(module, 'init_chat_model')
+            except (ImportError, AttributeError):
                 # Fallback for older versions or different import path
-                from langchain.chat_models.universal import init_chat_model
-            
+                module = importlib.import_module('langchain.chat_models.universal')
+                init_chat_model = getattr(module, 'init_chat_model')
+
             # Map provider name
             langchain_provider = LangChainProvider.map_provider(provider)
-            
+
             # Create model configuration
             model_kwargs = {**parameters}
             if langchain_provider:
                 model_kwargs['model_provider'] = langchain_provider
-            
+
             # Initialize the chat model (init_chat_model may be async or sync)
-            result = init_chat_model(model_name, **model_kwargs)
+            result = init_chat_model(model_name, **model_kwargs)  # type: ignore[misc]
             # Handle both sync and async initialization
             if hasattr(result, '__await__'):
                 return await result
@@ -281,4 +295,3 @@ class LangChainProvider(AIProvider):
                 'langchain package is required for LangChainProvider. '
                 'Install it with: pip install langchain langchain-core'
             ) from e
-

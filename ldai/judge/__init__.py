@@ -5,17 +5,18 @@ from typing import Any, Dict, Optional
 
 import chevron
 
+from ldai.judge.evaluation_schema_builder import EvaluationSchemaBuilder
 from ldai.models import AIJudgeConfig, LDMessage
 from ldai.providers.ai_provider import AIProvider
-from ldai.providers.types import ChatResponse, EvalScore, JudgeResponse, StructuredResponse
+from ldai.providers.types import (ChatResponse, EvalScore, JudgeResponse,
+                                  StructuredResponse)
 from ldai.tracker import LDAIConfigTracker
-from ldai.judge.evaluation_schema_builder import EvaluationSchemaBuilder
 
 
 class AIJudge:
     """
     Judge implementation that handles evaluation functionality and conversation management.
-    
+
     According to the AIEval spec, judges are AI Configs with mode: "judge" that evaluate
     other AI Configs using structured output.
     """
@@ -29,7 +30,7 @@ class AIJudge:
     ):
         """
         Initialize the Judge.
-        
+
         :param ai_config: The judge AI configuration
         :param ai_config_tracker: The tracker for the judge configuration
         :param ai_provider: The AI provider to use for evaluation
@@ -51,7 +52,7 @@ class AIJudge:
     ) -> Optional[JudgeResponse]:
         """
         Evaluates an AI response using the judge's configuration.
-        
+
         :param input_text: The input prompt or question that was provided to the AI
         :param output_text: The AI-generated response to be evaluated
         :param sampling_rate: Sampling rate (0-1) to determine if evaluation should be processed (defaults to 1)
@@ -113,7 +114,7 @@ class AIJudge:
     ) -> Optional[JudgeResponse]:
         """
         Evaluates an AI response from chat messages and response.
-        
+
         :param messages: Array of messages representing the conversation history
         :param response: The AI response to be evaluated
         :param sampling_ratio: Sampling ratio (0-1) to determine if evaluation should be processed (defaults to 1)
@@ -127,7 +128,7 @@ class AIJudge:
     def get_ai_config(self) -> AIJudgeConfig:
         """
         Returns the AI Config used by this judge.
-        
+
         :return: The judge AI configuration
         """
         return self._ai_config
@@ -135,7 +136,7 @@ class AIJudge:
     def get_tracker(self) -> LDAIConfigTracker:
         """
         Returns the tracker associated with this judge.
-        
+
         :return: The tracker for the judge configuration
         """
         return self._ai_config_tracker
@@ -143,7 +144,7 @@ class AIJudge:
     def get_provider(self) -> AIProvider:
         """
         Returns the AI provider used by this judge.
-        
+
         :return: The AI provider
         """
         return self._ai_provider
@@ -151,7 +152,7 @@ class AIJudge:
     def _construct_evaluation_messages(self, input_text: str, output_text: str) -> list[LDMessage]:
         """
         Constructs evaluation messages by combining judge's config messages with input/output.
-        
+
         :param input_text: The input text
         :param output_text: The output text to evaluate
         :return: List of messages for evaluation
@@ -173,7 +174,7 @@ class AIJudge:
     def _interpolate_message(self, content: str, variables: Dict[str, str]) -> str:
         """
         Interpolates message content with variables using Mustache templating.
-        
+
         :param content: The message content template
         :param variables: Variables to interpolate
         :return: Interpolated message content
@@ -184,7 +185,7 @@ class AIJudge:
     def _parse_evaluation_response(self, data: Dict[str, Any]) -> Dict[str, EvalScore]:
         """
         Parses the structured evaluation response from the AI provider.
-        
+
         :param data: The structured response data
         :return: Dictionary of evaluation scores keyed by metric key
         """
@@ -227,5 +228,3 @@ class AIJudge:
             results[metric_key] = EvalScore(score=float(score), reasoning=reasoning)
 
         return results
-
-
