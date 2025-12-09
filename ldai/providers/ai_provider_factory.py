@@ -1,19 +1,21 @@
 """Factory for creating AIProvider instances based on the provider configuration."""
 
 import importlib
-from typing import Any, List, Literal, Optional, Type
+from typing import Any, Dict, List, Literal, Optional, Tuple, Type
 
 from ldai.models import AIConfigKind
 from ldai.providers.ai_provider import AIProvider
 
 # List of supported AI providers
-SUPPORTED_AI_PROVIDERS = [
+SUPPORTED_AI_PROVIDERS: List[str] = [
     # Multi-provider packages should be last in the list
-    'langchain',
+    # 'langchain',  # TODO: Uncomment when langchain provider package is introduced
 ]
 
 # Type representing the supported AI providers
-SupportedAIProvider = Literal['langchain']
+# TODO: Update this type when provider packages are introduced
+# SupportedAIProvider = Literal['langchain']
+SupportedAIProvider = Literal['none']  # Placeholder until providers are added
 
 
 class AIProviderFactory:
@@ -79,9 +81,10 @@ class AIProviderFactory:
             provider_set.add(provider_name)  # type: ignore
 
         # Then try multi-provider packages, but avoid duplicates
-        multi_provider_packages: List[SupportedAIProvider] = ['langchain']
-        for provider in multi_provider_packages:
-            provider_set.add(provider)
+        # TODO: Uncomment when langchain provider package is introduced
+        # multi_provider_packages: List[SupportedAIProvider] = ['langchain']
+        # for provider in multi_provider_packages:
+        #     provider_set.add(provider)
 
         # Return list of providers, converting from set
         # The set contains strings that should be valid SupportedAIProvider values
@@ -102,20 +105,21 @@ class AIProviderFactory:
         :return: AIProvider instance or None if creation failed
         """
         # Handle built-in providers (part of this package)
-        if provider_type == 'langchain':
-            try:
-                from ldai.providers.langchain import LangChainProvider
-                return await LangChainProvider.create(ai_config, logger)
-            except ImportError as error:
-                if logger:
-                    logger.warn(
-                        f"Error creating LangChainProvider: {error}. "
-                        f"Make sure langchain and langchain-core packages are installed."
-                    )
-                return None
+        # TODO: Uncomment when langchain provider package is introduced
+        # if provider_type == 'langchain':
+        #     try:
+        #         from ldai.providers.langchain import LangChainProvider
+        #         return await LangChainProvider.create(ai_config, logger)
+        #     except ImportError as error:
+        #         if logger:
+        #             logger.warn(
+        #                 f"Error creating LangChainProvider: {error}. "
+        #                 f"Make sure langchain and langchain-core packages are installed."
+        #             )
+        #         return None
 
         # For future external providers, use dynamic import
-        provider_mappings = {
+        provider_mappings: Dict[str, Tuple[str, str]] = {
             # 'openai': ('launchdarkly_server_sdk_ai_openai', 'OpenAIProvider'),
             # 'vercel': ('launchdarkly_server_sdk_ai_vercel', 'VercelProvider'),
         }

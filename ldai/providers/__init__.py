@@ -5,17 +5,24 @@ from ldai.providers.ai_provider_factory import (AIProviderFactory,
                                                 SupportedAIProvider)
 
 # Export LangChain provider if available
-try:
-    from ldai.providers.langchain import LangChainProvider
-    __all__ = [
-        'AIProvider',
-        'AIProviderFactory',
-        'LangChainProvider',
-        'SupportedAIProvider',
-    ]
-except ImportError:
-    __all__ = [
-        'AIProvider',
-        'AIProviderFactory',
-        'SupportedAIProvider',
-    ]
+# TODO: Uncomment when langchain provider package is introduced
+# try:
+#     from ldai.providers.langchain import LangChainProvider
+#     __all__ = [
+#         'AIProvider',
+#         'AIProviderFactory',
+#         'LangChainProvider',
+#         'SupportedAIProvider',
+#     ]
+# except ImportError:
+#     __all__ = [
+#         'AIProvider',
+#         'AIProviderFactory',
+#         'SupportedAIProvider',
+#     ]
+
+__all__ = [
+    'AIProvider',
+    'AIProviderFactory',
+    'SupportedAIProvider',
+]
