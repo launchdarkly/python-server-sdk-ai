@@ -1,5 +1,7 @@
 """Types for AI provider responses."""
 
+from __future__ import annotations
+
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
@@ -38,7 +40,7 @@ class ChatResponse:
     """
     message: LDMessage
     metrics: LDAIMetrics
-    evaluations: Optional[List[Any]] = None  # List of JudgeResponse, will be populated later
+    evaluations: Optional[List[JudgeResponse]] = None  # List of JudgeResponse, will be populated later
 
 
 @dataclass
