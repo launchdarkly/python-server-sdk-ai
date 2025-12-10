@@ -72,8 +72,7 @@ class TrackedChat:
             and self._ai_config.judge_configuration.judges
             and len(self._ai_config.judge_configuration.judges) > 0
         ):
-            evaluation_tasks = self._start_judge_evaluations(self._messages, response)
-            response.evaluations = evaluation_tasks
+            response.evaluations = self._start_judge_evaluations(self._messages, response)
 
         # Add the response message to conversation history
         self._messages.append(response.message)
