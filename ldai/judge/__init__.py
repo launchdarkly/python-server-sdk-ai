@@ -13,7 +13,7 @@ from ldai.providers.types import (ChatResponse, EvalScore, JudgeResponse,
 from ldai.tracker import LDAIConfigTracker
 
 
-class AIJudge:
+class Judge:
     """
     Judge implementation that handles evaluation functionality and conversation management.
 

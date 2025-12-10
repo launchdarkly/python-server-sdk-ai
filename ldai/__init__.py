@@ -5,7 +5,7 @@ __version__ = "0.10.1"  # x-release-please-version
 from ldai.chat import TrackedChat
 from ldai.client import LDAIClient
 # Export judge
-from ldai.judge import AIJudge
+from ldai.judge import Judge
 # Export models for convenience
 from ldai.models import (  # Deprecated aliases for backward compatibility
     AIAgentConfig, AIAgentConfigDefault, AIAgentConfigRequest, AIAgents,
@@ -25,7 +25,7 @@ __all__ = [
     'AICompletionConfigDefault',
     'AIJudgeConfig',
     'AIJudgeConfigDefault',
-    'AIJudge',
+    'Judge',
     'TrackedChat',
     'EvalScore',
     'JudgeConfiguration',

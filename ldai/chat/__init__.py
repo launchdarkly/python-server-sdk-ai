@@ -3,7 +3,7 @@
 import asyncio
 from typing import Any, Dict, List, Optional
 
-from ldai.judge import AIJudge
+from ldai.judge import Judge
 from ldai.models import AICompletionConfig, LDMessage
 from ldai.providers.ai_provider import AIProvider
 from ldai.providers.types import ChatResponse, JudgeResponse
@@ -24,7 +24,7 @@ class TrackedChat:
         ai_config: AICompletionConfig,
         tracker: LDAIConfigTracker,
         provider: AIProvider,
-        judges: Optional[Dict[str, AIJudge]] = None,
+        judges: Optional[Dict[str, Judge]] = None,
         logger: Optional[Any] = None,
     ):
         """
@@ -151,7 +151,7 @@ class TrackedChat:
         """
         return self._provider
 
-    def get_judges(self) -> Dict[str, AIJudge]:
+    def get_judges(self) -> Dict[str, Judge]:
         """
         Get the judges associated with this TrackedChat.
 

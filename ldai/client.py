@@ -6,7 +6,7 @@ from ldclient import Context
 from ldclient.client import LDClient
 
 from ldai.chat import TrackedChat
-from ldai.judge import AIJudge
+from ldai.judge import Judge
 from ldai.models import (AIAgentConfig, AIAgentConfigDefault,
                          AIAgentConfigRequest, AIAgents, AICompletionConfig,
                          AICompletionConfigDefault, AIJudgeConfig,
@@ -121,7 +121,7 @@ class LDAIClient:
         default_value: AIJudgeConfigDefault,
         variables: Optional[Dict[str, Any]] = None,
         default_ai_provider: Optional[SupportedAIProvider] = None,
-    ) -> Optional[AIJudge]:
+    ) -> Optional[Judge]:
         """
         Creates and returns a new Judge instance for AI evaluation.
 
@@ -182,7 +182,7 @@ class LDAIClient:
             if not provider:
                 return None
 
-            return AIJudge(judge_config, judge_config.tracker, provider, self._logger)
+            return Judge(judge_config, judge_config.tracker, provider, self._logger)
         except Exception as error:
             # Would log error if logger available
             return None
@@ -193,7 +193,7 @@ class LDAIClient:
         context: Context,
         variables: Optional[Dict[str, Any]] = None,
         default_ai_provider: Optional[SupportedAIProvider] = None,
-    ) -> Dict[str, AIJudge]:
+    ) -> Dict[str, Judge]:
         """
         Initialize judges from judge configurations.
 
@@ -203,7 +203,7 @@ class LDAIClient:
         :param default_ai_provider: Optional default AI provider to use
         :return: Dictionary of judge instances keyed by their configuration keys
         """
-        judges: Dict[str, AIJudge] = {}
+        judges: Dict[str, Judge] = {}
 
         async def create_judge_for_config(judge_key: str):
             judge = await self.create_judge(
