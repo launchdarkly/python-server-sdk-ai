@@ -74,6 +74,7 @@ class JudgeResponse:
     """
     Response from a judge evaluation containing scores and reasoning for multiple metrics.
     """
+    judge_config_key: Optional[str] = None  # The key of the judge configuration that was used to generate this response
     evals: Dict[str, EvalScore]  # Dictionary where keys are metric names and values contain score and reasoning
     success: bool  # Whether the evaluation completed successfully
     error: Optional[str] = None  # Error message if evaluation failed
@@ -86,6 +87,8 @@ class JudgeResponse:
             'evals': {key: eval_score.to_dict() for key, eval_score in self.evals.items()},
             'success': self.success,
         }
+        if self.judge_config_key is not None:
+            result['judgeConfigKey'] = self.judge_config_key
         if self.error is not None:
             result['error'] = self.error
         return result

@@ -224,22 +224,27 @@ class LDAIConfigTracker:
 
     def track_judge_response(self, judge_response: Any) -> None:
         """
-        Track a judge response, including evaluation scores and success status.
+        Track a judge response, including evaluation scores with judge config key.
 
         :param judge_response: JudgeResponse object containing evals and success status
         """
-        from ldai.providers.types import JudgeResponse
+        from ldai.providers.types import JudgeResponse, EvalScore
 
         if isinstance(judge_response, JudgeResponse):
-            # Track evaluation scores
+            # Track evaluation scores with judge config key included in metadata
             if judge_response.evals:
-                self.track_eval_scores(judge_response.evals)
-
-            # Track success/error based on judge response
-            if judge_response.success:
-                self.track_success()
-            else:
-                self.track_error()
+                track_data = self.__get_track_data()
+                if judge_response.judge_config_key:
+                    track_data = {**track_data, 'judgeConfigKey': judge_response.judge_config_key}
+                
+                for metric_key, eval_score in judge_response.evals.items():
+                    if isinstance(eval_score, EvalScore):
+                        self._ld_client.track(
+                            metric_key,
+                            self._context,
+                            track_data,
+                            eval_score.score
+                        )
 
     def track_feedback(self, feedback: Dict[str, FeedbackKind]) -> None:
         """
