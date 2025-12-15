@@ -170,6 +170,7 @@ class AIConfig:
     """
     Base AI Config interface without mode-specific fields.
     """
+    key: str
     enabled: bool
     model: Optional[ModelConfig] = None
     provider: Optional[ProviderConfig] = None
