@@ -228,7 +228,7 @@ class LDAIConfigTracker:
 
         :param judge_response: JudgeResponse object containing evals and success status
         """
-        from ldai.providers.types import JudgeResponse, EvalScore
+        from ldai.providers.types import EvalScore, JudgeResponse
 
         if isinstance(judge_response, JudgeResponse):
             # Track evaluation scores with judge config key included in metadata
@@ -236,7 +236,7 @@ class LDAIConfigTracker:
                 track_data = self.__get_track_data()
                 if judge_response.judge_config_key:
                     track_data = {**track_data, 'judgeConfigKey': judge_response.judge_config_key}
-                
+
                 for metric_key, eval_score in judge_response.evals.items():
                     if isinstance(eval_score, EvalScore):
                         self._ld_client.track(
