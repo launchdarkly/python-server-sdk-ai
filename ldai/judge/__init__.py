@@ -94,6 +94,7 @@ class Judge:
                 success = False
 
             return JudgeResponse(
+                judge_config_key=self._ai_config.key,
                 evals=evals,
                 success=success,
             )

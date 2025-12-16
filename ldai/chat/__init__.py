@@ -112,7 +112,6 @@ class TrackedChat:
             )
 
             if eval_result and eval_result.success:
-                eval_result.judge_config_key = judge_config.key
                 self._tracker.track_judge_response(eval_result)
 
             return eval_result
