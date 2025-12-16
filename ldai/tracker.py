@@ -286,7 +286,7 @@ class LDAIConfigTracker:
             "$ld:ai:generation:error", self._context, self.__get_track_data(), 1
         )
 
-    async def track_openai_metrics(self, func):
+    def track_openai_metrics(self, func):
         """
         Track OpenAI-specific operations.
 
@@ -300,12 +300,12 @@ class LDAIConfigTracker:
 
         A failed operation will not have any token usage data.
 
-        :param func: Async function to track.
+        :param func: Function to track.
         :return: Result of the tracked function.
         """
         start_time = time.time()
         try:
-            result = await func()
+            result = func()
             end_time = time.time()
             duration = int((end_time - start_time) * 1000)
             self.track_duration(duration)
