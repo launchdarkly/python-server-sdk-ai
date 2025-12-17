@@ -5,7 +5,7 @@ import chevron
 from ldclient import Context
 from ldclient.client import LDClient
 
-from ldai.chat import TrackedChat
+from ldai.chat import Chat
 from ldai.judge import Judge
 from ldai.models import (AIAgentConfig, AIAgentConfigDefault,
                          AIAgentConfigRequest, AIAgents, AICompletionConfig,
@@ -241,16 +241,16 @@ class LDAIClient:
         default_value: AICompletionConfigDefault,
         variables: Optional[Dict[str, Any]] = None,
         default_ai_provider: Optional[SupportedAIProvider] = None,
-    ) -> Optional[TrackedChat]:
+    ) -> Optional[Chat]:
         """
-        Creates and returns a new TrackedChat instance for AI chat conversations.
+        Creates and returns a new Chat instance for AI conversations.
 
         :param key: The key identifying the AI completion configuration to use
         :param context: Standard Context used when evaluating flags
         :param default_value: A default value representing a standard AI config result
         :param variables: Dictionary of values for instruction interpolation
         :param default_ai_provider: Optional default AI provider to use
-        :return: TrackedChat instance or None if disabled/unsupported
+        :return: Chat instance or None if disabled/unsupported
 
         Example::
 
@@ -296,7 +296,7 @@ class LDAIClient:
                 default_ai_provider,
             )
 
-        return TrackedChat(config, config.tracker, provider, judges, self._logger)
+        return Chat(config, config.tracker, provider, judges, self._logger)
 
     def agent_config(
         self,

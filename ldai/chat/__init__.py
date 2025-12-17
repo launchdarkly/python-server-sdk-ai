@@ -1,4 +1,4 @@
-"""TrackedChat implementation for managing AI chat conversations."""
+"""Chat implementation for managing AI chat conversations."""
 
 import asyncio
 from typing import Any, Dict, List, Optional
@@ -10,9 +10,9 @@ from ldai.providers.types import ChatResponse, JudgeResponse
 from ldai.tracker import LDAIConfigTracker
 
 
-class TrackedChat:
+class Chat:
     """
-    Concrete implementation of TrackedChat that provides chat functionality
+    Concrete implementation of Chat that provides chat functionality
     by delegating to an AIProvider implementation.
 
     This class handles conversation management and tracking, while delegating
@@ -28,7 +28,7 @@ class TrackedChat:
         logger: Optional[Any] = None,
     ):
         """
-        Initialize the TrackedChat.
+        Initialize the Chat.
 
         :param ai_config: The completion AI configuration
         :param tracker: The tracker for the completion configuration
@@ -126,7 +126,7 @@ class TrackedChat:
 
     def get_config(self) -> AICompletionConfig:
         """
-        Get the underlying AI configuration used to initialize this TrackedChat.
+        Get the underlying AI configuration used to initialize this Chat.
 
         :return: The AI completion configuration
         """
@@ -134,7 +134,7 @@ class TrackedChat:
 
     def get_tracker(self) -> LDAIConfigTracker:
         """
-        Get the underlying AI configuration tracker used to initialize this TrackedChat.
+        Get the underlying AI configuration tracker used to initialize this Chat.
 
         :return: The tracker instance
         """
@@ -152,7 +152,7 @@ class TrackedChat:
 
     def get_judges(self) -> Dict[str, Judge]:
         """
-        Get the judges associated with this TrackedChat.
+        Get the judges associated with this Chat.
 
         Returns a dictionary of judge instances keyed by their configuration keys.
 

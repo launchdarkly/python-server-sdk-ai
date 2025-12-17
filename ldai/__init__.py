@@ -2,7 +2,7 @@ __version__ = "0.10.1"  # x-release-please-version
 
 # Export main client
 # Export chat
-from ldai.chat import TrackedChat
+from ldai.chat import Chat
 from ldai.client import LDAIClient
 # Export judge
 from ldai.judge import Judge
@@ -26,7 +26,7 @@ __all__ = [
     'AIJudgeConfig',
     'AIJudgeConfigDefault',
     'Judge',
-    'TrackedChat',
+    'Chat',
     'EvalScore',
     'JudgeConfiguration',
     'JudgeResponse',
