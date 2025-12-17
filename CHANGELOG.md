@@ -2,6 +2,13 @@
 
 All notable changes to the LaunchDarkly Python AI package will be documented in this file. This project adheres to [Semantic Versioning](http://semver.org).
 
+## [0.11.0](https://github.com/launchdarkly/python-server-sdk-ai/compare/0.10.1...0.11.0) (2025-12-17)
+
+
+### Features
+
+* Add Chat and Judge supporting methods ([#64](https://github.com/launchdarkly/python-server-sdk-ai/issues/64)) ([b63dbb5](https://github.com/launchdarkly/python-server-sdk-ai/commit/b63dbb5e3ccd6d2024d5c2b2761e04fcb7e86079))
+
 ## [0.10.1](https://github.com/launchdarkly/python-server-sdk-ai/compare/0.10.0...0.10.1) (2025-08-28)
 
 
