@@ -1,12 +1,22 @@
 {
   "packages": {
-    ".": {
+    "packages/sdk/server-ai": {
       "release-type": "python",
       "versioning": "default",
       "bump-minor-pre-major": true,
       "include-v-in-tag": false,
-      "extra-files": ["ldai/__init__.py", "PROVENANCE.md"],
-      "include-component-in-tag": false
+      "extra-files": ["src/ldai/__init__.py", "../../../PROVENANCE.md"],
+      "include-component-in-tag": true,
+      "component": "server-ai"
+    },
+    "packages/ai-providers/server-ai-langchain": {
+      "release-type": "python",
+      "versioning": "default",
+      "bump-minor-pre-major": true,
+      "include-v-in-tag": false,
+      "extra-files": ["src/ldai_langchain/__init__.py"],
+      "include-component-in-tag": true,
+      "component": "server-ai-langchain"
     }
   }
 }
