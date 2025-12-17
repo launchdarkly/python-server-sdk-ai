@@ -80,8 +80,8 @@ class Judge:
 
             # Track metrics of the structured model invocation
             response = await self._ai_config_tracker.track_metrics_of(
+                lambda: self._ai_provider.invoke_structured_model(messages, self._evaluation_response_structure),
                 lambda result: result.metrics,
-                lambda: self._ai_provider.invoke_structured_model(messages, self._evaluation_response_structure)
             )
 
             success = response.metrics.success

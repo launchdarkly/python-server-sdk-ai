@@ -62,8 +62,8 @@ class Chat:
 
         # Delegate to provider-specific implementation with tracking
         response = await self._tracker.track_metrics_of(
-            lambda result: result.metrics,
             lambda: self._provider.invoke_model(all_messages),
+            lambda result: result.metrics,
         )
 
         # Start judge evaluations as async tasks (don't await them)

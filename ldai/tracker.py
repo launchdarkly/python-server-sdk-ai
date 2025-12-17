@@ -157,7 +157,7 @@ class LDAIConfigTracker:
 
         return result
 
-    async def track_metrics_of(self, metrics_extractor, func):
+    async def track_metrics_of(self, func, metrics_extractor):
         """
         Track metrics for a generic AI operation.
 
@@ -168,8 +168,8 @@ class LDAIConfigTracker:
         In the case the provided function throws, this function will record the duration and an error.
         A failed operation will not have any token usage data.
 
-        :param metrics_extractor: Function that extracts LDAIMetrics from the operation result
         :param func: Async function which executes the operation
+        :param metrics_extractor: Function that extracts LDAIMetrics from the operation result
         :return: The result of the operation
         """
         start_time = time.time()
