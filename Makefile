@@ -17,18 +17,22 @@ help: #! Show this help message
 	@echo 'Targets:'
 	@grep -h -F '#!' $(MAKEFILE_LIST) | grep -v grep | sed 's/:.*#!/:/' | column -t -s":"
 
+#
+# Installation targets
+#
+
 .PHONY: install
 install: #! Install all packages
-	@cd $(SERVER_AI_PKG) && poetry install
-	@cd $(LANGCHAIN_PKG) && poetry install
+	$(MAKE) -C $(SERVER_AI_PKG) install
+	$(MAKE) -C $(LANGCHAIN_PKG) install
 
 .PHONY: install-server-ai
 install-server-ai: #! Install server-ai package
-	@cd $(SERVER_AI_PKG) && poetry install
+	$(MAKE) -C $(SERVER_AI_PKG) install
 
 .PHONY: install-langchain
 install-langchain: #! Install langchain provider package
-	@cd $(LANGCHAIN_PKG) && poetry install
+	$(MAKE) -C $(LANGCHAIN_PKG) install
 
 #
 # Quality control checks
@@ -36,34 +40,43 @@ install-langchain: #! Install langchain provider package
 
 .PHONY: test
 test: #! Run unit tests for all packages
-test: test-server-ai
+	$(MAKE) -C $(SERVER_AI_PKG) test
 
 .PHONY: test-server-ai
 test-server-ai: #! Run unit tests for server-ai package
-test-server-ai: install-server-ai
-	@cd $(SERVER_AI_PKG) && poetry run pytest $(PYTEST_FLAGS)
+	$(MAKE) -C $(SERVER_AI_PKG) test
 
 .PHONY: test-langchain
 test-langchain: #! Run unit tests for langchain provider package
-test-langchain: install-langchain
-	@cd $(LANGCHAIN_PKG) && poetry run pytest $(PYTEST_FLAGS)
+	$(MAKE) -C $(LANGCHAIN_PKG) test
 
 .PHONY: lint
 lint: #! Run type analysis and linting checks for all packages
-lint: lint-server-ai
+	$(MAKE) -C $(SERVER_AI_PKG) lint
 
 .PHONY: lint-server-ai
 lint-server-ai: #! Run type analysis and linting checks for server-ai package
-lint-server-ai: install-server-ai
-	@cd $(SERVER_AI_PKG) && poetry run mypy src/ldai
-	@cd $(SERVER_AI_PKG) && poetry run isort --check --atomic src/ldai
-	@cd $(SERVER_AI_PKG) && poetry run pycodestyle src/ldai
+	$(MAKE) -C $(SERVER_AI_PKG) lint
 
 .PHONY: lint-langchain
 lint-langchain: #! Run type analysis and linting checks for langchain provider package
-lint-langchain: install-langchain
-	@cd $(LANGCHAIN_PKG) && poetry run mypy src/ldai_langchain
-	@cd $(LANGCHAIN_PKG) && poetry run pycodestyle src/ldai_langchain
+	$(MAKE) -C $(LANGCHAIN_PKG) lint
+
+#
+# Build targets
+#
+
+.PHONY: build
+build: #! Build all packages
+	$(MAKE) -C $(SERVER_AI_PKG) build
+
+.PHONY: build-server-ai
+build-server-ai: #! Build server-ai package
+	$(MAKE) -C $(SERVER_AI_PKG) build
+
+.PHONY: build-langchain
+build-langchain: #! Build langchain provider package
+	$(MAKE) -C $(LANGCHAIN_PKG) build
 
 #
 # Documentation generation
@@ -71,6 +84,4 @@ lint-langchain: install-langchain
 
 .PHONY: docs
 docs: #! Generate sphinx-based documentation
-	@cd $(SERVER_AI_PKG) && poetry install --with docs
-	@cd docs
-	@cd $(SERVER_AI_PKG) && poetry run $(SPHINXBUILD) -M html "../../../$(SOURCEDIR)" "../../../$(BUILDDIR)" $(SPHINXOPTS) $(O)
+	$(MAKE) -C $(SERVER_AI_PKG) docs DOCS_DIR=../../../$(SOURCEDIR) DOCS_BUILD_DIR=../../../$(BUILDDIR)

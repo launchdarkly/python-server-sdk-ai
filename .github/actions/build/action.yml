@@ -1,5 +1,9 @@
 name: Build distribution files
-description: 'Build distribution files'
+description: 'Build distribution files for a package'
+inputs:
+  workspace_path:
+    description: 'Path to the package to build.'
+    required: true
 outputs:
   package-hashes:
     description: "base64-encoded sha256 hashes of distribution files"
@@ -10,11 +14,11 @@ runs:
   steps:
     - name: Build distribution files
       shell: bash
-      working-directory: ./packages/sdk/server-ai
-      run: poetry build
+      run: make -C ${{ inputs.workspace_path }} build
+
     - name: Hash build files for provenance
       id: package-hashes
       shell: bash
-      working-directory: ./packages/sdk/server-ai/dist
+      working-directory: ${{ inputs.workspace_path }}/dist
       run: |
         echo "package-hashes=$(sha256sum * | base64 -w0)" >> "$GITHUB_OUTPUT"

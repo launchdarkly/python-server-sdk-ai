@@ -1,5 +1,10 @@
 name: Build Documentation
-description: 'Build Documentation.'
+description: 'Build Documentation for a package'
+inputs:
+  workspace_path:
+    description: 'Path to the package to build docs for.'
+    required: false
+    default: 'packages/sdk/server-ai'
 
 runs:
   using: composite
