@@ -292,7 +292,10 @@ def test_tracks_openai_metrics(client: LDClient):
                 "completion_tokens": 110,
             }
 
-    tracker.track_openai_metrics(lambda: Result())
+    def get_result():
+        return Result()
+
+    tracker.track_openai_metrics(get_result)
 
     calls = [
         call(

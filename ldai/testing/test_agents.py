@@ -2,8 +2,8 @@ import pytest
 from ldclient import Config, Context, LDClient
 from ldclient.integrations.test_data import TestData
 
-from ldai.client import (LDAIAgentConfig, LDAIAgentDefaults, LDAIClient,
-                         ModelConfig, ProviderConfig)
+from ldai import (LDAIAgentConfig, LDAIAgentDefaults, LDAIClient, ModelConfig,
+                  ProviderConfig)
 
 
 @pytest.fixture
