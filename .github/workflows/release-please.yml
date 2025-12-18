@@ -40,7 +40,9 @@ jobs:
     if: github.event_name == 'push'
     outputs:
       package-server-ai-released: ${{ steps.release.outputs['packages/sdk/server-ai--release_created'] }}
+      package-server-ai-tag-name: ${{ steps.release.outputs['packages/sdk/server-ai--tag_name'] }}
       package-server-ai-langchain-released: ${{ steps.release.outputs['packages/ai-providers/server-ai-langchain--release_created'] }}
+      package-server-ai-langchain-tag-name: ${{ steps.release.outputs['packages/ai-providers/server-ai-langchain--tag_name'] }}
     steps:
       - uses: googleapis/release-please-action@v4
         id: release
@@ -51,6 +53,8 @@ jobs:
     permissions:
       id-token: write # Needed for OIDC to get release secrets from AWS.
     if: ${{ needs.release-please.outputs.package-server-ai-released == 'true' }}
+    outputs:
+      package-hashes: ${{ steps.build.outputs.package-hashes }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -90,6 +94,8 @@ jobs:
     permissions:
       id-token: write # Needed for OIDC to get release secrets from AWS.
     if: ${{ always() && !failure() && !cancelled() && needs.release-please.outputs.package-server-ai-langchain-released == 'true' }}
+    outputs:
+      package-hashes: ${{ steps.build.outputs.package-hashes }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -161,3 +167,29 @@ jobs:
         with:
           password: ${{ env.PYPI_AUTH_TOKEN }}
           packages-dir: ${{ inputs.workspace_path }}/dist/
+
+  release-server-ai-provenance:
+    needs: ['release-please', 'release-server-ai']
+    if: ${{ needs.release-please.outputs.package-server-ai-released == 'true' }}
+    permissions:
+      actions: read # Needed for detecting the GitHub Actions environment.
+      id-token: write # Needed for provenance signing.
+      contents: write # Needed for uploading assets to the release.
+    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v2.0.0
+    with:
+      base64-subjects: "${{ needs.release-server-ai.outputs.package-hashes }}"
+      upload-assets: true
+      upload-tag-name: ${{ needs.release-please.outputs.package-server-ai-tag-name }}
+
+  release-server-ai-langchain-provenance:
+    needs: ['release-please', 'release-server-ai-langchain']
+    if: ${{ needs.release-please.outputs.package-server-ai-langchain-released == 'true' }}
+    permissions:
+      actions: read # Needed for detecting the GitHub Actions environment.
+      id-token: write # Needed for provenance signing.
+      contents: write # Needed for uploading assets to the release.
+    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v2.0.0
+    with:
+      base64-subjects: "${{ needs.release-server-ai-langchain.outputs.package-hashes }}"
+      upload-assets: true
+      upload-tag-name: ${{ needs.release-please.outputs.package-server-ai-langchain-tag-name }}
