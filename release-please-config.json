@@ -7,7 +7,7 @@
       "bump-minor-pre-major": true,
       "include-v-in-tag": false,
       "extra-files": ["src/ldai/__init__.py", "../../../PROVENANCE.md"],
-      "component": "server-ai"
+      "component": "launchdarkly-server-sdk-ai"
     },
     "packages/ai-providers/server-ai-langchain": {
       "release-type": "python",
@@ -15,7 +15,7 @@
       "bump-minor-pre-major": true,
       "include-v-in-tag": false,
       "extra-files": ["src/ldai_langchain/__init__.py"],
-      "component": "server-ai-langchain"
+      "component": "launchdarkly-server-sdk-ai-langchain"
     }
   }
 }
