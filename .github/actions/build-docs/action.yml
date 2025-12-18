@@ -11,4 +11,5 @@ runs:
   steps:
     - name: Build Documentation
       shell: bash
+      working-directory: ${{ inputs.workspace_path }}
       run: make docs
