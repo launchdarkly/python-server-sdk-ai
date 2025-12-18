@@ -1,0 +1,51 @@
+[tool.poetry]
+name = "launchdarkly-server-sdk-ai-langchain"
+version = "0.1.0"
+description = "LaunchDarkly AI SDK LangChain Provider"
+authors = ["LaunchDarkly <dev@launchdarkly.com>"]
+license = "Apache-2.0"
+readme = "README.md"
+homepage = "https://docs.launchdarkly.com/sdk/ai/python"
+repository = "https://github.com/launchdarkly/python-server-sdk-ai"
+classifiers = [
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development",
+    "Topic :: Software Development :: Libraries",
+]
+packages = [{ include = "ldai_langchain", from = "src" }]
+
+[tool.poetry.dependencies]
+python = ">=3.9,<4"
+launchdarkly-server-sdk-ai = ">=0.10.1"
+# langchain-core = ">=0.1.0"  # Uncomment when implementing
+
+
+[tool.poetry.group.dev.dependencies]
+pytest = ">=2.8"
+pytest-cov = ">=2.4.0"
+pytest-asyncio = ">=0.21.0"
+mypy = "==1.18.2"
+
+[tool.mypy]
+python_version = "3.9"
+ignore_missing_imports = true
+install_types = true
+non_interactive = true
+
+
+[tool.pytest.ini_options]
+addopts = ["-ra"]
+testpaths = ["tests"]
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

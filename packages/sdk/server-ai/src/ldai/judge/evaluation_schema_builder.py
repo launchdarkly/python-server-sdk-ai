@@ -24,7 +24,10 @@ class EvaluationSchemaBuilder:
             'properties': {
                 'evaluations': {
                     'type': 'object',
-                    'description': f"Object containing evaluation results for {', '.join(evaluation_metric_keys)} metrics",
+                    'description': (
+                        f"Object containing evaluation results for "
+                        f"{', '.join(evaluation_metric_keys)} metrics"
+                    ),
                     'properties': EvaluationSchemaBuilder._build_key_properties(evaluation_metric_keys),
                     'required': evaluation_metric_keys,
                     'additionalProperties': False,

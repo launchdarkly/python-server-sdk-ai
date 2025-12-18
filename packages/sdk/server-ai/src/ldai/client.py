@@ -444,7 +444,10 @@ class LDAIClient:
         context: Context,
         default_dict: Dict[str, Any],
         variables: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[Optional[ModelConfig], Optional[ProviderConfig], Optional[List[LDMessage]], Optional[str], LDAIConfigTracker, bool, Optional[Any]]:
+    ) -> Tuple[
+        Optional[ModelConfig], Optional[ProviderConfig], Optional[List[LDMessage]],
+        Optional[str], LDAIConfigTracker, bool, Optional[Any]
+    ]:
         """
         Internal method to evaluate a configuration and extract components.
 

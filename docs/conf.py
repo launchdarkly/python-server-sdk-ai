@@ -19,7 +19,8 @@
 import os
 import sys
 
-sys.path.insert(0, os.path.abspath('..'))
+# Add the server-ai package source to the path
+sys.path.insert(0, os.path.abspath('../packages/sdk/server-ai/src'))
 
 import ldai
 

@@ -11,35 +11,28 @@ on:
       - '**.md'
 
 jobs:
-  linux:
+  server-ai-linux:
     runs-on: ubuntu-latest
-
     strategy:
       matrix:
         python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
 
     steps:
       - uses: actions/checkout@v4
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python-version }}
 
-      - name: Install poetry
-        uses: abatilo/actions-poetry@7b6d33e44b4f08d7021a1dee3c044e9c253d6439
+      - uses: ./.github/actions/ci
+        with:
+          workspace_path: packages/sdk/server-ai
+          python_version: ${{ matrix.python-version }}
 
       - uses: ./.github/actions/build
+        with:
+          workspace_path: packages/sdk/server-ai
+
       - uses: ./.github/actions/build-docs
 
-      - name: Run tests
-        run: make test
-
-      - name: Verify typehints
-        run: make lint
-
-  windows:
+  server-ai-windows:
     runs-on: windows-latest
-
     defaults:
       run:
         shell: powershell
@@ -50,6 +43,7 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
         with:
@@ -59,7 +53,8 @@ jobs:
         uses: abatilo/actions-poetry@7b6d33e44b4f08d7021a1dee3c044e9c253d6439
 
       - name: Install requirements
+        working-directory: packages/sdk/server-ai
         run: poetry install
 
       - name: Run tests
-        run: make test
+        run: make -C packages/sdk/server-ai test

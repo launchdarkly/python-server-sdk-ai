@@ -1,0 +1,34 @@
+name: Shared CI Workflow
+description: 'Build, lint, and test a package'
+inputs:
+  workspace_path:
+    description: 'Path to the package to build/test.'
+    required: true
+  python_version:
+    description: 'Python version to use'
+    required: false
+    default: '3.11'
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Python ${{ inputs.python_version }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python_version }}
+
+    - name: Install poetry
+      uses: abatilo/actions-poetry@7b6d33e44b4f08d7021a1dee3c044e9c253d6439
+
+    - name: Install Dependencies
+      shell: bash
+      working-directory: ${{ inputs.workspace_path }}
+      run: poetry install
+
+    - name: Lint
+      shell: bash
+      run: make -C ${{ inputs.workspace_path }} lint
+
+    - name: Test
+      shell: bash
+      run: make -C ${{ inputs.workspace_path }} test

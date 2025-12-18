@@ -156,8 +156,9 @@ class AIProviderFactory:
 
             provider = await provider_class.create(ai_config, logger)
             if logger:
+                provider_name = ai_config.provider.name if ai_config.provider else 'unknown'
                 logger.debug(
-                    f"Successfully created AIProvider for: {ai_config.provider.name if ai_config.provider else 'unknown'} "
+                    f"Successfully created AIProvider for: {provider_name} "
                     f"with package {package_name}"
                 )
             return provider

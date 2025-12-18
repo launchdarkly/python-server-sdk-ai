@@ -1,5 +1,5 @@
 name: Build Documentation
-description: 'Build Documentation.'
+description: 'Build Documentation for a package'
 
 runs:
   using: composite
