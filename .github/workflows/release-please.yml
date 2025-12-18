@@ -87,7 +87,7 @@ jobs:
 
   release-server-ai-langchain:
     runs-on: ubuntu-latest
-    needs: ['release-please', 'release-server-ai']
+    needs: ['release-please']
     permissions:
       id-token: write
       contents: write
