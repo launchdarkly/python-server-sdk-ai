@@ -93,7 +93,7 @@ jobs:
     needs: ['release-please']
     permissions:
       id-token: write # Needed for OIDC to get release secrets from AWS.
-    if: ${{ always() && !failure() && !cancelled() && needs.release-please.outputs.package-server-ai-langchain-released == 'true' }}
+    if: ${{ needs.release-please.outputs.package-server-ai-langchain-released == 'true' }}
     outputs:
       package-hashes: ${{ steps.build.outputs.package-hashes }}
     steps:
