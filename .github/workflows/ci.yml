@@ -20,9 +20,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install poetry
-        uses: abatilo/actions-poetry@7b6d33e44b4f08d7021a1dee3c044e9c253d6439
-
       - uses: ./.github/actions/ci
         with:
           workspace_path: packages/sdk/server-ai
