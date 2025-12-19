@@ -1,4 +1,4 @@
-__version__ = "0.10.1"  # x-release-please-version
+__version__ = "0.11.0"  # x-release-please-version
 
 # Export main client
 # Export chat
