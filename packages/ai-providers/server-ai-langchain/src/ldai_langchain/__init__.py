@@ -1,8 +1,6 @@
 """LaunchDarkly AI SDK - LangChain Provider.
 
 This package provides LangChain integration for the LaunchDarkly Server-Side AI SDK,
-allowing you to use LangChain models and chains with LaunchDarkly's tracking and
-configuration capabilities.
 """
 
 from ldai_langchain.langchain_provider import LangChainProvider
