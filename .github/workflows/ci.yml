@@ -58,3 +58,49 @@ jobs:
 
       - name: Run tests
         run: make -C packages/sdk/server-ai test
+
+  server-ai-langchain-linux:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/ci
+        with:
+          workspace_path: packages/ai-providers/server-ai-langchain
+          python_version: ${{ matrix.python-version }}
+
+      - uses: ./.github/actions/build
+        with:
+          workspace_path: packages/ai-providers/server-ai-langchain
+
+  server-ai-langchain-windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: powershell
+
+    strategy:
+      matrix:
+        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install poetry
+        uses: abatilo/actions-poetry@7b6d33e44b4f08d7021a1dee3c044e9c253d6439
+
+      - name: Install requirements
+        working-directory: packages/ai-providers/server-ai-langchain
+        run: poetry install
+
+      - name: Run tests
+        run: make -C packages/ai-providers/server-ai-langchain test
