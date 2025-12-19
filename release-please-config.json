@@ -1,5 +1,6 @@
 {
   "include-component-in-tag": true,
+  "bootstrap-sha": "b63dbb5e3ccd6d2024d5c2b2761e04fcb7e86079",
   "packages": {
     "packages/sdk/server-ai": {
       "release-type": "python",
