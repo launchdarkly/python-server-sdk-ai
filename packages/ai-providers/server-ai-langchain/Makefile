@@ -20,6 +20,7 @@ test: install
 lint: #! Run type analysis and linting checks
 lint: install
 	poetry run mypy src/ldai_langchain
+	poetry run isort --check --atomic src/ldai_langchain
 	poetry run pycodestyle src/ldai_langchain
 
 .PHONY: build
