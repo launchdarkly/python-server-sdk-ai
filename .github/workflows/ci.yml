@@ -98,6 +98,13 @@ jobs:
       - name: Install poetry
         uses: abatilo/actions-poetry@7b6d33e44b4f08d7021a1dee3c044e9c253d6439
 
+      - name: Configure poetry for local virtualenvs
+        run: poetry config virtualenvs.in-project true
+
+      - name: Install server-ai dependency first
+        working-directory: packages/sdk/server-ai
+        run: poetry install
+
       - name: Install requirements
         working-directory: packages/ai-providers/server-ai-langchain
         run: poetry install
