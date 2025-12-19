@@ -93,24 +93,28 @@ class LangChainProvider(AIProvider):
             structured_llm = self._llm.with_structured_output(response_structure)
             response = await structured_llm.ainvoke(langchain_messages)
 
-            metrics = LDAIMetrics(
-                success=True,
-                usage=TokenUsage(total=0, input=0, output=0),
-            )
-
-            if isinstance(response, dict):
-                raw_response = str(response)
-            else:
-                import json
-                try:
-                    raw_response = json.dumps(response)
-                except (TypeError, ValueError):
-                    raw_response = str(response)
+            if not isinstance(response, dict):
+                if self.logger:
+                    self.logger.warn(
+                        f'Structured output did not return a dict. '
+                        f'Got: {type(response)}'
+                    )
+                return StructuredResponse(
+                    data={},
+                    raw_response='',
+                    metrics=LDAIMetrics(
+                        success=False,
+                        usage=TokenUsage(total=0, input=0, output=0),
+                    ),
+                )
 
             return StructuredResponse(
-                data=response if isinstance(response, dict) else {'result': response},
-                raw_response=raw_response,
-                metrics=metrics,
+                data=response,
+                raw_response=str(response),
+                metrics=LDAIMetrics(
+                    success=True,
+                    usage=TokenUsage(total=0, input=0, output=0),
+                ),
             )
         except Exception as error:
             if self.logger:
