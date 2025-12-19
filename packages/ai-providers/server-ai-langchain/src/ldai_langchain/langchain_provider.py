@@ -228,14 +228,14 @@ class LangChainProvider(AIProvider):
         """
         from langchain.chat_models import init_chat_model
 
-        model_name = ai_config.model.name if ai_config.model else ''
-        provider = ai_config.provider.name if ai_config.provider else ''
-        parameters = {}
+        config_dict = ai_config.to_dict()
+        model_dict = config_dict.get('model') or {}
+        provider_dict = config_dict.get('provider') or {}
 
-        if ai_config.model and hasattr(ai_config.model, '_parameters') and ai_config.model._parameters:
-            parameters = ai_config.model._parameters.copy()
+        model_name = model_dict.get('name', '')
+        provider = provider_dict.get('name', '')
+        parameters = model_dict.get('parameters') or {}
 
-        # Use LangChain's universal init_chat_model to support multiple providers
         return init_chat_model(
             model_name,
             model_provider=LangChainProvider.map_provider(provider),
