@@ -48,34 +48,23 @@ class LangChainProvider(AIProvider):
         :return: ChatResponse containing the model's response and metrics
         """
         try:
-            # Convert LDMessage[] to LangChain messages
             langchain_messages = LangChainProvider.convert_messages_to_langchain(messages)
-
-            # Get the LangChain response
             response: BaseMessage = await self._llm.ainvoke(langchain_messages)
-
-            # Generate metrics early (assumes success by default)
             metrics = LangChainProvider.get_ai_metrics_from_response(response)
 
-            # Extract text content from the response
             content: str = ''
             if isinstance(response.content, str):
                 content = response.content
             else:
-                # Log warning for non-string content (likely multimodal)
                 if self.logger:
                     self.logger.warn(
                         f'Multimodal response not supported, expecting a string. '
                         f'Content type: {type(response.content)}, Content: {response.content}'
                     )
-                # Update metrics to reflect content loss
                 metrics = LDAIMetrics(success=False, usage=metrics.usage)
 
-            # Create the assistant message
-            assistant_message = LDMessage(role='assistant', content=content)
-
             return ChatResponse(
-                message=assistant_message,
+                message=LDMessage(role='assistant', content=content),
                 metrics=metrics,
             )
         except Exception as error:
@@ -100,20 +89,15 @@ class LangChainProvider(AIProvider):
         :return: StructuredResponse containing the structured data
         """
         try:
-            # Convert LDMessage[] to LangChain messages
             langchain_messages = LangChainProvider.convert_messages_to_langchain(messages)
-
-            # Get the LangChain response with structured output
             structured_llm = self._llm.with_structured_output(response_structure)
             response = await structured_llm.ainvoke(langchain_messages)
 
-            # Using structured output doesn't support metrics
             metrics = LDAIMetrics(
                 success=True,
                 usage=TokenUsage(total=0, input=0, output=0),
             )
 
-            # Handle response serialization
             if isinstance(response, dict):
                 raw_response = str(response)
             else:
@@ -148,10 +132,6 @@ class LangChainProvider(AIProvider):
         :return: The underlying BaseChatModel
         """
         return self._llm
-
-    # =============================================================================
-    # STATIC UTILITY METHODS
-    # =============================================================================
 
     @staticmethod
     def map_provider(ld_provider_name: str) -> str:
@@ -201,7 +181,6 @@ class LangChainProvider(AIProvider):
                     output=token_usage.get('completionTokens', 0) or token_usage.get('completion_tokens', 0),
                 )
 
-        # LangChain responses that complete successfully are considered successful by default
         return LDAIMetrics(success=True, usage=usage)
 
     @staticmethod
