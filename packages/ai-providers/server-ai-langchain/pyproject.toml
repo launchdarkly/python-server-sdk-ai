@@ -25,8 +25,8 @@ packages = [{ include = "ldai_langchain", from = "src" }]
 [tool.poetry.dependencies]
 python = ">=3.9,<4"
 launchdarkly-server-sdk-ai = ">=0.10.1"
-# langchain-core = ">=0.1.0"  # Uncomment when implementing
-
+langchain-core = ">=0.2.0"
+langchain = ">=0.2.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = ">=2.8"
@@ -44,6 +44,7 @@ non_interactive = true
 [tool.pytest.ini_options]
 addopts = ["-ra"]
 testpaths = ["tests"]
+asyncio_mode = "auto"
 
 
 [build-system]
