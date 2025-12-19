@@ -42,6 +42,11 @@ ignore_missing_imports = true
 install_types = true
 non_interactive = true
 
+[tool.isort]
+profile = "black"
+known_third_party = ["langchain", "langchain_core", "ldai"]
+sections = ["FUTURE", "STDLIB", "THIRDPARTY", "FIRSTPARTY", "LOCALFOLDER"]
+
 
 [tool.pytest.ini_options]
 addopts = ["-ra"]

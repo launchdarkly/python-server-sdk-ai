@@ -5,10 +5,18 @@ from typing import Any, Dict, List, Optional, Union
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 
-from ldai.models import AIConfigKind, LDMessage
-from ldai.providers.ai_provider import AIProvider
+from ldai import (
+    AIAgentConfig,
+    AICompletionConfig,
+    AIJudgeConfig,
+    LDMessage,
+)
+from ldai.providers import AIProvider
 from ldai.providers.types import ChatResponse, LDAIMetrics, StructuredResponse
 from ldai.tracker import TokenUsage
+
+# Type alias matching the one in ldai.models
+AIConfigKind = Union[AIAgentConfig, AICompletionConfig, AIJudgeConfig]
 
 
 class LangChainProvider(AIProvider):
