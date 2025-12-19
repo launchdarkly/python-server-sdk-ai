@@ -3,7 +3,7 @@
 from typing import Any, Dict, List, Optional, Union
 
 from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, BaseMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 
 from ldai.models import AIConfigKind, LDMessage
 from ldai.providers.ai_provider import AIProvider
