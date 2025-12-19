@@ -205,19 +205,6 @@ class LangChainProvider(AIProvider):
         return LDAIMetrics(success=True, usage=usage)
 
     @staticmethod
-    def create_ai_metrics(langchain_response: BaseMessage) -> LDAIMetrics:
-        """
-        Create AI metrics information from a LangChain provider response.
-
-        .. deprecated::
-            Use `get_ai_metrics_from_response()` instead.
-
-        :param langchain_response: The response from the LangChain model
-        :return: LDAIMetrics with success status and token usage
-        """
-        return LangChainProvider.get_ai_metrics_from_response(langchain_response)
-
-    @staticmethod
     def convert_messages_to_langchain(
         messages: List[LDMessage],
     ) -> List[Union[HumanMessage, SystemMessage, AIMessage]]:

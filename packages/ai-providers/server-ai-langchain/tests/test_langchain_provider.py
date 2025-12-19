@@ -256,24 +256,3 @@ class TestGetChatModel:
         assert provider.get_chat_model() is mock_llm
 
 
-class TestCreateAIMetrics:
-    """Tests for deprecated create_ai_metrics static method."""
-
-    def test_delegates_to_get_ai_metrics_from_response(self):
-        """Should delegate to get_ai_metrics_from_response."""
-        mock_response = AIMessage(content='Test response')
-        mock_response.response_metadata = {
-            'tokenUsage': {
-                'totalTokens': 100,
-                'promptTokens': 50,
-                'completionTokens': 50,
-            },
-        }
-
-        result = LangChainProvider.create_ai_metrics(mock_response)
-        expected = LangChainProvider.get_ai_metrics_from_response(mock_response)
-
-        assert result.success == expected.success
-        assert result.usage.total == expected.usage.total
-        assert result.usage.input == expected.usage.input
-        assert result.usage.output == expected.usage.output
