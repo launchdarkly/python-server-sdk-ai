@@ -4,18 +4,11 @@ from typing import Any, Dict, List, Optional, Union
 
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
-from ldai import (
-    AIAgentConfig,
-    AICompletionConfig,
-    AIJudgeConfig,
-    LDMessage,
-)
+from ldai import LDMessage
+from ldai.models import AIConfigKind
 from ldai.providers import AIProvider
 from ldai.providers.types import ChatResponse, LDAIMetrics, StructuredResponse
 from ldai.tracker import TokenUsage
-
-# Type alias matching the one in ldai.models
-AIConfigKind = Union[AIAgentConfig, AICompletionConfig, AIJudgeConfig]
 
 
 class LangChainProvider(AIProvider):
@@ -44,7 +37,7 @@ class LangChainProvider(AIProvider):
         :param logger: Optional logger for the provider
         :return: Configured LangChainProvider instance
         """
-        llm = await LangChainProvider.create_langchain_model(ai_config)
+        llm = LangChainProvider.create_langchain_model(ai_config)
         return LangChainProvider(llm, logger)
 
     async def invoke_model(self, messages: List[LDMessage]) -> ChatResponse:
@@ -253,7 +246,7 @@ class LangChainProvider(AIProvider):
         return result
 
     @staticmethod
-    async def create_langchain_model(ai_config: AIConfigKind) -> BaseChatModel:
+    def create_langchain_model(ai_config: AIConfigKind) -> BaseChatModel:
         """
         Create a LangChain model from an AI configuration.
 

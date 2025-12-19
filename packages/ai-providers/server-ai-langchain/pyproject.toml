@@ -24,6 +24,9 @@ packages = [{ include = "ldai_langchain", from = "src" }]
 
 [tool.poetry.dependencies]
 python = ">=3.9,<4"
+# TODO: Before publishing, change to PyPI version: launchdarkly-server-sdk-ai = ">=X.Y.Z"
+# Path dependency is used for development because the published version doesn't yet export
+# the required types (LDMessage, AIConfigKind, etc.). Release server-ai first, then update.
 launchdarkly-server-sdk-ai = { path = "../../sdk/server-ai", develop = true }
 langchain-core = ">=0.2.0"
 langchain = ">=0.2.0"
