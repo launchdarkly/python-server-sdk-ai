@@ -2,48 +2,208 @@
 
 This package contains the LaunchDarkly Server-Side AI SDK for Python (`launchdarkly-server-sdk-ai`).
 
-## Installation
+# ⛔️⛔️⛔️⛔️
+
+> [!CAUTION]
+> This library is a alpha version and should not be considered ready for production use while this message is visible.
+
+# ☝️☝️☝️☝️☝️☝️
+
+## LaunchDarkly overview
+
+[LaunchDarkly](https://www.launchdarkly.com) is a feature management platform that serves over 100 billion feature flags daily to help teams build better software, faster. [Get started](https://docs.launchdarkly.com/home/getting-started) using LaunchDarkly today!
+
+[![Twitter Follow](https://img.shields.io/twitter/follow/launchdarkly.svg?style=social&label=Follow&maxAge=2592000)](https://twitter.com/intent/follow?screen_name=launchdarkly)
+
+## Quick Setup
+
+This assumes that you have already installed the LaunchDarkly Python (server-side) SDK.
+
+1. Install this package with `pip`:
 
 ```bash
 pip install launchdarkly-server-sdk-ai
 ```
 
-## Quick Start
+2. Create an AI SDK instance:
 
 ```python
 from ldclient import LDClient, Config, Context
+from ldai import LDAIClient
+
+# The ld_client instance should be created based on the instructions in the relevant SDK.
+ld_client = LDClient(Config("your-sdk-key"))
+ai_client = LDAIClient(ld_client)
+```
+
+## Setting Default AI Configurations
+
+When retrieving AI configurations, you need to provide default values that will be used if the configuration is not available from LaunchDarkly:
+
+### Fully Configured Default
+
+```python
+from ldai import AICompletionConfigDefault, ModelConfig, LDMessage
+
+default_config = AICompletionConfigDefault(
+    enabled=True,
+    model=ModelConfig(
+        name='gpt-4',
+        parameters={'temperature': 0.7, 'maxTokens': 1000}
+    ),
+    messages=[
+        LDMessage(role='system', content='You are a helpful assistant.')
+    ]
+)
+```
+
+### Disabled Default
+
+```python
+from ldai import AICompletionConfigDefault
+
+default_config = AICompletionConfigDefault(
+    enabled=False
+)
+```
+
+## Retrieving AI Configurations
+
+The `completion_config` method retrieves AI configurations from LaunchDarkly with support for dynamic variables and fallback values:
+
+```python
+from ldclient import Context
 from ldai import LDAIClient, AICompletionConfigDefault, ModelConfig
 
-# Initialize LaunchDarkly client
-ld_client = LDClient(Config("your-sdk-key"))
-
-# Create AI client
-ai_client = LDAIClient(ld_client)
-
-# Get AI configuration
 context = Context.create("user-123")
-config = ai_client.completion_config(
-    "my-ai-config",
+ai_config = ai_client.completion_config(
+    ai_config_key,
     context,
-    AICompletionConfigDefault(
-        enabled=True,
-        model=ModelConfig("gpt-4")
-    )
+    default_config,
+    variables={'myVariable': 'My User Defined Variable'}  # Variables for template interpolation
 )
 
-# Use the configuration with your AI provider
-if config.enabled:
-    # Your AI implementation here
-    pass
+# Ensure configuration is enabled
+if ai_config.enabled:
+    messages = ai_config.messages
+    model = ai_config.model
+    tracker = ai_config.tracker
+    # Use with your AI provider
+```
+
+## Chat for Conversational AI
+
+`Chat` provides a high-level interface for conversational AI with automatic conversation management and metrics tracking:
+
+- Automatically configures models based on AI configuration
+- Maintains conversation history across multiple interactions
+- Automatically tracks token usage, latency, and success rates
+- Works with any supported AI provider (see [AI Providers](https://github.com/launchdarkly/python-server-sdk-ai#ai-providers) for available packages)
+
+### Using Chat
+
+```python
+import asyncio
+from ldclient import Context
+from ldai import LDAIClient, AICompletionConfigDefault, ModelConfig, LDMessage
+
+# Use the same default_config from the retrieval section above
+async def main():
+    context = Context.create("user-123")
+    chat = await ai_client.create_chat(
+        'customer-support-chat',
+        context,
+        default_config,
+        variables={'customerName': 'John'}
+    )
+    
+    if chat:
+        # Simple conversation flow - metrics are automatically tracked by invoke()
+        response1 = await chat.invoke('I need help with my order')
+        print(response1.message.content)
+        
+        response2 = await chat.invoke("What's the status?")
+        print(response2.message.content)
+        
+        # Access conversation history
+        messages = chat.get_messages()
+        print(f'Conversation has {len(messages)} messages')
+
+asyncio.run(main())
+```
+
+## Advanced Usage with Providers
+
+For more control, you can use the configuration directly with AI providers. We recommend using [LaunchDarkly AI Provider packages](https://github.com/launchdarkly/python-server-sdk-ai#ai-providers) when available:
+
+### Using AI Provider Packages
+
+```python
+import asyncio
+from ldai import LDAIClient, AICompletionConfigDefault, ModelConfig
+from ldai.providers.types import LDAIMetrics, TokenUsage
+
+from ldai_langchain import LangChainProvider
+
+async def main():
+    ai_config = ai_client.completion_config(ai_config_key, context, default_value)
+    
+    # Create LangChain model from configuration
+    llm = await LangChainProvider.create_langchain_model(ai_config)
+    
+    # Use with tracking
+    response = await ai_config.tracker.track_metrics_of(
+        lambda: llm.invoke(messages),
+        lambda result: LangChainProvider.get_ai_metrics_from_response(result)
+    )
+    
+    print('AI Response:', response.content)
+
+asyncio.run(main())
+```
+
+### Using Custom Providers
+
+```python
+import asyncio
+from ldai import LDAIClient, AICompletionConfigDefault, ModelConfig
+from ldai.providers.types import LDAIMetrics, TokenUsage
+
+async def main():
+    ai_config = ai_client.completion_config(ai_config_key, context, default_value)
+    
+    # Define custom metrics mapping for your provider
+    def map_custom_provider_metrics(response):
+        return LDAIMetrics(
+            success=True,
+            usage=TokenUsage(
+                total=response.usage.get('total_tokens', 0) if response.usage else 0,
+                input=response.usage.get('prompt_tokens', 0) if response.usage else 0,
+                output=response.usage.get('completion_tokens', 0) if response.usage else 0,
+            )
+        )
+    
+    # Use with custom provider and tracking
+    async def call_custom_provider():
+        return await custom_provider.generate(
+            messages=ai_config.messages or [],
+            model=ai_config.model.name if ai_config.model else 'custom-model',
+            temperature=ai_config.model.get_parameter('temperature') if ai_config.model else 0.5,
+        )
+    
+    result = await ai_config.tracker.track_metrics_of(
+        call_custom_provider,
+        map_custom_provider_metrics
+    )
+    
+    print('AI Response:', result.content)
+
+asyncio.run(main())
 ```
 
 ## Documentation
 
 For full documentation, please refer to the [LaunchDarkly AI SDK documentation](https://docs.launchdarkly.com/sdk/ai/python).
-
-## Contributing
-
-See [CONTRIBUTING.md](../../../CONTRIBUTING.md) in the repository root.
 
 ## License
 
