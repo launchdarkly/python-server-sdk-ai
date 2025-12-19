@@ -1,12 +1,13 @@
 {
   "include-component-in-tag": true,
+  "bootstrap-sha": "b63dbb5e3ccd6d2024d5c2b2761e04fcb7e86079",
   "packages": {
     "packages/sdk/server-ai": {
       "release-type": "python",
       "versioning": "default",
       "bump-minor-pre-major": true,
       "include-v-in-tag": false,
-      "extra-files": ["src/ldai/__init__.py", "../../../PROVENANCE.md"],
+      "extra-files": ["src/ldai/__init__.py", "PROVENANCE.md"],
       "component": "launchdarkly-server-sdk-ai"
     },
     "packages/ai-providers/server-ai-langchain": {
