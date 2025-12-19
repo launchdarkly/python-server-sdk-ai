@@ -23,8 +23,8 @@ help: #! Show this help message
 
 .PHONY: install
 install: #! Install all packages
-	$(MAKE) -C $(SERVER_AI_PKG) install
-	$(MAKE) -C $(LANGCHAIN_PKG) install
+	$(MAKE) install-server-ai
+	$(MAKE) install-langchain
 
 .PHONY: install-server-ai
 install-server-ai: #! Install server-ai package
@@ -40,7 +40,8 @@ install-langchain: #! Install langchain provider package
 
 .PHONY: test
 test: #! Run unit tests for all packages
-	$(MAKE) -C $(SERVER_AI_PKG) test
+	$(MAKE) test-server-ai
+	$(MAKE) test-langchain
 
 .PHONY: test-server-ai
 test-server-ai: #! Run unit tests for server-ai package
@@ -52,7 +53,8 @@ test-langchain: #! Run unit tests for langchain provider package
 
 .PHONY: lint
 lint: #! Run type analysis and linting checks for all packages
-	$(MAKE) -C $(SERVER_AI_PKG) lint
+	$(MAKE) lint-server-ai
+	$(MAKE) lint-langchain
 
 .PHONY: lint-server-ai
 lint-server-ai: #! Run type analysis and linting checks for server-ai package
@@ -68,7 +70,8 @@ lint-langchain: #! Run type analysis and linting checks for langchain provider p
 
 .PHONY: build
 build: #! Build all packages
-	$(MAKE) -C $(SERVER_AI_PKG) build
+	$(MAKE) build-server-ai
+	$(MAKE) build-langchain
 
 .PHONY: build-server-ai
 build-server-ai: #! Build server-ai package
