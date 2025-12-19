@@ -4,7 +4,6 @@ from typing import Any, Dict, List, Optional, Union
 
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
-
 from ldai import (
     AIAgentConfig,
     AICompletionConfig,
@@ -22,7 +21,7 @@ AIConfigKind = Union[AIAgentConfig, AICompletionConfig, AIJudgeConfig]
 class LangChainProvider(AIProvider):
     """
     LangChain implementation of AIProvider.
-    
+
     This provider integrates LangChain models with LaunchDarkly's tracking capabilities.
     """
 
@@ -35,7 +34,6 @@ class LangChainProvider(AIProvider):
         """
         super().__init__(logger)
         self._llm = llm
-
 
     @staticmethod
     async def create(ai_config: AIConfigKind, logger: Optional[Any] = None) -> 'LangChainProvider':
@@ -166,7 +164,7 @@ class LangChainProvider(AIProvider):
     def map_provider(ld_provider_name: str) -> str:
         """
         Map LaunchDarkly provider names to LangChain provider names.
-        
+
         This method enables seamless integration between LaunchDarkly's standardized
         provider naming and LangChain's naming conventions.
 
@@ -185,7 +183,7 @@ class LangChainProvider(AIProvider):
     def get_ai_metrics_from_response(response: BaseMessage) -> LDAIMetrics:
         """
         Get AI metrics from a LangChain provider response.
-        
+
         This method extracts token usage information and success status from LangChain responses
         and returns a LaunchDarkly AIMetrics object.
 
@@ -217,7 +215,7 @@ class LangChainProvider(AIProvider):
     def create_ai_metrics(langchain_response: BaseMessage) -> LDAIMetrics:
         """
         Create AI metrics information from a LangChain provider response.
-        
+
         .. deprecated::
             Use `get_ai_metrics_from_response()` instead.
 
@@ -232,7 +230,7 @@ class LangChainProvider(AIProvider):
     ) -> List[Union[HumanMessage, SystemMessage, AIMessage]]:
         """
         Convert LaunchDarkly messages to LangChain messages.
-        
+
         This helper method enables developers to work directly with LangChain message types
         while maintaining compatibility with LaunchDarkly's standardized message format.
 
@@ -241,7 +239,7 @@ class LangChainProvider(AIProvider):
         :raises ValueError: If an unsupported message role is encountered
         """
         result: List[Union[HumanMessage, SystemMessage, AIMessage]] = []
-        
+
         for msg in messages:
             if msg.role == 'system':
                 result.append(SystemMessage(content=msg.content))
@@ -251,14 +249,14 @@ class LangChainProvider(AIProvider):
                 result.append(AIMessage(content=msg.content))
             else:
                 raise ValueError(f'Unsupported message role: {msg.role}')
-        
+
         return result
 
     @staticmethod
     async def create_langchain_model(ai_config: AIConfigKind) -> BaseChatModel:
         """
         Create a LangChain model from an AI configuration.
-        
+
         This public helper method enables developers to initialize their own LangChain models
         using LaunchDarkly AI configurations.
 
@@ -270,7 +268,7 @@ class LangChainProvider(AIProvider):
         model_name = ai_config.model.name if ai_config.model else ''
         provider = ai_config.provider.name if ai_config.provider else ''
         parameters = {}
-        
+
         if ai_config.model and hasattr(ai_config.model, '_parameters') and ai_config.model._parameters:
             parameters = ai_config.model._parameters.copy()
 
