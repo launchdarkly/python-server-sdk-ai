@@ -53,7 +53,7 @@ class LangChainProvider(AIProvider):
             langchain_messages = LangChainProvider.convert_messages_to_langchain(messages)
 
             # Get the LangChain response
-            response: AIMessage = await self._llm.ainvoke(langchain_messages)
+            response: BaseMessage = await self._llm.ainvoke(langchain_messages)
 
             # Generate metrics early (assumes success by default)
             metrics = LangChainProvider.get_ai_metrics_from_response(response)
@@ -174,7 +174,7 @@ class LangChainProvider(AIProvider):
         return mapping.get(lowercased_name, lowercased_name)
 
     @staticmethod
-    def get_ai_metrics_from_response(response: AIMessage) -> LDAIMetrics:
+    def get_ai_metrics_from_response(response: BaseMessage) -> LDAIMetrics:
         """
         Get AI metrics from a LangChain provider response.
         
@@ -206,7 +206,7 @@ class LangChainProvider(AIProvider):
         return LDAIMetrics(success=True, usage=usage)
 
     @staticmethod
-    def create_ai_metrics(langchain_response: AIMessage) -> LDAIMetrics:
+    def create_ai_metrics(langchain_response: BaseMessage) -> LDAIMetrics:
         """
         Create AI metrics information from a LangChain provider response.
         
