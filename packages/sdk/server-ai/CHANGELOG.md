@@ -21,6 +21,7 @@ All notable changes to the LaunchDarkly Python AI package will be documented in 
 * Added `judge_config` method to AI SDK to retrieve an AI Judge Config ([#73](https://github.com/launchdarkly/python-server-sdk-ai/issues/73)) ([62cb2aa](https://github.com/launchdarkly/python-server-sdk-ai/commit/62cb2aa7f4641777c61fdc2cc6013357ef7289be))
 * Added `track_eval_scores` method to config tracker ([#73](https://github.com/launchdarkly/python-server-sdk-ai/issues/73)) ([62cb2aa](https://github.com/launchdarkly/python-server-sdk-ai/commit/62cb2aa7f4641777c61fdc2cc6013357ef7289be))
 * Added `track_judge_response` method to config tracker ([#73](https://github.com/launchdarkly/python-server-sdk-ai/issues/73)) ([62cb2aa](https://github.com/launchdarkly/python-server-sdk-ai/commit/62cb2aa7f4641777c61fdc2cc6013357ef7289be))
+* Added `track_metrics_of` async method to config tracker for generic AI operation tracking ([#73](https://github.com/launchdarkly/python-server-sdk-ai/issues/73)) ([62cb2aa](https://github.com/launchdarkly/python-server-sdk-ai/commit/62cb2aa7f4641777c61fdc2cc6013357ef7289be))
 * Chat will evaluate responses with configured judges ([#73](https://github.com/launchdarkly/python-server-sdk-ai/issues/73)) ([62cb2aa](https://github.com/launchdarkly/python-server-sdk-ai/commit/62cb2aa7f4641777c61fdc2cc6013357ef7289be))
 * Deprecated `LDAIClient.config()` and will be removed in a future version, use `LDAIClient.completion_config()` instead
 * Deprecated `LDAIClient.agent()` and will be removed in a future version, use `LDAIClient.agent_config()` instead
