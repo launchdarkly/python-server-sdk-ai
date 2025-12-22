@@ -31,7 +31,7 @@ litellm = ">=1.0.0"
 [tool.poetry.group.dev.dependencies]
 pytest = ">=2.8"
 pytest-cov = ">=2.4.0"
-pytest-asyncio = ">=0.21.0"
+pytest-asyncio = ">=0.21.0,<1.0.0"
 mypy = "==1.18.2"
 pycodestyle = ">=2.11.0"
 isort = ">=5.12.0"
