@@ -5,7 +5,6 @@ from typing import Any, Callable, Dict, List, Optional
 
 from ldai import LDMessage
 
-
 # Type alias for provider function
 VercelProviderFunction = Callable[[str], Any]
 
@@ -115,4 +114,3 @@ class StreamResponse:
     # Note: In async streaming, these would be resolved after the stream completes
     finish_reason: Optional[str] = None
     usage: Optional[ModelUsageTokens] = None
-

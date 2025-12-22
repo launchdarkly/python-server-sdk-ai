@@ -4,13 +4,12 @@ import json
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import litellm
-from litellm import acompletion
-
 from ldai import LDMessage
 from ldai.models import AIConfigKind
 from ldai.providers import AIProvider
 from ldai.providers.types import ChatResponse, LDAIMetrics, StructuredResponse
 from ldai.tracker import TokenUsage
+from litellm import acompletion
 
 from ldai_vercel.types import (
     ModelUsageTokens,
@@ -391,4 +390,3 @@ class VercelProvider(AIProvider):
         if provider_name:
             return f'{provider_name}/{model_name}'
         return model_name
-

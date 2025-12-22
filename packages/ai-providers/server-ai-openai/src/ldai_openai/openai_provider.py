@@ -4,14 +4,13 @@ import json
 import os
 from typing import Any, Dict, Iterable, List, Optional, cast
 
-from openai import AsyncOpenAI
-from openai.types.chat import ChatCompletionMessageParam
-
 from ldai import LDMessage
 from ldai.models import AIConfigKind
 from ldai.providers import AIProvider
 from ldai.providers.types import ChatResponse, LDAIMetrics, StructuredResponse
 from ldai.tracker import TokenUsage
+from openai import AsyncOpenAI
+from openai.types.chat import ChatCompletionMessageParam
 
 
 class OpenAIProvider(AIProvider):
@@ -250,4 +249,3 @@ class OpenAIProvider(AIProvider):
         :return: LDAIMetrics with success status and token usage
         """
         return OpenAIProvider.get_ai_metrics_from_response(openai_response)
-
