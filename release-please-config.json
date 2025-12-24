@@ -17,6 +17,22 @@
       "include-v-in-tag": false,
       "extra-files": ["src/ldai_langchain/__init__.py"],
       "component": "launchdarkly-server-sdk-ai-langchain"
+    },
+    "packages/ai-providers/server-ai-openai": {
+      "release-type": "python",
+      "versioning": "default",
+      "bump-minor-pre-major": true,
+      "include-v-in-tag": false,
+      "extra-files": ["src/ldai_openai/__init__.py"],
+      "component": "launchdarkly-server-sdk-ai-openai-dev"
+    },
+    "packages/ai-providers/server-ai-vercel": {
+      "release-type": "python",
+      "versioning": "default",
+      "bump-minor-pre-major": true,
+      "include-v-in-tag": false,
+      "extra-files": ["src/ldai_vercel/__init__.py"],
+      "component": "launchdarkly-server-sdk-ai-vercel-dev"
     }
   }
 }

@@ -26,6 +26,8 @@ on:
         options:
           - packages/sdk/server-ai
           - packages/ai-providers/server-ai-langchain
+          - packages/ai-providers/server-ai-openai
+          - packages/ai-providers/server-ai-vercel
       dry_run:
         description: 'Is this a dry run. If so no package will be published.'
         type: boolean
@@ -43,6 +45,10 @@ jobs:
       package-server-ai-tag-name: ${{ steps.release.outputs['packages/sdk/server-ai--tag_name'] }}
       package-server-ai-langchain-released: ${{ steps.release.outputs['packages/ai-providers/server-ai-langchain--release_created'] }}
       package-server-ai-langchain-tag-name: ${{ steps.release.outputs['packages/ai-providers/server-ai-langchain--tag_name'] }}
+      package-server-ai-openai-released: ${{ steps.release.outputs['packages/ai-providers/server-ai-openai--release_created'] }}
+      package-server-ai-openai-tag-name: ${{ steps.release.outputs['packages/ai-providers/server-ai-openai--tag_name'] }}
+      package-server-ai-vercel-released: ${{ steps.release.outputs['packages/ai-providers/server-ai-vercel--release_created'] }}
+      package-server-ai-vercel-tag-name: ${{ steps.release.outputs['packages/ai-providers/server-ai-vercel--tag_name'] }}
     steps:
       - uses: googleapis/release-please-action@v4
         id: release
@@ -193,3 +199,111 @@ jobs:
       base64-subjects: "${{ needs.release-server-ai-langchain.outputs.package-hashes }}"
       upload-assets: true
       upload-tag-name: ${{ needs.release-please.outputs.package-server-ai-langchain-tag-name }}
+
+  release-server-ai-openai:
+    runs-on: ubuntu-latest
+    needs: ['release-please']
+    permissions:
+      id-token: write # Needed for OIDC to get release secrets from AWS.
+    if: ${{ needs.release-please.outputs.package-server-ai-openai-released == 'true' }}
+    outputs:
+      package-hashes: ${{ steps.build.outputs.package-hashes }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install poetry
+        uses: abatilo/actions-poetry@7b6d33e44b4f08d7021a1dee3c044e9c253d6439
+
+      - uses: ./.github/actions/ci
+        with:
+          workspace_path: packages/ai-providers/server-ai-openai
+
+      - uses: ./.github/actions/build
+        id: build
+        with:
+          workspace_path: packages/ai-providers/server-ai-openai
+
+      - uses: launchdarkly/gh-actions/actions/release-secrets@release-secrets-v1.2.0
+        name: 'Get PyPI token'
+        with:
+          aws_assume_role: ${{ vars.AWS_ROLE_ARN }}
+          ssm_parameter_pairs: '/production/common/releasing/pypi/token = PYPI_AUTH_TOKEN'
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@ed0c53931b1dc9bd32cbe73a98c7f6766f8a527e # v1.13.0
+        with:
+          password: ${{ env.PYPI_AUTH_TOKEN }}
+          packages-dir: packages/ai-providers/server-ai-openai/dist/
+
+  release-server-ai-openai-provenance:
+    needs: ['release-please', 'release-server-ai-openai']
+    if: ${{ needs.release-please.outputs.package-server-ai-openai-released == 'true' }}
+    permissions:
+      actions: read # Needed for detecting the GitHub Actions environment.
+      id-token: write # Needed for provenance signing.
+      contents: write # Needed for uploading assets to the release.
+    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v2.0.0
+    with:
+      base64-subjects: "${{ needs.release-server-ai-openai.outputs.package-hashes }}"
+      upload-assets: true
+      upload-tag-name: ${{ needs.release-please.outputs.package-server-ai-openai-tag-name }}
+
+  release-server-ai-vercel:
+    runs-on: ubuntu-latest
+    needs: ['release-please']
+    permissions:
+      id-token: write # Needed for OIDC to get release secrets from AWS.
+    if: ${{ needs.release-please.outputs.package-server-ai-vercel-released == 'true' }}
+    outputs:
+      package-hashes: ${{ steps.build.outputs.package-hashes }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install poetry
+        uses: abatilo/actions-poetry@7b6d33e44b4f08d7021a1dee3c044e9c253d6439
+
+      - uses: ./.github/actions/ci
+        with:
+          workspace_path: packages/ai-providers/server-ai-vercel
+
+      - uses: ./.github/actions/build
+        id: build
+        with:
+          workspace_path: packages/ai-providers/server-ai-vercel
+
+      - uses: launchdarkly/gh-actions/actions/release-secrets@release-secrets-v1.2.0
+        name: 'Get PyPI token'
+        with:
+          aws_assume_role: ${{ vars.AWS_ROLE_ARN }}
+          ssm_parameter_pairs: '/production/common/releasing/pypi/token = PYPI_AUTH_TOKEN'
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@ed0c53931b1dc9bd32cbe73a98c7f6766f8a527e # v1.13.0
+        with:
+          password: ${{ env.PYPI_AUTH_TOKEN }}
+          packages-dir: packages/ai-providers/server-ai-vercel/dist/
+
+  release-server-ai-vercel-provenance:
+    needs: ['release-please', 'release-server-ai-vercel']
+    if: ${{ needs.release-please.outputs.package-server-ai-vercel-released == 'true' }}
+    permissions:
+      actions: read # Needed for detecting the GitHub Actions environment.
+      id-token: write # Needed for provenance signing.
+      contents: write # Needed for uploading assets to the release.
+    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v2.0.0
+    with:
+      base64-subjects: "${{ needs.release-server-ai-vercel.outputs.package-hashes }}"
+      upload-assets: true
+      upload-tag-name: ${{ needs.release-please.outputs.package-server-ai-vercel-tag-name }}
