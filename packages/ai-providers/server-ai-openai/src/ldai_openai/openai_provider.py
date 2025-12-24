@@ -235,17 +235,3 @@ class OpenAIProvider(AIProvider):
 
         # OpenAI responses that complete successfully are considered successful by default
         return LDAIMetrics(success=True, usage=usage)
-
-    @staticmethod
-    def create_ai_metrics(openai_response: Any) -> LDAIMetrics:
-        """
-        Create AI metrics information from an OpenAI response.
-
-        This method extracts token usage information and success status from OpenAI responses
-        and returns a LaunchDarkly AIMetrics object.
-
-        :deprecated: Use `get_ai_metrics_from_response()` instead.
-        :param openai_response: The response from OpenAI chat completions API
-        :return: LDAIMetrics with success status and token usage
-        """
-        return OpenAIProvider.get_ai_metrics_from_response(openai_response)
