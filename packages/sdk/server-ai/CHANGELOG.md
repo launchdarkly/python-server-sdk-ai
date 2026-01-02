@@ -2,6 +2,27 @@
 
 All notable changes to the LaunchDarkly Python AI package will be documented in this file. This project adheres to [Semantic Versioning](http://semver.org).
 
+## [0.12.0](https://github.com/launchdarkly/python-server-sdk-ai/compare/launchdarkly-server-sdk-ai-0.11.0...launchdarkly-server-sdk-ai-0.12.0) (2026-01-02)
+
+
+### ⚠ BREAKING CHANGES
+
+* Removed SupportedAIProvider type
+* Removed optional logger parameters
+
+### Features
+
+* Re-export ldclient log in ldai ([55e0da3](https://github.com/launchdarkly/python-server-sdk-ai/commit/55e0da3dc0a142d94da6ae78a8322a8448b569c6))
+
+
+### Bug Fixes
+
+* Enable support for existing AI Providers ([#80](https://github.com/launchdarkly/python-server-sdk-ai/issues/80)) ([55e0da3](https://github.com/launchdarkly/python-server-sdk-ai/commit/55e0da3dc0a142d94da6ae78a8322a8448b569c6))
+* Order of providers is now preserved ([55e0da3](https://github.com/launchdarkly/python-server-sdk-ai/commit/55e0da3dc0a142d94da6ae78a8322a8448b569c6))
+* Removed optional logger parameters ([55e0da3](https://github.com/launchdarkly/python-server-sdk-ai/commit/55e0da3dc0a142d94da6ae78a8322a8448b569c6))
+* Removed SupportedAIProvider type ([55e0da3](https://github.com/launchdarkly/python-server-sdk-ai/commit/55e0da3dc0a142d94da6ae78a8322a8448b569c6))
+* Use the ldclient logger ([55e0da3](https://github.com/launchdarkly/python-server-sdk-ai/commit/55e0da3dc0a142d94da6ae78a8322a8448b569c6))
+
 ## [0.11.0](https://github.com/launchdarkly/python-server-sdk-ai/compare/launchdarkly-server-sdk-ai-0.10.1...launchdarkly-server-sdk-ai-0.11.0) (2025-12-19)
 
 
