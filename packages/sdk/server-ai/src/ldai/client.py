@@ -1,9 +1,10 @@
 from typing import Any, Dict, List, Optional, Tuple
 
 import chevron
-from ldclient import Context, log
+from ldclient import Context
 from ldclient.client import LDClient
 
+from ldai import log
 from ldai.chat import Chat
 from ldai.judge import Judge
 from ldai.models import (AIAgentConfig, AIAgentConfigDefault,
