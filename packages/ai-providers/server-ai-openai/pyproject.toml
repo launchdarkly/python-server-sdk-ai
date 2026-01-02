@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "launchdarkly-server-sdk-ai-openai"
-version = "0.0.0"
+version = "0.1.0"
 description = "LaunchDarkly AI SDK OpenAI Provider"
 authors = ["LaunchDarkly <dev@launchdarkly.com>"]
 license = "Apache-2.0"
