@@ -95,7 +95,7 @@ class OpenAIProvider(AIProvider):
                     content = message.content
 
             if not content:
-                log.warn('OpenAI response has no content available')
+                log.warning('OpenAI response has no content available')
                 metrics = LDAIMetrics(success=False, usage=metrics.usage)
 
             return ChatResponse(
@@ -103,7 +103,7 @@ class OpenAIProvider(AIProvider):
                 metrics=metrics,
             )
         except Exception as error:
-            log.warn(f'OpenAI model invocation failed: {error}')
+            log.warning(f'OpenAI model invocation failed: {error}')
 
             return ChatResponse(
                 message=LDMessage(role='assistant', content=''),
@@ -154,7 +154,7 @@ class OpenAIProvider(AIProvider):
                     content = message.content
 
             if not content:
-                log.warn('OpenAI structured response has no content available')
+                log.warning('OpenAI structured response has no content available')
                 metrics = LDAIMetrics(success=False, usage=metrics.usage)
                 return StructuredResponse(
                     data={},
@@ -170,7 +170,7 @@ class OpenAIProvider(AIProvider):
                     metrics=metrics,
                 )
             except json.JSONDecodeError as parse_error:
-                log.warn(f'OpenAI structured response contains invalid JSON: {parse_error}')
+                log.warning(f'OpenAI structured response contains invalid JSON: {parse_error}')
                 metrics = LDAIMetrics(success=False, usage=metrics.usage)
                 return StructuredResponse(
                     data={},
@@ -178,7 +178,7 @@ class OpenAIProvider(AIProvider):
                     metrics=metrics,
                 )
         except Exception as error:
-            log.warn(f'OpenAI structured model invocation failed: {error}')
+            log.warning(f'OpenAI structured model invocation failed: {error}')
 
             return StructuredResponse(
                 data={},

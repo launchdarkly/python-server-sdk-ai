@@ -62,13 +62,8 @@ class TestInvokeModel:
         """Create a mock OpenAI client."""
         return MagicMock()
 
-    @pytest.fixture
-    def mock_logger(self):
-        """Create a mock logger."""
-        return MagicMock()
-
     @pytest.mark.asyncio
-    async def test_invokes_openai_chat_completions_and_returns_response(self, mock_client, mock_logger):
+    async def test_invokes_openai_chat_completions_and_returns_response(self, mock_client):
         """Should invoke OpenAI chat completions and return response."""
         mock_response = MagicMock()
         mock_response.choices = [MagicMock()]
@@ -83,7 +78,7 @@ class TestInvokeModel:
         mock_client.chat.completions = MagicMock()
         mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
 
-        provider = OpenAIProvider(mock_client, 'gpt-3.5-turbo', {}, mock_logger)
+        provider = OpenAIProvider(mock_client, 'gpt-3.5-turbo', {})
         messages = [LDMessage(role='user', content='Hello!')]
         result = await provider.invoke_model(messages)
 
@@ -101,7 +96,7 @@ class TestInvokeModel:
         assert result.metrics.usage.output == 15
 
     @pytest.mark.asyncio
-    async def test_returns_unsuccessful_response_when_no_content(self, mock_client, mock_logger):
+    async def test_returns_unsuccessful_response_when_no_content(self, mock_client):
         """Should return unsuccessful response when no content in response."""
         mock_response = MagicMock()
         mock_response.choices = [MagicMock()]
@@ -113,7 +108,7 @@ class TestInvokeModel:
         mock_client.chat.completions = MagicMock()
         mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
 
-        provider = OpenAIProvider(mock_client, 'gpt-3.5-turbo', {}, mock_logger)
+        provider = OpenAIProvider(mock_client, 'gpt-3.5-turbo', {})
         messages = [LDMessage(role='user', content='Hello!')]
         result = await provider.invoke_model(messages)
 
@@ -122,7 +117,7 @@ class TestInvokeModel:
         assert result.metrics.success is False
 
     @pytest.mark.asyncio
-    async def test_returns_unsuccessful_response_when_choices_empty(self, mock_client, mock_logger):
+    async def test_returns_unsuccessful_response_when_choices_empty(self, mock_client):
         """Should return unsuccessful response when choices array is empty."""
         mock_response = MagicMock()
         mock_response.choices = []
@@ -132,7 +127,7 @@ class TestInvokeModel:
         mock_client.chat.completions = MagicMock()
         mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
 
-        provider = OpenAIProvider(mock_client, 'gpt-3.5-turbo', {}, mock_logger)
+        provider = OpenAIProvider(mock_client, 'gpt-3.5-turbo', {})
         messages = [LDMessage(role='user', content='Hello!')]
         result = await provider.invoke_model(messages)
 
@@ -141,20 +136,19 @@ class TestInvokeModel:
         assert result.metrics.success is False
 
     @pytest.mark.asyncio
-    async def test_returns_unsuccessful_response_when_exception_thrown(self, mock_client, mock_logger):
+    async def test_returns_unsuccessful_response_when_exception_thrown(self, mock_client):
         """Should return unsuccessful response when exception is thrown."""
         mock_client.chat = MagicMock()
         mock_client.chat.completions = MagicMock()
         mock_client.chat.completions.create = AsyncMock(side_effect=Exception('API Error'))
 
-        provider = OpenAIProvider(mock_client, 'gpt-3.5-turbo', {}, mock_logger)
+        provider = OpenAIProvider(mock_client, 'gpt-3.5-turbo', {})
         messages = [LDMessage(role='user', content='Hello!')]
         result = await provider.invoke_model(messages)
 
         assert result.message.role == 'assistant'
         assert result.message.content == ''
         assert result.metrics.success is False
-        mock_logger.warn.assert_called()
 
 
 class TestInvokeStructuredModel:
@@ -165,13 +159,8 @@ class TestInvokeStructuredModel:
         """Create a mock OpenAI client."""
         return MagicMock()
 
-    @pytest.fixture
-    def mock_logger(self):
-        """Create a mock logger."""
-        return MagicMock()
-
     @pytest.mark.asyncio
-    async def test_invokes_openai_with_structured_output(self, mock_client, mock_logger):
+    async def test_invokes_openai_with_structured_output(self, mock_client):
         """Should invoke OpenAI with structured output and return parsed response."""
         mock_response = MagicMock()
         mock_response.choices = [MagicMock()]
@@ -186,7 +175,7 @@ class TestInvokeStructuredModel:
         mock_client.chat.completions = MagicMock()
         mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
 
-        provider = OpenAIProvider(mock_client, 'gpt-3.5-turbo', {}, mock_logger)
+        provider = OpenAIProvider(mock_client, 'gpt-3.5-turbo', {})
         messages = [LDMessage(role='user', content='Tell me about a person')]
         response_structure = {
             'type': 'object',
@@ -209,7 +198,7 @@ class TestInvokeStructuredModel:
         assert result.metrics.usage.output == 10
 
     @pytest.mark.asyncio
-    async def test_returns_unsuccessful_when_no_content_in_structured_response(self, mock_client, mock_logger):
+    async def test_returns_unsuccessful_when_no_content_in_structured_response(self, mock_client):
         """Should return unsuccessful response when no content in structured response."""
         mock_response = MagicMock()
         mock_response.choices = [MagicMock()]
@@ -221,7 +210,7 @@ class TestInvokeStructuredModel:
         mock_client.chat.completions = MagicMock()
         mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
 
-        provider = OpenAIProvider(mock_client, 'gpt-3.5-turbo', {}, mock_logger)
+        provider = OpenAIProvider(mock_client, 'gpt-3.5-turbo', {})
         messages = [LDMessage(role='user', content='Tell me about a person')]
         response_structure = {'type': 'object'}
 
@@ -232,7 +221,7 @@ class TestInvokeStructuredModel:
         assert result.metrics.success is False
 
     @pytest.mark.asyncio
-    async def test_handles_json_parsing_errors(self, mock_client, mock_logger):
+    async def test_handles_json_parsing_errors(self, mock_client):
         """Should handle JSON parsing errors gracefully."""
         mock_response = MagicMock()
         mock_response.choices = [MagicMock()]
@@ -247,7 +236,7 @@ class TestInvokeStructuredModel:
         mock_client.chat.completions = MagicMock()
         mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
 
-        provider = OpenAIProvider(mock_client, 'gpt-3.5-turbo', {}, mock_logger)
+        provider = OpenAIProvider(mock_client, 'gpt-3.5-turbo', {})
         messages = [LDMessage(role='user', content='Tell me about a person')]
         response_structure = {'type': 'object'}
 
@@ -258,16 +247,15 @@ class TestInvokeStructuredModel:
         assert result.metrics.success is False
         assert result.metrics.usage is not None
         assert result.metrics.usage.total == 15
-        mock_logger.warn.assert_called()
 
     @pytest.mark.asyncio
-    async def test_returns_unsuccessful_response_when_exception_thrown(self, mock_client, mock_logger):
+    async def test_returns_unsuccessful_response_when_exception_thrown(self, mock_client):
         """Should return unsuccessful response when exception is thrown."""
         mock_client.chat = MagicMock()
         mock_client.chat.completions = MagicMock()
         mock_client.chat.completions.create = AsyncMock(side_effect=Exception('API Error'))
 
-        provider = OpenAIProvider(mock_client, 'gpt-3.5-turbo', {}, mock_logger)
+        provider = OpenAIProvider(mock_client, 'gpt-3.5-turbo', {})
         messages = [LDMessage(role='user', content='Tell me about a person')]
         response_structure = {'type': 'object'}
 
@@ -276,7 +264,6 @@ class TestInvokeStructuredModel:
         assert result.data == {}
         assert result.raw_response == ''
         assert result.metrics.success is False
-        mock_logger.warn.assert_called()
 
 
 class TestGetClient:
@@ -333,22 +320,4 @@ class TestCreate:
             assert isinstance(result, OpenAIProvider)
             assert result._model_name == ''
             assert result._parameters == {}
-
-
-class TestCreateAIMetrics:
-    """Tests for deprecated create_ai_metrics static method."""
-
-    def test_delegates_to_get_ai_metrics_from_response(self):
-        """Should delegate to get_ai_metrics_from_response."""
-        mock_response = MagicMock()
-        mock_response.usage = MagicMock()
-        mock_response.usage.prompt_tokens = 50
-        mock_response.usage.completion_tokens = 50
-        mock_response.usage.total_tokens = 100
-
-        result = OpenAIProvider.create_ai_metrics(mock_response)
-
-        assert result.success is True
-        assert result.usage is not None
-        assert result.usage.total == 100
 
