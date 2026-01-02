@@ -24,7 +24,7 @@
       "bump-minor-pre-major": true,
       "include-v-in-tag": false,
       "extra-files": ["src/ldai_openai/__init__.py"],
-      "component": "launchdarkly-server-sdk-ai-openai-dev"
+      "component": "launchdarkly-server-sdk-ai-openai"
     }
   }
 }
