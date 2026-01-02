@@ -145,45 +145,38 @@ class TestInvokeModel:
         """Create a mock LLM."""
         return MagicMock()
 
-    @pytest.fixture
-    def mock_logger(self):
-        """Create a mock logger."""
-        return MagicMock()
-
     @pytest.mark.asyncio
-    async def test_returns_success_true_for_string_content(self, mock_llm, mock_logger):
+    async def test_returns_success_true_for_string_content(self, mock_llm):
         """Should return success=True for string content."""
         mock_response = AIMessage(content='Test response')
         mock_llm.ainvoke = AsyncMock(return_value=mock_response)
-        provider = LangChainProvider(mock_llm, mock_logger)
+        provider = LangChainProvider(mock_llm)
 
         messages = [LDMessage(role='user', content='Hello')]
         result = await provider.invoke_model(messages)
 
         assert result.metrics.success is True
         assert result.message.content == 'Test response'
-        mock_logger.warn.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_returns_success_false_for_non_string_content_and_logs_warning(self, mock_llm, mock_logger):
+    async def test_returns_success_false_for_non_string_content_and_logs_warning(self, mock_llm):
         """Should return success=False for non-string content and log warning."""
         mock_response = AIMessage(content=[{'type': 'image', 'data': 'base64data'}])
         mock_llm.ainvoke = AsyncMock(return_value=mock_response)
-        provider = LangChainProvider(mock_llm, mock_logger)
+        provider = LangChainProvider(mock_llm)
 
         messages = [LDMessage(role='user', content='Hello')]
         result = await provider.invoke_model(messages)
 
         assert result.metrics.success is False
         assert result.message.content == ''
-        mock_logger.warn.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_returns_success_false_when_model_invocation_throws_error(self, mock_llm, mock_logger):
+    async def test_returns_success_false_when_model_invocation_throws_error(self, mock_llm):
         """Should return success=False when model invocation throws an error."""
         error = Exception('Model invocation failed')
         mock_llm.ainvoke = AsyncMock(side_effect=error)
-        provider = LangChainProvider(mock_llm, mock_logger)
+        provider = LangChainProvider(mock_llm)
 
         messages = [LDMessage(role='user', content='Hello')]
         result = await provider.invoke_model(messages)
@@ -191,7 +184,6 @@ class TestInvokeModel:
         assert result.metrics.success is False
         assert result.message.content == ''
         assert result.message.role == 'assistant'
-        mock_logger.warn.assert_called()
 
 
 class TestInvokeStructuredModel:
@@ -202,19 +194,14 @@ class TestInvokeStructuredModel:
         """Create a mock LLM."""
         return MagicMock()
 
-    @pytest.fixture
-    def mock_logger(self):
-        """Create a mock logger."""
-        return MagicMock()
-
     @pytest.mark.asyncio
-    async def test_returns_success_true_for_successful_invocation(self, mock_llm, mock_logger):
+    async def test_returns_success_true_for_successful_invocation(self, mock_llm):
         """Should return success=True for successful invocation."""
         mock_response = {'result': 'structured data'}
         mock_structured_llm = MagicMock()
         mock_structured_llm.ainvoke = AsyncMock(return_value=mock_response)
         mock_llm.with_structured_output = MagicMock(return_value=mock_structured_llm)
-        provider = LangChainProvider(mock_llm, mock_logger)
+        provider = LangChainProvider(mock_llm)
 
         messages = [LDMessage(role='user', content='Hello')]
         response_structure = {'type': 'object', 'properties': {}}
@@ -222,16 +209,15 @@ class TestInvokeStructuredModel:
 
         assert result.metrics.success is True
         assert result.data == mock_response
-        mock_logger.warn.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_returns_success_false_when_structured_model_invocation_throws_error(self, mock_llm, mock_logger):
+    async def test_returns_success_false_when_structured_model_invocation_throws_error(self, mock_llm):
         """Should return success=False when structured model invocation throws an error."""
         error = Exception('Structured invocation failed')
         mock_structured_llm = MagicMock()
         mock_structured_llm.ainvoke = AsyncMock(side_effect=error)
         mock_llm.with_structured_output = MagicMock(return_value=mock_structured_llm)
-        provider = LangChainProvider(mock_llm, mock_logger)
+        provider = LangChainProvider(mock_llm)
 
         messages = [LDMessage(role='user', content='Hello')]
         response_structure = {'type': 'object', 'properties': {}}
@@ -242,7 +228,6 @@ class TestInvokeStructuredModel:
         assert result.raw_response == ''
         assert result.metrics.usage is not None
         assert result.metrics.usage.total == 0
-        mock_logger.warn.assert_called()
 
 
 class TestGetChatModel:
