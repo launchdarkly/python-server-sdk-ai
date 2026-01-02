@@ -37,10 +37,6 @@ class OpenAIProvider(AIProvider):
         self._model_name = model_name
         self._parameters = parameters
 
-    # =============================================================================
-    # MAIN FACTORY METHOD
-    # =============================================================================
-
     @staticmethod
     async def create(ai_config: AIConfigKind) -> 'OpenAIProvider':
         """
@@ -59,10 +55,6 @@ class OpenAIProvider(AIProvider):
         parameters = model_dict.get('parameters') or {}
 
         return OpenAIProvider(client, model_name, parameters)
-
-    # =============================================================================
-    # INSTANCE METHODS (AIProvider Implementation)
-    # =============================================================================
 
     async def invoke_model(self, messages: List[LDMessage]) -> ChatResponse:
         """
@@ -193,10 +185,6 @@ class OpenAIProvider(AIProvider):
         :return: The underlying AsyncOpenAI client
         """
         return self._client
-
-    # =============================================================================
-    # STATIC UTILITY METHODS
-    # =============================================================================
 
     @staticmethod
     def get_ai_metrics_from_response(response: Any) -> LDAIMetrics:
