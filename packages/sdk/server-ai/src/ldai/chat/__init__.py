@@ -3,6 +3,7 @@
 import asyncio
 from typing import Any, Dict, List, Optional
 
+from ldai import log
 from ldai.judge import Judge
 from ldai.models import AICompletionConfig, LDMessage
 from ldai.providers.ai_provider import AIProvider
@@ -25,7 +26,6 @@ class Chat:
         tracker: LDAIConfigTracker,
         provider: AIProvider,
         judges: Optional[Dict[str, Judge]] = None,
-        logger: Optional[Any] = None,
     ):
         """
         Initialize the Chat.
@@ -34,13 +34,11 @@ class Chat:
         :param tracker: The tracker for the completion configuration
         :param provider: The AI provider to use for chat
         :param judges: Optional dictionary of judge instances keyed by their configuration keys
-        :param logger: Optional logger for logging
         """
         self._ai_config = ai_config
         self._tracker = tracker
         self._provider = provider
         self._judges = judges or {}
-        self._logger = logger
         self._messages: List[LDMessage] = []
 
     async def invoke(self, prompt: str) -> ChatResponse:
@@ -101,10 +99,9 @@ class Chat:
         async def evaluate_judge(judge_config):
             judge = self._judges.get(judge_config.key)
             if not judge:
-                if self._logger:
-                    self._logger.warn(
-                        f"Judge configuration is not enabled: {judge_config.key}",
-                    )
+                log.warn(
+                    f"Judge configuration is not enabled: {judge_config.key}",
+                )
                 return None
 
             eval_result = await judge.evaluate_messages(
