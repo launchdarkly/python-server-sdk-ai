@@ -4,9 +4,7 @@ import json
 import os
 from typing import Any, Dict, Iterable, List, Optional, cast
 
-from ldclient import log
-
-from ldai import LDMessage
+from ldai import LDMessage, log
 from ldai.models import AIConfigKind
 from ldai.providers import AIProvider
 from ldai.providers.types import ChatResponse, LDAIMetrics, StructuredResponse
