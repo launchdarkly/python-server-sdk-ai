@@ -4,6 +4,8 @@ import json
 import os
 from typing import Any, Dict, Iterable, List, Optional, cast
 
+from ldclient import log
+
 from ldai import LDMessage
 from ldai.models import AIConfigKind
 from ldai.providers import AIProvider
@@ -25,7 +27,6 @@ class OpenAIProvider(AIProvider):
         client: AsyncOpenAI,
         model_name: str,
         parameters: Dict[str, Any],
-        logger: Optional[Any] = None
     ):
         """
         Initialize the OpenAI provider.
@@ -33,9 +34,7 @@ class OpenAIProvider(AIProvider):
         :param client: An AsyncOpenAI client instance
         :param model_name: The name of the model to use
         :param parameters: Additional model parameters
-        :param logger: Optional logger for logging provider operations
         """
-        super().__init__(logger)
         self._client = client
         self._model_name = model_name
         self._parameters = parameters
@@ -45,12 +44,11 @@ class OpenAIProvider(AIProvider):
     # =============================================================================
 
     @staticmethod
-    async def create(ai_config: AIConfigKind, logger: Optional[Any] = None) -> 'OpenAIProvider':
+    async def create(ai_config: AIConfigKind) -> 'OpenAIProvider':
         """
         Static factory method to create an OpenAI AIProvider from an AI configuration.
 
         :param ai_config: The LaunchDarkly AI configuration
-        :param logger: Optional logger for the provider
         :return: Configured OpenAIProvider instance
         """
         client = AsyncOpenAI(
@@ -62,7 +60,7 @@ class OpenAIProvider(AIProvider):
         model_name = model_dict.get('name', '')
         parameters = model_dict.get('parameters') or {}
 
-        return OpenAIProvider(client, model_name, parameters, logger)
+        return OpenAIProvider(client, model_name, parameters)
 
     # =============================================================================
     # INSTANCE METHODS (AIProvider Implementation)
@@ -99,8 +97,7 @@ class OpenAIProvider(AIProvider):
                     content = message.content
 
             if not content:
-                if self.logger:
-                    self.logger.warn('OpenAI response has no content available')
+                log.warn('OpenAI response has no content available')
                 metrics = LDAIMetrics(success=False, usage=metrics.usage)
 
             return ChatResponse(
@@ -108,8 +105,7 @@ class OpenAIProvider(AIProvider):
                 metrics=metrics,
             )
         except Exception as error:
-            if self.logger:
-                self.logger.warn(f'OpenAI model invocation failed: {error}')
+            log.warn(f'OpenAI model invocation failed: {error}')
 
             return ChatResponse(
                 message=LDMessage(role='assistant', content=''),
@@ -160,8 +156,7 @@ class OpenAIProvider(AIProvider):
                     content = message.content
 
             if not content:
-                if self.logger:
-                    self.logger.warn('OpenAI structured response has no content available')
+                log.warn('OpenAI structured response has no content available')
                 metrics = LDAIMetrics(success=False, usage=metrics.usage)
                 return StructuredResponse(
                     data={},
@@ -177,8 +172,7 @@ class OpenAIProvider(AIProvider):
                     metrics=metrics,
                 )
             except json.JSONDecodeError as parse_error:
-                if self.logger:
-                    self.logger.warn(f'OpenAI structured response contains invalid JSON: {parse_error}')
+                log.warn(f'OpenAI structured response contains invalid JSON: {parse_error}')
                 metrics = LDAIMetrics(success=False, usage=metrics.usage)
                 return StructuredResponse(
                     data={},
@@ -186,8 +180,7 @@ class OpenAIProvider(AIProvider):
                     metrics=metrics,
                 )
         except Exception as error:
-            if self.logger:
-                self.logger.warn(f'OpenAI structured model invocation failed: {error}')
+            log.warn(f'OpenAI structured model invocation failed: {error}')
 
             return StructuredResponse(
                 data={},
