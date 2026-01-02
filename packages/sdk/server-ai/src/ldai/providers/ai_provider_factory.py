@@ -11,6 +11,7 @@ from ldai.providers.ai_provider import AIProvider
 # Multi-provider packages should be last in the list
 SUPPORTED_AI_PROVIDERS = ('openai', 'langchain')
 
+
 class AIProviderFactory:
     """
     Factory for creating AIProvider instances based on the provider configuration.
@@ -91,12 +92,12 @@ class AIProviderFactory:
         try:
             if provider_type == 'langchain':
                 AIProviderFactory._pkg_exists('ldai_langchain')
-                from ldai_langchain import LangChainProvider  # pyright: ignore[reportMissingImports]
+                from ldai_langchain import LangChainProvider
                 return await LangChainProvider.create(ai_config)
 
             if provider_type == 'openai':
                 AIProviderFactory._pkg_exists('ldai_openai')
-                from ldai_openai import OpenAIProvider  # pyright: ignore[reportMissingImports]
+                from ldai_openai import OpenAIProvider
                 return await OpenAIProvider.create(ai_config)
 
             log.warn(
