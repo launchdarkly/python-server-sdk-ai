@@ -53,7 +53,7 @@ class LangChainProvider(AIProvider):
             if isinstance(response.content, str):
                 content = response.content
             else:
-                log.warn(
+                log.warning(
                     f'Multimodal response not supported, expecting a string. '
                     f'Content type: {type(response.content)}, Content: {response.content}'
                 )
@@ -64,7 +64,7 @@ class LangChainProvider(AIProvider):
                 metrics=metrics,
             )
         except Exception as error:
-            log.warn(f'LangChain model invocation failed: {error}')
+            log.warning(f'LangChain model invocation failed: {error}')
 
             return ChatResponse(
                 message=LDMessage(role='assistant', content=''),
@@ -89,7 +89,7 @@ class LangChainProvider(AIProvider):
             response = await structured_llm.ainvoke(langchain_messages)
 
             if not isinstance(response, dict):
-                log.warn(
+                log.warning(
                     f'Structured output did not return a dict. '
                     f'Got: {type(response)}'
                 )
@@ -111,7 +111,7 @@ class LangChainProvider(AIProvider):
                 ),
             )
         except Exception as error:
-            log.warn(f'LangChain structured model invocation failed: {error}')
+            log.warning(f'LangChain structured model invocation failed: {error}')
 
             return StructuredResponse(
                 data={},
