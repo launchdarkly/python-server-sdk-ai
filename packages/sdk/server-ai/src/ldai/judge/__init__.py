@@ -5,6 +5,7 @@ from typing import Any, Dict, Optional
 
 import chevron
 
+from ldai import log
 from ldai.judge.evaluation_schema_builder import EvaluationSchemaBuilder
 from ldai.models import AIJudgeConfig, LDMessage
 from ldai.providers.ai_provider import AIProvider
@@ -26,7 +27,6 @@ class Judge:
         ai_config: AIJudgeConfig,
         ai_config_tracker: LDAIConfigTracker,
         ai_provider: AIProvider,
-        logger: Optional[Any] = None,
     ):
         """
         Initialize the Judge.
@@ -34,12 +34,10 @@ class Judge:
         :param ai_config: The judge AI configuration
         :param ai_config_tracker: The tracker for the judge configuration
         :param ai_provider: The AI provider to use for evaluation
-        :param logger: Optional logger for logging
         """
         self._ai_config = ai_config
         self._ai_config_tracker = ai_config_tracker
         self._ai_provider = ai_provider
-        self._logger = logger
         self._evaluation_response_structure = EvaluationSchemaBuilder.build(
             ai_config.evaluation_metric_keys
         )
@@ -60,20 +58,17 @@ class Judge:
         """
         try:
             if not self._ai_config.evaluation_metric_keys or len(self._ai_config.evaluation_metric_keys) == 0:
-                if self._logger:
-                    self._logger.warn(
-                        'Judge configuration is missing required evaluationMetricKeys'
-                    )
+                log.warn(
+                    'Judge configuration is missing required evaluationMetricKeys'
+                )
                 return None
 
             if not self._ai_config.messages:
-                if self._logger:
-                    self._logger.warn('Judge configuration must include messages')
+                log.warn('Judge configuration must include messages')
                 return None
 
             if random.random() > sampling_rate:
-                if self._logger:
-                    self._logger.debug(f'Judge evaluation skipped due to sampling rate: {sampling_rate}')
+                log.debug(f'Judge evaluation skipped due to sampling rate: {sampling_rate}')
                 return None
 
             messages = self._construct_evaluation_messages(input_text, output_text)
@@ -89,8 +84,7 @@ class Judge:
             evals = self._parse_evaluation_response(response.data)
 
             if len(evals) != len(self._ai_config.evaluation_metric_keys):
-                if self._logger:
-                    self._logger.warn('Judge evaluation did not return all evaluations')
+                log.warn('Judge evaluation did not return all evaluations')
                 success = False
 
             return JudgeResponse(
@@ -99,8 +93,7 @@ class Judge:
                 success=success,
             )
         except Exception as error:
-            if self._logger:
-                self._logger.error(f'Judge evaluation failed: {error}')
+            log.error(f'Judge evaluation failed: {error}')
             return JudgeResponse(
                 evals={},
                 success=False,
@@ -193,8 +186,7 @@ class Judge:
         results: Dict[str, EvalScore] = {}
 
         if not data.get('evaluations') or not isinstance(data['evaluations'], dict):
-            if self._logger:
-                self._logger.warn('Invalid response: missing or invalid evaluations object')
+            log.warn('Invalid response: missing or invalid evaluations object')
             return results
 
         evaluations = data['evaluations']
@@ -203,27 +195,24 @@ class Judge:
             evaluation = evaluations.get(metric_key)
 
             if not evaluation or not isinstance(evaluation, dict):
-                if self._logger:
-                    self._logger.warn(f'Missing evaluation for metric key: {metric_key}')
+                log.warn(f'Missing evaluation for metric key: {metric_key}')
                 continue
 
             score = evaluation.get('score')
             reasoning = evaluation.get('reasoning')
 
             if not isinstance(score, (int, float)) or score < 0 or score > 1:
-                if self._logger:
-                    self._logger.warn(
-                        f'Invalid score evaluated for {metric_key}: {score}. '
-                        'Score must be a number between 0 and 1 inclusive'
-                    )
+                log.warn(
+                    f'Invalid score evaluated for {metric_key}: {score}. '
+                    'Score must be a number between 0 and 1 inclusive'
+                )
                 continue
 
             if not isinstance(reasoning, str):
-                if self._logger:
-                    self._logger.warn(
-                        f'Invalid reasoning evaluated for {metric_key}: {reasoning}. '
-                        'Reasoning must be a string'
-                    )
+                log.warn(
+                    f'Invalid reasoning evaluated for {metric_key}: {reasoning}. '
+                    'Reasoning must be a string'
+                )
                 continue
 
             results[metric_key] = EvalScore(score=float(score), reasoning=reasoning)

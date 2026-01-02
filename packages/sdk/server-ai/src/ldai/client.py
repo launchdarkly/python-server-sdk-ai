@@ -1,8 +1,7 @@
-import logging
 from typing import Any, Dict, List, Optional, Tuple
 
 import chevron
-from ldclient import Context
+from ldclient import Context, log
 from ldclient.client import LDClient
 
 from ldai.chat import Chat
@@ -12,8 +11,7 @@ from ldai.models import (AIAgentConfig, AIAgentConfigDefault,
                          AICompletionConfigDefault, AIJudgeConfig,
                          AIJudgeConfigDefault, JudgeConfiguration, LDMessage,
                          ModelConfig, ProviderConfig)
-from ldai.providers.ai_provider_factory import (AIProviderFactory,
-                                                SupportedAIProvider)
+from ldai.providers.ai_provider_factory import AIProviderFactory
 from ldai.tracker import LDAIConfigTracker
 
 
@@ -22,7 +20,6 @@ class LDAIClient:
 
     def __init__(self, client: LDClient):
         self._client = client
-        self._logger = logging.getLogger('ldclient.ai')
 
     def completion_config(
         self,
@@ -122,7 +119,7 @@ class LDAIClient:
         context: Context,
         default_value: AIJudgeConfigDefault,
         variables: Optional[Dict[str, Any]] = None,
-        default_ai_provider: Optional[SupportedAIProvider] = None,
+        default_ai_provider: Optional[str] = None,
     ) -> Optional[Judge]:
         """
         Creates and returns a new Judge instance for AI evaluation.
@@ -180,11 +177,11 @@ class LDAIClient:
                 return None
 
             # Create AI provider for the judge
-            provider = await AIProviderFactory.create(judge_config, self._logger, default_ai_provider)
+            provider = await AIProviderFactory.create(judge_config, default_ai_provider)
             if not provider:
                 return None
 
-            return Judge(judge_config, judge_config.tracker, provider, self._logger)
+            return Judge(judge_config, judge_config.tracker, provider)
         except Exception as error:
             # Would log error if logger available
             return None
@@ -194,7 +191,7 @@ class LDAIClient:
         judge_configs: List[JudgeConfiguration.Judge],
         context: Context,
         variables: Optional[Dict[str, Any]] = None,
-        default_ai_provider: Optional[SupportedAIProvider] = None,
+        default_ai_provider: Optional[str] = None,
     ) -> Dict[str, Judge]:
         """
         Initialize judges from judge configurations.
@@ -240,7 +237,7 @@ class LDAIClient:
         context: Context,
         default_value: AICompletionConfigDefault,
         variables: Optional[Dict[str, Any]] = None,
-        default_ai_provider: Optional[SupportedAIProvider] = None,
+        default_ai_provider: Optional[str] = None,
     ) -> Optional[Chat]:
         """
         Creates and returns a new Chat instance for AI conversations.
@@ -275,15 +272,14 @@ class LDAIClient:
                 print(f"Conversation has {len(messages)} messages")
         """
         self._client.track('$ld:ai:config:function:createChat', context, key, 1)
-        if self._logger:
-            self._logger.debug(f"Creating chat for key: {key}")
+        log.debug(f"Creating chat for key: {key}")
         config = self.completion_config(key, context, default_value, variables)
 
         if not config.enabled or not config.tracker:
             # Would log info if logger available
             return None
 
-        provider = await AIProviderFactory.create(config, self._logger, default_ai_provider)
+        provider = await AIProviderFactory.create(config, default_ai_provider)
         if not provider:
             return None
 
@@ -296,7 +292,7 @@ class LDAIClient:
                 default_ai_provider,
             )
 
-        return Chat(config, config.tracker, provider, judges, self._logger)
+        return Chat(config, config.tracker, provider, judges)
 
     def agent_config(
         self,
