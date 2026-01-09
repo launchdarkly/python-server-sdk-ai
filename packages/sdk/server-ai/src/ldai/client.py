@@ -6,12 +6,13 @@ from ldclient.client import LDClient
 
 from ldai import log
 from ldai.chat import Chat
+from ldai.agent_graph import AgentGraph
 from ldai.judge import Judge
 from ldai.models import (AIAgentConfig, AIAgentConfigDefault,
                          AIAgentConfigRequest, AIAgents, AICompletionConfig,
                          AICompletionConfigDefault, AIJudgeConfig,
                          AIJudgeConfigDefault, JudgeConfiguration, LDMessage,
-                         ModelConfig, ProviderConfig)
+                         ModelConfig, ProviderConfig, AIAgentGraph, AIAgentGraphEdge)
 from ldai.providers.ai_provider_factory import AIProviderFactory
 from ldai.tracker import LDAIConfigTracker
 
@@ -418,6 +419,92 @@ class LDAIClient:
             result[config.key] = agent
 
         return result
+
+    def agent_graph(
+        self,
+        key: str,
+        context: Context,
+    ) -> AIAgentGraph:
+        """
+        Retrieve an AI agent graph.
+        """
+        variation = self._client.variation(key, context, {})
+        mock_variation = {
+            "key": "test-agent-graph",
+            "name": "Test Agent Graph",
+            "rootConfigKey": "cruise-ship-information-agent",
+            "description": "Test Agent Graph Description",
+            "edges": [
+                {
+                    "key": "edge-cruise-ship-information-agent-get-weather-for-location",
+                    "sourceConfig": "cruise-ship-information-agent",
+                    "targetConfig": "get-weather-for-location",
+                    "handoff": {},
+                },
+                {
+                    "key": "edge-cruise-ship-information-agent-ships-in-port-agent",
+                    "sourceConfig": "cruise-ship-information-agent",
+                    "targetConfig": "ships-in-port-agent",
+                    "handoff": {},
+                },
+                {
+                    "key": "edge-ships-in-port-agent-vessel-details-agent",
+                    "sourceConfig": "ships-in-port-agent",
+                    "targetConfig": "vessel-details-agent",
+                    "handoff": {},
+                },
+                {
+                    "key": "edge-vessel-details-agent-cruise-information-synthesizer",
+                    "sourceConfig": "vessel-details-agent",
+                    "targetConfig": "cruise-information-synthesizer",
+                    "handoff": {},
+                },
+                {
+                    "key": "edge-get-weather-for-location-cruise-information-synthesizer",
+                    "sourceConfig": "get-weather-for-location",
+                    "targetConfig": "cruise-information-synthesizer",
+                    "handoff": {},
+                },
+            ],
+        }
+        return AgentGraph(
+            agent_graph=AIAgentGraph(
+                key=mock_variation['key'],
+                name=mock_variation['name'],
+                rootConfigKey=mock_variation['rootConfigKey'],
+                edges=[
+                    AIAgentGraphEdge(
+                        key=edge.get('key', ''),
+                        sourceConfig=edge.get('sourceConfig', ''),
+                        targetConfig=edge.get('targetConfig', ''),
+                        handoff=edge.get('handoff', {}),
+                    )
+                    for edge in mock_variation['edges']
+                ],
+                description=mock_variation['description'],
+            ),
+            context=context,
+            get_agent=self.agent_config,
+        )
+
+        return AgentGraph(
+            agent_graph=AIAgentGraph(
+                key=variation.key, 
+                name=variation.name, 
+                rootConfigKey=variation.rootConfigKey, 
+                edges=[
+                    AIAgentGraphEdge(
+                        key=edge.key,
+                        sourceConfig=edge.sourceConfig,
+                        targetConfig=edge.targetConfig,
+                        handoff=edge.handoff
+                    )
+                    for edge in variation.edges
+                ]
+            ),
+            context=context,
+            get_variation=self._client.variation,
+        )
 
     def agents(
         self,
