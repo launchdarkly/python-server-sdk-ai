@@ -342,27 +342,27 @@ AIConfigKind = Union[AIAgentConfig, AICompletionConfig, AIJudgeConfig]
 # AI Config Agent Graph Edge Type
 # ============================================================================
 @dataclass
-class AIAgentGraphEdge:
+class Edge:
     """
     Edge configuration for an agent graph.
     """
     key: str
-    sourceConfig: str
-    targetConfig: str
+    source_config: str
+    target_config: str
     handoff: Optional[dict] = None
 
 # ============================================================================
 # AI Config Agent Graph
 # ============================================================================
 @dataclass
-class AIAgentGraph:
+class AIAgentGraphConfig:
     """
     Agent graph configuration.
     """
     key: str
     name: str
-    rootConfigKey: str
-    edges: List[AIAgentGraphEdge]
+    root_config_key: str
+    edges: List[Edge]
     description: Optional[str] = ''
 
 # ============================================================================

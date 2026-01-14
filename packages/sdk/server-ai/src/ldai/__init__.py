@@ -4,13 +4,13 @@ from ldclient import log
 
 from ldai.chat import Chat
 from ldai.client import LDAIClient
-from ldai.agent_graph import AgentGraph
+from ldai.agent_graph import AgentGraphDefinition
 from ldai.judge import Judge
 from ldai.models import (  # Deprecated aliases for backward compatibility
     AIAgentConfig, AIAgentConfigDefault, AIAgentConfigRequest, AIAgents,
     AICompletionConfig, AICompletionConfigDefault, AIConfig, AIJudgeConfig,
     AIJudgeConfigDefault, JudgeConfiguration, LDAIAgent, LDAIAgentConfig,
-    LDAIAgentDefaults, LDMessage, ModelConfig, ProviderConfig, AIAgentGraph, AIAgentGraphEdge)
+    LDAIAgentDefaults, LDMessage, ModelConfig, ProviderConfig, AIAgentGraphConfig, Edge)
 from ldai.providers.types import EvalScore, JudgeResponse
 
 __all__ = [
@@ -19,15 +19,15 @@ __all__ = [
     'AIAgentConfigDefault',
     'AIAgentConfigRequest',
     'AIAgents',
-    'AIAgentGraph',
-    'AIAgentGraphEdge',
+    'AIAgentGraphConfig',
+    'Edge',
     'AICompletionConfig',
     'AICompletionConfigDefault',
     'AIJudgeConfig',
     'AIJudgeConfigDefault',
     'Chat',
     'EvalScore',
-    'AgentGraph',
+    'AgentGraphDefinition',
     'Judge',
     'JudgeConfiguration',
     'JudgeResponse',

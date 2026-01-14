@@ -6,13 +6,13 @@ from ldclient.client import LDClient
 
 from ldai import log
 from ldai.chat import Chat
-from ldai.agent_graph import AgentGraph
+from ldai.agent_graph import AgentGraphDefinition
 from ldai.judge import Judge
 from ldai.models import (AIAgentConfig, AIAgentConfigDefault,
-                         AIAgentConfigRequest, AIAgents, AICompletionConfig,
+                         AIAgentConfigRequest, AIAgentGraphConfig, AIAgents, AICompletionConfig,
                          AICompletionConfigDefault, AIJudgeConfig,
                          AIJudgeConfigDefault, JudgeConfiguration, LDMessage,
-                         ModelConfig, ProviderConfig, AIAgentGraph, AIAgentGraphEdge)
+                         ModelConfig, ProviderConfig, Edge)
 from ldai.providers.ai_provider_factory import AIProviderFactory
 from ldai.tracker import LDAIConfigTracker
 
@@ -424,87 +424,64 @@ class LDAIClient:
         self,
         key: str,
         context: Context,
-    ) -> AIAgentGraph:
+    ) -> AgentGraphDefinition:
         """
         Retrieve an AI agent graph.
         """
         variation = self._client.variation(key, context, {})
-        mock_variation = {
-            "key": "test-agent-graph",
-            "name": "Test Agent Graph",
-            "rootConfigKey": "cruise-ship-information-agent",
-            "description": "Test Agent Graph Description",
-            "edges": [
-                {
-                    "key": "edge-cruise-ship-information-agent-get-weather-for-location",
-                    "sourceConfig": "cruise-ship-information-agent",
-                    "targetConfig": "get-weather-for-location",
-                    "handoff": {},
-                },
-                {
-                    "key": "edge-cruise-ship-information-agent-ships-in-port-agent",
-                    "sourceConfig": "cruise-ship-information-agent",
-                    "targetConfig": "ships-in-port-agent",
-                    "handoff": {},
-                },
-                {
-                    "key": "edge-ships-in-port-agent-vessel-details-agent",
-                    "sourceConfig": "ships-in-port-agent",
-                    "targetConfig": "vessel-details-agent",
-                    "handoff": {},
-                },
-                {
-                    "key": "edge-vessel-details-agent-cruise-information-synthesizer",
-                    "sourceConfig": "vessel-details-agent",
-                    "targetConfig": "cruise-information-synthesizer",
-                    "handoff": {},
-                },
-                {
-                    "key": "edge-get-weather-for-location-cruise-information-synthesizer",
-                    "sourceConfig": "get-weather-for-location",
-                    "targetConfig": "cruise-information-synthesizer",
-                    "handoff": {},
-                },
-            ],
+
+        if not variation.get("rootConfigKey"):
+            log.debug(f"Agent graph {key} is disabled, no root config key found")
+            return { "enabled": False, "graph": None }
+
+        all_agent_keys = [variation["rootConfigKey"]]  + [edge["targetConfig"] for edge in variation["edges"]]
+        agent_configs = {
+            key: self.agent_config(key, context, AIAgentConfigDefault(enabled=False))
+            for key in all_agent_keys
         }
-        return AgentGraph(
-            agent_graph=AIAgentGraph(
-                key=mock_variation['key'],
-                name=mock_variation['name'],
-                rootConfigKey=mock_variation['rootConfigKey'],
+
+
+        if not all(config.enabled for config in agent_configs.values()):
+            log.debug(f"Agent graph {key} is disabled, not all agent configs are enabled")
+            return {
+                "enabled": False,
+                "graph": None,
+            }
+
+        try:
+            agent_graph_config = AIAgentGraphConfig(
+                key=variation["key"],
+                name=variation["name"],
+                root_config_key=variation["rootConfigKey"],
                 edges=[
-                    AIAgentGraphEdge(
-                        key=edge.get('key', ''),
-                        sourceConfig=edge.get('sourceConfig', ''),
-                        targetConfig=edge.get('targetConfig', ''),
-                        handoff=edge.get('handoff', {}),
+                    Edge(
+                        key=edge.get("key", ""),
+                        source_config=edge.get("sourceConfig", ""),
+                        target_config=edge.get("targetConfig", ""),
+                        handoff=edge.get("handoff", {}),
                     )
-                    for edge in mock_variation['edges']
+                    for edge in variation["edges"]
                 ],
-                description=mock_variation['description'],
-            ),
-            context=context,
-            get_agent=self.agent_config,
+                description=variation["description"],
+            )
+        except Exception as e:
+            log.debug(f"Agent graph {key} is disabled, invalid agent graph config")
+            return { "enabled": False, "graph": None }        
+
+
+        nodes = AgentGraphDefinition.build_nodes(
+            agent_graph_config,
+            agent_configs,
         )
 
-        return AgentGraph(
-            agent_graph=AIAgentGraph(
-                key=variation.key, 
-                name=variation.name, 
-                rootConfigKey=variation.rootConfigKey, 
-                edges=[
-                    AIAgentGraphEdge(
-                        key=edge.key,
-                        sourceConfig=edge.sourceConfig,
-                        targetConfig=edge.targetConfig,
-                        handoff=edge.handoff
-                    )
-                    for edge in variation.edges
-                ]
+        return {
+            "enabled": True,
+            "graph": AgentGraphDefinition(
+                agent_graph=agent_graph_config,
+                nodes=nodes,
+                context=context,
             ),
-            context=context,
-            get_variation=self._client.variation,
-        )
+        }
 
     def agents(
         self,
