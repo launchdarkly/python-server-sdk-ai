@@ -2,6 +2,7 @@ import warnings
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Literal, Optional, Union
 
+from ldai.agent_graph import AgentGraphDefinition
 from ldai.tracker import LDAIConfigTracker
 
 
@@ -341,15 +342,19 @@ AIConfigKind = Union[AIAgentConfig, AICompletionConfig, AIJudgeConfig]
 # ============================================================================
 # AI Config Agent Graph Edge Type
 # ============================================================================
+
+
 @dataclass
 class Edge:
     """
     Edge configuration for an agent graph.
     """
+
     key: str
     source_config: str
     target_config: str
     handoff: Optional[dict] = None
+
 
 # ============================================================================
 # AI Config Agent Graph
@@ -359,11 +364,26 @@ class AIAgentGraphConfig:
     """
     Agent graph configuration.
     """
+
     key: str
     name: str
     root_config_key: str
     edges: List[Edge]
-    description: Optional[str] = ''
+    description: Optional[str] = ""
+
+
+# ============================================================================
+# AI Config Agent Graph Response
+# ============================================================================
+@dataclass
+class AIAgentGraphResponse:
+    """
+    Agent graph response.
+    """
+
+    enabled: bool
+    graph: Optional[AgentGraphDefinition] = None
+
 
 # ============================================================================
 # Deprecated Type Aliases for Backward Compatibility

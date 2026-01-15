@@ -5,14 +5,15 @@ from ldclient import Context
 from ldclient.client import LDClient
 
 from ldai import log
-from ldai.chat import Chat
 from ldai.agent_graph import AgentGraphDefinition
+from ldai.chat import Chat
 from ldai.judge import Judge
 from ldai.models import (AIAgentConfig, AIAgentConfigDefault,
-                         AIAgentConfigRequest, AIAgentGraphConfig, AIAgents, AICompletionConfig,
+                         AIAgentConfigRequest, AIAgentGraphConfig,
+                         AIAgentGraphResponse, AIAgents, AICompletionConfig,
                          AICompletionConfigDefault, AIJudgeConfig,
-                         AIJudgeConfigDefault, JudgeConfiguration, LDMessage,
-                         ModelConfig, ProviderConfig, Edge)
+                         AIJudgeConfigDefault, Edge, JudgeConfiguration,
+                         LDMessage, ModelConfig, ProviderConfig)
 from ldai.providers.ai_provider_factory import AIProviderFactory
 from ldai.tracker import LDAIConfigTracker
 
@@ -424,29 +425,29 @@ class LDAIClient:
         self,
         key: str,
         context: Context,
-    ) -> AgentGraphDefinition:
-        """
+    ) -> AIAgentGraphResponse:
+        """`
         Retrieve an AI agent graph.
         """
         variation = self._client.variation(key, context, {})
 
         if not variation.get("rootConfigKey"):
             log.debug(f"Agent graph {key} is disabled, no root config key found")
-            return { "enabled": False, "graph": None }
+            return AIAgentGraphResponse(enabled=False, graph=None)
 
-        all_agent_keys = [variation["rootConfigKey"]]  + [edge["targetConfig"] for edge in variation["edges"]]
+        all_agent_keys = [variation["rootConfigKey"]] + [
+            edge["targetConfig"] for edge in variation["edges"]
+        ]
         agent_configs = {
             key: self.agent_config(key, context, AIAgentConfigDefault(enabled=False))
             for key in all_agent_keys
         }
 
-
         if not all(config.enabled for config in agent_configs.values()):
-            log.debug(f"Agent graph {key} is disabled, not all agent configs are enabled")
-            return {
-                "enabled": False,
-                "graph": None,
-            }
+            log.debug(
+                f"Agent graph {key} is disabled, not all agent configs are enabled"
+            )
+            return AIAgentGraphResponse(enabled=False, graph=None)
 
         try:
             agent_graph_config = AIAgentGraphConfig(
@@ -466,22 +467,21 @@ class LDAIClient:
             )
         except Exception as e:
             log.debug(f"Agent graph {key} is disabled, invalid agent graph config")
-            return { "enabled": False, "graph": None }        
-
+            return AIAgentGraphResponse(enabled=False, graph=None)
 
         nodes = AgentGraphDefinition.build_nodes(
             agent_graph_config,
             agent_configs,
         )
 
-        return {
-            "enabled": True,
-            "graph": AgentGraphDefinition(
+        return AIAgentGraphResponse(
+            enabled=True,
+            graph=AgentGraphDefinition(
                 agent_graph=agent_graph_config,
                 nodes=nodes,
                 context=context,
             ),
-        }
+        )
 
     def agents(
         self,

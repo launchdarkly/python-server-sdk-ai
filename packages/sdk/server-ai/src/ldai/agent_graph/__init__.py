@@ -1,10 +1,14 @@
 """Graph implementation for managing AI agent graphs."""
 
-from typing import Any, Callable, Dict, List, Set
-from ldai.models import AIAgentGraphConfig, AIAgentConfig, Edge
+from typing import Any, Callable, Dict, List, Optional, Set
+
 from ldclient import Context
 
+from ldai.models import AIAgentConfig, AIAgentGraphConfig, Edge
+
 DEFAULT_FALSE = AIAgentConfig(key="", enabled=False)
+
+
 class AgentGraphNode:
     """
     Node in an agent graph.
@@ -36,10 +40,12 @@ class AgentGraphNode:
         """Get the edges of the node."""
         return self._children
 
+
 class AgentGraphDefinition:
     """
     Graph implementation for managing AI agent graphs.
     """
+
     def __init__(
         self,
         agent_graph: AIAgentGraphConfig,
@@ -72,42 +78,40 @@ class AgentGraphDefinition:
             nodes[edge.target_config] = AgentGraphNode(
                 edge.target_config,
                 graph_nodes[edge.target_config],
-                [
-                    e
-                    for e in agent_graph.edges
-                    if e.source_config == edge.target_config
-                ],
+                [e for e in agent_graph.edges if e.source_config == edge.target_config],
             )
 
         return nodes
 
-    def get_node(self, key: str) -> AgentGraphNode | None:
+    def get_node(self, key: str) -> Optional[AgentGraphNode]:
         """Get a node by its key."""
         return self._nodes.get(key)
 
     def _get_child_edges(self, config_key: str) -> List[Edge]:
         """Get the child edges of the given config."""
         return [
-            edge
-            for edge in self._agent_graph.edges
-            if edge.source_config == config_key
+            edge for edge in self._agent_graph.edges if edge.source_config == config_key
         ]
 
     def get_child_nodes(self, node_key: str) -> List[AgentGraphNode]:
         """Get the child nodes of the given node key as AgentGraphNode objects."""
-        return [
-            self.get_node(edge.target_config)
-            for edge in self._agent_graph.edges
-            if edge.source_config == node_key and self.get_node(edge.target_config) is not None
-        ]
+        nodes: List[AgentGraphNode] = []
+        for edge in self._agent_graph.edges:
+            if edge.source_config == node_key:
+                node = self.get_node(edge.target_config)
+                if node is not None:
+                    nodes.append(node)
+        return nodes
 
     def get_parent_nodes(self, node_key: str) -> List[AgentGraphNode]:
         """Get the parent nodes of the given node key as AgentGraphNode objects."""
-        return [
-            self.get_node(edge.source_config)
-            for edge in self._agent_graph.edges
-            if edge.target_config == node_key and self.get_node(edge.source_config) is not None
-        ]
+        nodes: List[AgentGraphNode] = []
+        for edge in self._agent_graph.edges:
+            if edge.target_config == node_key:
+                node = self.get_node(edge.source_config)
+                if node is not None:
+                    nodes.append(node)
+        return nodes
 
     def _collect_nodes(
         self,
@@ -133,14 +137,20 @@ class AgentGraphDefinition:
     def terminal_nodes(self) -> List[AgentGraphNode]:
         """Get the terminal nodes of the graph, meaning any nodes without children."""
         return [
-            node for node in self._nodes.values() if len(self.get_child_nodes(node.get_key())) == 0
+            node
+            for node in self._nodes.values()
+            if len(self.get_child_nodes(node.get_key())) == 0
         ]
 
-    def root(self) -> AgentGraphNode | None:
+    def root(self) -> Optional[AgentGraphNode]:
         """Get the root node of the graph."""
         return self._nodes[self._agent_graph.root_config_key]
 
-    def traverse(self, fn: Callable[["AgentGraphNode", Dict[str, Any]], None], execution_context: Dict[str, Any] = {}) -> None:
+    def traverse(
+        self,
+        fn: Callable[["AgentGraphNode", Dict[str, Any]], Any],
+        execution_context: Dict[str, Any] = {},
+    ) -> None:
         """Traverse from the root down to terminal nodes, visiting nodes in order of depth.
         Nodes with the longest paths from the root (deepest nodes) will always be visited last."""
         root_node = self.root()
@@ -181,7 +191,11 @@ class AgentGraphDefinition:
 
         return execution_context[self._agent_graph.root_config_key]
 
-    def reverse_traverse(self, fn: Callable[["AgentGraphNode", Dict[str, Any]], Any], execution_context: Dict[str, Any] = {}) -> None:
+    def reverse_traverse(
+        self,
+        fn: Callable[["AgentGraphNode", Dict[str, Any]], Any],
+        execution_context: Dict[str, Any] = {},
+    ) -> None:
         """Traverse from terminal nodes up to the root, visiting nodes level by level.
         The root node will always be visited last, even if multiple paths converge at it."""
         terminal_nodes = self.terminal_nodes()
@@ -208,7 +222,7 @@ class AgentGraphDefinition:
                     continue
 
                 execution_context[node_key] = fn(node, execution_context)
-                
+
                 for parent in self.get_parent_nodes(node_key):
                     parent_key = parent.get_key()
                     if parent_key not in visited:
@@ -221,8 +235,8 @@ class AgentGraphDefinition:
         if root_node_seen:
             root_node = self.root()
             if root_node is not None:
-                execution_context[root_node.get_key()] = fn(root_node, execution_context)
+                execution_context[root_node.get_key()] = fn(
+                    root_node, execution_context
+                )
 
         return execution_context[self._agent_graph.root_config_key]
-
-
