@@ -1,5 +1,6 @@
 """Graph implementation for managing AI agent graphs."""
 
+from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Set
 
 from ldclient import Context
@@ -240,3 +241,16 @@ class AgentGraphDefinition:
                 )
 
         return execution_context[self._agent_graph.root_config_key]
+
+
+# ============================================================================
+# AI Config Agent Graph Response
+# ============================================================================
+@dataclass
+class AIAgentGraphResponse:
+    """
+    Agent graph response.
+    """
+
+    enabled: bool
+    graph: Optional[AgentGraphDefinition] = None

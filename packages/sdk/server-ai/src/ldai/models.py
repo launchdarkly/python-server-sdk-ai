@@ -373,19 +373,6 @@ class AIAgentGraphConfig:
 
 
 # ============================================================================
-# AI Config Agent Graph Response
-# ============================================================================
-@dataclass
-class AIAgentGraphResponse:
-    """
-    Agent graph response.
-    """
-
-    enabled: bool
-    graph: Optional[AgentGraphDefinition] = None
-
-
-# ============================================================================
 # Deprecated Type Aliases for Backward Compatibility
 # ============================================================================
 
