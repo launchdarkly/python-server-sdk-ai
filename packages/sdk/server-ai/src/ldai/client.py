@@ -5,13 +5,15 @@ from ldclient import Context
 from ldclient.client import LDClient
 
 from ldai import log
+from ldai.agent_graph import AgentGraphDefinition
 from ldai.chat import Chat
 from ldai.judge import Judge
 from ldai.models import (AIAgentConfig, AIAgentConfigDefault,
-                         AIAgentConfigRequest, AIAgents, AICompletionConfig,
-                         AICompletionConfigDefault, AIJudgeConfig,
-                         AIJudgeConfigDefault, JudgeConfiguration, LDMessage,
-                         ModelConfig, ProviderConfig)
+                         AIAgentConfigRequest, AIAgentGraphConfig, AIAgents,
+                         AICompletionConfig, AICompletionConfigDefault,
+                         AIJudgeConfig, AIJudgeConfigDefault, Edge,
+                         JudgeConfiguration, LDMessage, ModelConfig,
+                         ProviderConfig)
 from ldai.providers.ai_provider_factory import AIProviderFactory
 from ldai.tracker import LDAIConfigTracker
 
@@ -418,6 +420,102 @@ class LDAIClient:
             result[config.key] = agent
 
         return result
+
+    def agent_graph(
+        self,
+        key: str,
+        context: Context,
+    ) -> AgentGraphDefinition:
+        """`
+        Retrieve an AI agent graph.
+        """
+        variation = self._client.variation(key, context, {})
+
+        if not variation.get("rootConfigKey"):
+            log.debug(f"Agent graph {key} is disabled, no root config key found")
+            return AgentGraphDefinition(
+                AIAgentGraphConfig(
+                    key=key,
+                    name="",
+                    root_config_key="",
+                    edges=[],
+                    description="",
+                    enabled=False,
+                ),
+                nodes={},
+                context=context,
+                enabled=False,
+            )
+
+        all_agent_keys = [variation["rootConfigKey"]] + [
+            edge.get("targetConfig", "") for edge in variation.get("edges", []) if edge.get("targetConfig")
+        ]
+        agent_configs = {
+            key: self.agent_config(key, context, AIAgentConfigDefault(enabled=False))
+            for key in all_agent_keys
+        }
+
+        if not all(config.enabled for config in agent_configs.values()):
+            log.debug(
+                f"Agent graph {key} is disabled, not all agent configs are enabled"
+            )
+            return AgentGraphDefinition(
+                AIAgentGraphConfig(
+                    key=key,
+                    name="",
+                    root_config_key="",
+                    edges=[],
+                    description="",
+                    enabled=False,
+                ),
+                nodes={},
+                context=context,
+                enabled=False,
+            )
+
+        try:
+            agent_graph_config = AIAgentGraphConfig(
+                key=variation["key"],
+                name=variation["name"],
+                root_config_key=variation["rootConfigKey"],
+                edges=[
+                    Edge(
+                        key=edge.get("key", ""),
+                        source_config=edge.get("sourceConfig", ""),
+                        target_config=edge.get("targetConfig", ""),
+                        handoff=edge.get("handoff", {}),
+                    )
+                    for edge in variation["edges"]
+                ],
+                description=variation["description"],
+            )
+        except Exception as e:
+            log.debug(f"Agent graph {key} is disabled, invalid agent graph config")
+            return AgentGraphDefinition(
+                AIAgentGraphConfig(
+                    key=key,
+                    name="",
+                    root_config_key="",
+                    edges=[],
+                    description="",
+                    enabled=False,
+                ),
+                nodes={},
+                context=context,
+                enabled=False,
+            )
+
+        nodes = AgentGraphDefinition.build_nodes(
+            agent_graph_config,
+            agent_configs,
+        )
+
+        return AgentGraphDefinition(
+            agent_graph=agent_graph_config,
+            nodes=nodes,
+            context=context,
+            enabled=agent_graph_config.enabled,
+        )
 
     def agents(
         self,
