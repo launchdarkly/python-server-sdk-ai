@@ -175,7 +175,7 @@ class AgentGraphDefinition:
         depth = 0
         max_depth_limit = 10  # Infinite loop protection limit
         max_depth_encountered = 0
-        seen_nodes: Set[str] = {root_node.get_key()} 
+        seen_nodes: Set[str] = {root_node.get_key()}
 
         while current_level:
             next_level: List[AgentGraphNode] = []
