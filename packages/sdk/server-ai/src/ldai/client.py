@@ -448,7 +448,7 @@ class LDAIClient:
             )
 
         all_agent_keys = [variation["rootConfigKey"]] + [
-            edge["targetConfig"] for edge in variation.get("edges", [])
+            edge.get("targetConfig", "") for edge in variation.get("edges", []) if edge.get("targetConfig")
         ]
         agent_configs = {
             key: self.agent_config(key, context, AIAgentConfigDefault(enabled=False))

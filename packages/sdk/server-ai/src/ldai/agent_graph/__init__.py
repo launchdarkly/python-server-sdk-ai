@@ -127,6 +127,7 @@ class AgentGraphDefinition:
         node_depths: Dict[str, int],
         nodes_by_depth: Dict[int, List[AgentGraphNode]],
         visited: Set[str],
+        max_depth: int,
     ) -> None:
         """Collect all reachable nodes from the given node and group them by depth."""
         node_key = node.get_key()
@@ -134,13 +135,14 @@ class AgentGraphDefinition:
             return
         visited.add(node_key)
 
-        node_depth = node_depths.get(node_key, 0)
+        # Use max_depth for nodes not in node_depths to ensure they execute last
+        node_depth = node_depths.get(node_key, max_depth)
         if node_depth not in nodes_by_depth:
             nodes_by_depth[node_depth] = []
         nodes_by_depth[node_depth].append(node)
 
         for child in self.get_child_nodes(node_key):
-            self._collect_nodes(child, node_depths, nodes_by_depth, visited)
+            self._collect_nodes(child, node_depths, nodes_by_depth, visited, max_depth)
 
     def terminal_nodes(self) -> List[AgentGraphNode]:
         """Get the terminal nodes of the graph, meaning any nodes without children."""
@@ -172,8 +174,11 @@ class AgentGraphDefinition:
         current_level: List[AgentGraphNode] = [root_node]
         depth = 0
         max_depth_limit = 10  # Infinite loop protection limit
+        max_depth_encountered = 0
+        visited: Set[str] = {root_node.get_key()}  # Track visited nodes in BFS to prevent cycles
 
-        while current_level and depth < max_depth_limit:
+        # Continue BFS to discover all nodes, but stop recording depths after max_depth_limit
+        while current_level:
             next_level: List[AgentGraphNode] = []
             depth += 1
 
@@ -181,20 +186,32 @@ class AgentGraphDefinition:
                 node_key = node.get_key()
                 for child in self.get_child_nodes(node_key):
                     child_key = child.get_key()
-                    # Defer this child to the next level if it's at a longer path
-                    if child_key not in node_depths or (
-                        depth > node_depths[child_key] and depth < max_depth_limit
-                    ):
-                        node_depths[child_key] = depth
-                        next_level.append(child)
+                    if depth <= max_depth_limit:
+                        # Defer this child to the next level if it's at a longer path
+                        if child_key not in node_depths or depth > node_depths[child_key]:
+                            node_depths[child_key] = depth
+                            max_depth_encountered = max(max_depth_encountered, depth)
+                        # Add to next level if not already visited (prevents cycles)
+                        if child_key not in visited:
+                            visited.add(child_key)
+                            next_level.append(child)
+                    else:
+                        max_depth_encountered = max(max_depth_encountered, depth)
+                        if child_key not in visited:
+                            # Push this to the next level to be visited
+                            visited.add(child_key)
+                            next_level.append(child)
 
             current_level = next_level
+
+        # Use max_depth_limit + 1 to ensure they execute after all recorded nodes
+        max_depth = max(max_depth_limit + 1, max_depth_encountered + 1)
 
         # Group all nodes by depth
         nodes_by_depth: Dict[int, List[AgentGraphNode]] = {}
         visited: Set[str] = set()
 
-        self._collect_nodes(root_node, node_depths, nodes_by_depth, visited)
+        self._collect_nodes(root_node, node_depths, nodes_by_depth, visited, max_depth)
         # Execute the lambda at this level for the nodes at this depth
         for depth_level in sorted(nodes_by_depth.keys()):
             for node in nodes_by_depth[depth_level]:
