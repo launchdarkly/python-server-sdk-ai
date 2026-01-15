@@ -150,14 +150,14 @@ class AgentGraphDefinition:
             if len(self.get_child_nodes(node.get_key())) == 0
         ]
 
-    def root(self) -> AgentGraphNode:
+    def root(self) -> Optional[AgentGraphNode]:
         """Get the root node of the graph."""
         return self._nodes.get(self._agent_graph.root_config_key)
 
     def traverse(
         self,
         fn: Callable[["AgentGraphNode", Dict[str, Any]], Any],
-        execution_context: Dict[str, Any] = None,
+        execution_context: Optional[Dict[str, Any]] = None,
     ) -> Any:
         """Traverse from the root down to terminal nodes, visiting nodes in order of depth.
         Nodes with the longest paths from the root (deepest nodes) will always be visited last."""
@@ -205,9 +205,8 @@ class AgentGraphDefinition:
     def reverse_traverse(
         self,
         fn: Callable[["AgentGraphNode", Dict[str, Any]], Any],
-        execution_context: Dict[str, Any] = None,
+        execution_context: Optional[Dict[str, Any]] = None,
     ) -> Any:
-    
         """Traverse from terminal nodes up to the root, visiting nodes level by level.
         The root node will always be visited last, even if multiple paths converge at it."""
         if execution_context is None:
@@ -255,4 +254,3 @@ class AgentGraphDefinition:
                 )
 
         return execution_context[self._agent_graph.root_config_key]
-
