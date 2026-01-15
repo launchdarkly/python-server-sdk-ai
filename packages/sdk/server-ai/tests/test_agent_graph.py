@@ -237,14 +237,14 @@ def ldai_client(client: LDClient) -> LDAIClient:
 def test_agent_graph_method(ldai_client: LDAIClient):
     graph = ldai_client.agent_graph("test-agent-graph", Context.create("user-key"))
 
-    assert graph["enabled"] is True
-    assert graph["graph"] is not None
-    assert graph["graph"].root() is not None
-    assert graph["graph"].root().get_key() == "customer-support-agent"
-    assert len(graph["graph"].get_child_nodes("customer-support-agent")) == 3
-    assert len(graph["graph"].get_child_nodes("personalized-agent")) == 0
-    assert len(graph["graph"].get_child_nodes("multi-context-agent")) == 0
-    assert len(graph["graph"].get_child_nodes("minimal-agent")) == 0
+    assert graph.enabled is True
+    assert graph is not None
+    assert graph.root() is not None
+    assert graph.root().get_key() == "customer-support-agent"
+    assert len(graph.get_child_nodes("customer-support-agent")) == 3
+    assert len(graph.get_child_nodes("personalized-agent")) == 0
+    assert len(graph.get_child_nodes("multi-context-agent")) == 0
+    assert len(graph.get_child_nodes("minimal-agent")) == 0
 
 
 def test_agent_graph_method_disabled_agent(ldai_client: LDAIClient):
@@ -252,8 +252,8 @@ def test_agent_graph_method_disabled_agent(ldai_client: LDAIClient):
         "test-agent-graph-disabled-agent", Context.create("user-key")
     )
 
-    assert graph["enabled"] is False
-    assert graph["graph"] is None
+    assert graph.enabled is False
+    assert graph.root() is None
 
 
 def test_agent_graph_method_no_root_key(ldai_client: LDAIClient):
@@ -261,8 +261,8 @@ def test_agent_graph_method_no_root_key(ldai_client: LDAIClient):
         "test-agent-graph-no-root-key", Context.create("user-key")
     )
 
-    assert graph["enabled"] is False
-    assert graph["graph"] is None
+    assert graph.enabled is False
+    assert graph.root() is None
 
 
 def test_agent_graph_build_nodes(ldai_client: LDAIClient):
@@ -319,9 +319,7 @@ def test_agent_graph_build_nodes(ldai_client: LDAIClient):
 
 
 def test_agent_graph_get_methods(ldai_client: LDAIClient):
-    graph = ldai_client.agent_graph("test-agent-graph", Context.create("user-key"))[
-        "graph"
-    ]
+    graph = ldai_client.agent_graph("test-agent-graph", Context.create("user-key"))
 
     assert graph.root() is not None
     assert graph.root().get_key() == "customer-support-agent"
@@ -359,7 +357,7 @@ def test_agent_graph_get_methods(ldai_client: LDAIClient):
 def test_agent_graph_traverse(ldai_client: LDAIClient):
     graph = ldai_client.agent_graph(
         "test-agent-graph-depth-3", Context.create("user-key")
-    )["graph"]
+    )
 
     context = {}
     order = []
@@ -387,7 +385,7 @@ def test_agent_graph_traverse(ldai_client: LDAIClient):
 def test_agent_graph_reverse_traverse(ldai_client: LDAIClient):
     graph = ldai_client.agent_graph(
         "test-agent-graph-depth-3", Context.create("user-key")
-    )["graph"]
+    )
 
     context = {}
     order = []
@@ -414,7 +412,7 @@ def test_agent_graph_reverse_traverse(ldai_client: LDAIClient):
 def test_agent_graph_handoff(ldai_client: LDAIClient):
     graph = ldai_client.agent_graph(
         "test-agent-graph-depth-3", Context.create("user-key")
-    )["graph"]
+    )
 
     context = {}
 

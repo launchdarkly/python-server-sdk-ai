@@ -2,7 +2,7 @@ __version__ = "0.12.0"  # x-release-please-version
 
 from ldclient import log
 
-from ldai.agent_graph import AgentGraphDefinition, AIAgentGraphResponse
+from ldai.agent_graph import AgentGraphDefinition
 from ldai.chat import Chat
 from ldai.client import LDAIClient
 from ldai.judge import Judge
@@ -21,7 +21,6 @@ __all__ = [
     'AIAgentConfigRequest',
     'AIAgents',
     'AIAgentGraphConfig',
-    'AIAgentGraphResponse',
     'Edge',
     'AICompletionConfig',
     'AICompletionConfigDefault',

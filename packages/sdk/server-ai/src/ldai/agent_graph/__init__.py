@@ -46,16 +46,23 @@ class AgentGraphDefinition:
     """
     Graph implementation for managing AI agent graphs.
     """
+    enabled: bool
 
     def __init__(
         self,
         agent_graph: AIAgentGraphConfig,
         nodes: Dict[str, AgentGraphNode],
         context: Context,
+        enabled: bool,
     ):
         self._agent_graph = agent_graph
         self._context = context
         self._nodes = nodes
+        self.enabled = enabled
+
+    def is_enabled(self) -> bool:
+        """Check if the graph is enabled."""
+        return self.enabled
 
     @staticmethod
     def build_nodes(
@@ -143,17 +150,20 @@ class AgentGraphDefinition:
             if len(self.get_child_nodes(node.get_key())) == 0
         ]
 
-    def root(self) -> Optional[AgentGraphNode]:
+    def root(self) -> AgentGraphNode:
         """Get the root node of the graph."""
-        return self._nodes[self._agent_graph.root_config_key]
+        return self._nodes.get(self._agent_graph.root_config_key)
 
     def traverse(
         self,
         fn: Callable[["AgentGraphNode", Dict[str, Any]], Any],
-        execution_context: Dict[str, Any] = {},
-    ) -> None:
+        execution_context: Dict[str, Any] = None,
+    ) -> Any:
         """Traverse from the root down to terminal nodes, visiting nodes in order of depth.
         Nodes with the longest paths from the root (deepest nodes) will always be visited last."""
+        if execution_context is None:
+            execution_context = {}
+
         root_node = self.root()
         if root_node is None:
             return
@@ -195,10 +205,14 @@ class AgentGraphDefinition:
     def reverse_traverse(
         self,
         fn: Callable[["AgentGraphNode", Dict[str, Any]], Any],
-        execution_context: Dict[str, Any] = {},
-    ) -> None:
+        execution_context: Dict[str, Any] = None,
+    ) -> Any:
+    
         """Traverse from terminal nodes up to the root, visiting nodes level by level.
         The root node will always be visited last, even if multiple paths converge at it."""
+        if execution_context is None:
+            execution_context = {}
+
         terminal_nodes = self.terminal_nodes()
         if not terminal_nodes:
             return
@@ -242,15 +256,3 @@ class AgentGraphDefinition:
 
         return execution_context[self._agent_graph.root_config_key]
 
-
-# ============================================================================
-# AI Config Agent Graph Response
-# ============================================================================
-@dataclass
-class AIAgentGraphResponse:
-    """
-    Agent graph response.
-    """
-
-    enabled: bool
-    graph: Optional[AgentGraphDefinition] = None

@@ -2,7 +2,6 @@ import warnings
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Literal, Optional, Union
 
-from ldai.agent_graph import AgentGraphDefinition
 from ldai.tracker import LDAIConfigTracker
 
 
@@ -370,6 +369,7 @@ class AIAgentGraphConfig:
     root_config_key: str
     edges: List[Edge]
     description: Optional[str] = ""
+    enabled: bool = True
 
 
 # ============================================================================
