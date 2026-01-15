@@ -352,7 +352,7 @@ class Edge:
     key: str
     source_config: str
     target_config: str
-    handoff: Optional[dict] = {}
+    handoff: Optional[dict] = field(default_factory=dict)
 
 
 # ============================================================================
