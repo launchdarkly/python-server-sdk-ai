@@ -175,9 +175,8 @@ class AgentGraphDefinition:
         depth = 0
         max_depth_limit = 10  # Infinite loop protection limit
         max_depth_encountered = 0
-        visited: Set[str] = {root_node.get_key()}  # Track visited nodes in BFS to prevent cycles
+        seen_nodes: Set[str] = {root_node.get_key()} 
 
-        # Continue BFS to discover all nodes, but stop recording depths after max_depth_limit
         while current_level:
             next_level: List[AgentGraphNode] = []
             depth += 1
@@ -192,14 +191,14 @@ class AgentGraphDefinition:
                             node_depths[child_key] = depth
                             max_depth_encountered = max(max_depth_encountered, depth)
                         # Add to next level if not already visited (prevents cycles)
-                        if child_key not in visited:
-                            visited.add(child_key)
+                        if child_key not in seen_nodes:
+                            seen_nodes.add(child_key)
                             next_level.append(child)
                     else:
                         max_depth_encountered = max(max_depth_encountered, depth)
-                        if child_key not in visited:
+                        if child_key not in seen_nodes:
                             # Push this to the next level to be visited
-                            visited.add(child_key)
+                            seen_nodes.add(child_key)
                             next_level.append(child)
 
             current_level = next_level
@@ -209,6 +208,7 @@ class AgentGraphDefinition:
 
         # Group all nodes by depth
         nodes_by_depth: Dict[int, List[AgentGraphNode]] = {}
+        # New visited for children nodes
         visited: Set[str] = set()
 
         self._collect_nodes(root_node, node_depths, nodes_by_depth, visited, max_depth)
