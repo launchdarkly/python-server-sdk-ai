@@ -19,7 +19,7 @@ class EvaluationSchemaBuilder:
         """
         if not evaluation_metric_key:
             return None
-        
+
         return {
             'title': 'EvaluationResponse',
             'description': f"Response containing evaluation results for {evaluation_metric_key} metric",
