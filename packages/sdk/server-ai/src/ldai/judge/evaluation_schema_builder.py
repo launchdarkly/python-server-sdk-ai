@@ -1,6 +1,6 @@
 """Internal class for building dynamic evaluation response schemas."""
 
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 
 class EvaluationSchemaBuilder:
@@ -10,26 +10,29 @@ class EvaluationSchemaBuilder:
     """
 
     @staticmethod
-    def build(evaluation_metric_keys: list[str]) -> Dict[str, Any]:
+    def build(evaluation_metric_key: Optional[str]) -> Optional[Dict[str, Any]]:
         """
-        Build an evaluation response schema from evaluation metric keys.
+        Build an evaluation response schema from evaluation metric key.
 
-        :param evaluation_metric_keys: List of evaluation metric keys
-        :return: Schema dictionary for structured output
+        :param evaluation_metric_key: Evaluation metric key, or None if not available
+        :return: Schema dictionary for structured output, or None if evaluation_metric_key is None
         """
+        if evaluation_metric_key is None:
+            return None
+        
         return {
             'title': 'EvaluationResponse',
-            'description': f"Response containing evaluation results for {', '.join(evaluation_metric_keys)} metrics",
+            'description': f"Response containing evaluation results for {evaluation_metric_key} metric",
             'type': 'object',
             'properties': {
                 'evaluations': {
                     'type': 'object',
                     'description': (
                         f"Object containing evaluation results for "
-                        f"{', '.join(evaluation_metric_keys)} metrics"
+                        f"{evaluation_metric_key} metric"
                     ),
-                    'properties': EvaluationSchemaBuilder._build_key_properties(evaluation_metric_keys),
-                    'required': evaluation_metric_keys,
+                    'properties': EvaluationSchemaBuilder._build_key_properties(evaluation_metric_key),
+                    'required': [evaluation_metric_key],
                     'additionalProperties': False,
                 },
             },
@@ -38,17 +41,16 @@ class EvaluationSchemaBuilder:
         }
 
     @staticmethod
-    def _build_key_properties(evaluation_metric_keys: list[str]) -> Dict[str, Any]:
+    def _build_key_properties(evaluation_metric_key: str) -> Dict[str, Any]:
         """
-        Build properties for each evaluation metric key.
+        Build properties for a single evaluation metric key.
 
-        :param evaluation_metric_keys: List of evaluation metric keys
-        :return: Dictionary of properties for each key
+        :param evaluation_metric_key: Evaluation metric key
+        :return: Dictionary of properties for the key
         """
-        result: Dict[str, Any] = {}
-        for key in evaluation_metric_keys:
-            result[key] = EvaluationSchemaBuilder._build_key_schema(key)
-        return result
+        return {
+            evaluation_metric_key: EvaluationSchemaBuilder._build_key_schema(evaluation_metric_key)
+        }
 
     @staticmethod
     def _build_key_schema(key: str) -> Dict[str, Any]:
