@@ -40,7 +40,7 @@ class LDAIClient:
         """
         self._client.track('$ld:ai:config:function:single', context, key, 1)
 
-        model, provider, messages, instructions, tracker, enabled, judge_configuration = self.__evaluate(
+        model, provider, messages, instructions, tracker, enabled, judge_configuration, _ = self.__evaluate(
             key, context, default_value.to_dict(), variables
         )
 
@@ -94,11 +94,9 @@ class LDAIClient:
         """
         self._client.track('$ld:ai:judge:function:single', context, key, 1)
 
-        model, provider, messages, instructions, tracker, enabled, judge_configuration = self.__evaluate(
+        model, provider, messages, instructions, tracker, enabled, judge_configuration, variation = self.__evaluate(
             key, context, default_value.to_dict(), variables
         )
-
-        variation = self._client.variation(key, context, default_value.to_dict())
 
         def _extract_evaluation_metric_key(
             variation: Dict[str, Any], default_value: AIJudgeConfigDefault
@@ -106,18 +104,18 @@ class LDAIClient:
             """
             Extract evaluation_metric_key with backward compatibility.
 
-            Priority: 1) evaluationMetricKey from variation, 2) evaluation_metric_key from default,
-                      3) first from evaluationMetricKeys in variation, 4) first from evaluation_metric_keys in default
+            Priority: 1) evaluationMetricKey from variation, 2) evaluationMetricKeys from variation,
+                      3) evaluation_metric_key from default, 4) evaluation_metric_keys from default
             """
             if evaluation_metric_key := variation.get('evaluationMetricKey'):
                 return evaluation_metric_key
 
-            if default_value.evaluation_metric_key:
-                return default_value.evaluation_metric_key
-
             variation_keys = variation.get('evaluationMetricKeys')
             if isinstance(variation_keys, list) and variation_keys:
                 return variation_keys[0]
+
+            if default_value.evaluation_metric_key:
+                return default_value.evaluation_metric_key
 
             if default_value.evaluation_metric_keys:
                 return default_value.evaluation_metric_keys[0]
@@ -458,7 +456,7 @@ class LDAIClient:
         variables: Optional[Dict[str, Any]] = None,
     ) -> Tuple[
         Optional[ModelConfig], Optional[ProviderConfig], Optional[List[LDMessage]],
-        Optional[str], LDAIConfigTracker, bool, Optional[Any]
+        Optional[str], LDAIConfigTracker, bool, Optional[Any], Dict[str, Any]
     ]:
         """
         Internal method to evaluate a configuration and extract components.
@@ -467,7 +465,7 @@ class LDAIClient:
         :param context: The evaluation context.
         :param default_dict: Default configuration as dictionary.
         :param variables: Variables for interpolation.
-        :return: Tuple of (model, provider, messages, instructions, tracker, enabled).
+        :return: Tuple of (model, provider, messages, instructions, tracker, enabled, judge_configuration, variation).
         """
         variation = self._client.variation(key, context, default_dict)
 
@@ -536,7 +534,7 @@ class LDAIClient:
                 if judges:
                     judge_configuration = JudgeConfiguration(judges=judges)
 
-        return model, provider_config, messages, instructions, tracker, enabled, judge_configuration
+        return model, provider_config, messages, instructions, tracker, enabled, judge_configuration, variation
 
     def __evaluate_agent(
         self,
@@ -554,7 +552,7 @@ class LDAIClient:
         :param variables: Variables for interpolation.
         :return: Configured AIAgentConfig instance.
         """
-        model, provider, messages, instructions, tracker, enabled, judge_configuration = self.__evaluate(
+        model, provider, messages, instructions, tracker, enabled, judge_configuration, _ = self.__evaluate(
             key, context, default_value.to_dict(), variables
         )
 

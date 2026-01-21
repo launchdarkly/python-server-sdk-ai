@@ -595,3 +595,53 @@ class TestClientJudgeConfig:
         
         assert config is not None
         assert config.evaluation_metric_key == '$ld:ai:judge:preferred'
+
+    def test_judge_config_uses_same_variation_for_consistency(
+        self, context: Context
+    ):
+        """judge_config should use the same variation from __evaluate to avoid race conditions."""
+        from ldai import LDAIClient
+        from ldclient import Config, LDClient
+        from ldclient.integrations.test_data import TestData
+        from unittest.mock import patch
+
+        td = TestData.data_source()
+        td.update(
+            td.flag('judge-consistency-test')
+            .variations(
+                {
+                    'model': {'name': 'gpt-4'},
+                    'provider': {'name': 'openai'},
+                    'messages': [{'role': 'system', 'content': 'You are a judge.'}],
+                    'evaluationMetricKey': '$ld:ai:judge:from-flag',
+                    '_ldMeta': {'enabled': True, 'variationKey': 'judge-v1', 'version': 1},
+                }
+            )
+            .variation_for_all(0)
+        )
+
+        test_client = LDClient(Config('sdk-key', update_processor_class=td, send_events=False))
+        ldai_client = LDAIClient(test_client)
+
+        default_value = AIJudgeConfigDefault(
+            enabled=True,
+            evaluation_metric_key='$ld:ai:judge:from-default',
+            messages=[LDMessage(role='system', content='You are a judge.')],
+            model=ModelConfig('gpt-4'),
+            provider=ProviderConfig('openai'),
+        )
+
+        variation_calls = []
+        original_variation = test_client.variation
+
+        def tracked_variation(key, context, default):
+            result = original_variation(key, context, default)
+            variation_calls.append((key, result.get('evaluationMetricKey')))
+            return result
+
+        with patch.object(test_client, 'variation', side_effect=tracked_variation):
+            config = ldai_client.judge_config('judge-consistency-test', context, default_value)
+
+        assert len(variation_calls) == 1, f"Expected 1 variation call, got {len(variation_calls)}"
+        assert config is not None
+        assert config.evaluation_metric_key == '$ld:ai:judge:from-flag'
