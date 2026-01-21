@@ -366,7 +366,7 @@ class AIAgentGraphConfig:
 
     key: str
     root_config_key: str
-    edges: Dict[str, List[Edge]] = field(default_factory=dict)
+    edges: List[Edge]
     enabled: bool = True
 
 
