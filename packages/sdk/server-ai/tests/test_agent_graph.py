@@ -19,27 +19,17 @@ def td() -> TestData:
         td.flag("test-agent-graph")
         .variations(
             {
-                "key": "test-agent-graph",
-                "name": "Test Agent Graph",
-                "rootConfigKey": "customer-support-agent",
-                "edges": [
-                    {
-                        "key": "edge-customer-support-agent-personalized-agent",
-                        "sourceConfig": "customer-support-agent",
-                        "targetConfig": "personalized-agent",
-                    },
-                    {
-                        "key": "edge-customer-support-agent-multi-context-agent",
-                        "sourceConfig": "customer-support-agent",
-                        "targetConfig": "multi-context-agent",
-                    },
-                    {
-                        "key": "edge-customer-support-agent-minimal-agent",
-                        "sourceConfig": "customer-support-agent",
-                        "targetConfig": "minimal-agent",
-                    },
-                ],
-                "description": "Test agent graph",
+                "root": "customer-support-agent",
+                "edges": {
+                    "customer-support-agent": [
+                        {
+                            "key": "personalized-agent",
+                            "handoff": {"state": "from-root-to-personalized"},
+                        },
+                        {"key": "multi-context-agent", "handoff": {}},
+                        {"key": "minimal-agent", "handoff": {}},
+                    ]
+                },
                 "_ldMeta": {
                     "enabled": True,
                     "variationKey": "test-agent-graph",
@@ -54,35 +44,28 @@ def td() -> TestData:
         td.flag("test-agent-graph-depth-3")
         .variations(
             {
-                "key": "test-agent-graph-depth-3",
-                "name": "Test Agent Graph with Depth of 3",
-                "rootConfigKey": "customer-support-agent",
-                "edges": [
-                    {
-                        "key": "edge-customer-support-agent-personalized-agent",
-                        "sourceConfig": "customer-support-agent",
-                        "targetConfig": "personalized-agent",
-                        "handoff": { "state": "from-root-to-personalized" }
-                    },
-                    {
-                        "key": "edge-personalized-agent-multi-context-agent",
-                        "sourceConfig": "personalized-agent",
-                        "targetConfig": "multi-context-agent",
-                    },
-                    {
-                        "key": "edge-multi-context-agent-minimal-agent",
-                        "sourceConfig": "multi-context-agent",
-                        "targetConfig": "minimal-agent",
-                        "handoff": {"state": "from-multi-context-to-minimal"},
-                    },
-                    {
-                        "key": "edge-customer-support-agent-minimal-agent",
-                        "sourceConfig": "customer-support-agent",
-                        "targetConfig": "minimal-agent",
-                        "handoff": { "state": "from-root-to-minimal" }
-                    },
-                ],
-                "description": "Test agent graph with depth of 3",
+                "root": "customer-support-agent",
+                "edges": {
+                    "customer-support-agent": [
+                        {
+                            "key": "personalized-agent",
+                            "handoff": {"state": "from-root-to-personalized"},
+                        },
+                        {
+                            "key": "minimal-agent",
+                            "handoff": {"state": "from-root-to-minimal"},
+                        },
+                    ],
+                    "personalized-agent": [
+                        {"key": "multi-context-agent", "handoff": {}}
+                    ],
+                    "multi-context-agent": [
+                        {
+                            "key": "minimal-agent",
+                            "handoff": {"state": "from-multi-context-to-minimal"},
+                        }
+                    ],
+                },
                 "_ldMeta": {
                     "enabled": True,
                     "variationKey": "test-agent-graph-depth-3",
@@ -98,17 +81,10 @@ def td() -> TestData:
         td.flag("test-agent-graph-disabled-agent")
         .variations(
             {
-                "key": "test-agent-graph-disabled-agent",
-                "name": "Test Agent Graph with Disabled Agent",
-                "rootConfigKey": "customer-support-agent",
-                "edges": [
-                    {
-                        "key": "edge-customer-support-agent-personalized-agent",
-                        "sourceConfig": "customer-support-agent",
-                        "targetConfig": "disabled-agent",
-                    },
-                ],
-                "description": "Test agent graph with disabled agent",
+                "root": "customer-support-agent",
+                "edges": {
+                    "customer-support-agent": [{"key": "disabled-agent", "handoff": {}}]
+                },
                 "_ldMeta": {
                     "enabled": True,
                     "variationKey": "test-agent-graph-disabled-agent",
@@ -124,9 +100,12 @@ def td() -> TestData:
         td.flag("test-agent-graph-no-root-key")
         .variations(
             {
-                "name": "Test Agent Graph with No Root Key",
-                "key": "test-agent-graph-no-root-key",
-                "edges": [],
+                "edges": {},
+                "_ldMeta": {
+                    "enabled": True,
+                    "variationKey": "test-agent-graph-no-root-key",
+                    "version": 1,
+                },
             }
         )
         .variation_for_all(0)
@@ -271,19 +250,18 @@ def test_agent_graph_build_nodes(ldai_client: LDAIClient):
     )
 
     ai_graph_config = AIAgentGraphConfig(
-        key=graph_config["key"],
-        name=graph_config["name"],
-        root_config_key=graph_config["rootConfigKey"],
+        key="test-agent-graph",
+        root_config_key=graph_config["root"],
         edges=[
             Edge(
-                key=edge.get("key", ""),
-                source_config=edge.get("sourceConfig", ""),
-                target_config=edge.get("targetConfig", ""),
+                key=edge_key + "-" + edge.get("key", ""),
+                source_config=edge_key,
+                target_config=edge.get("key", ""),
                 handoff=edge.get("handoff", {}),
             )
-            for edge in graph_config["edges"]
+            for edge_key, edges in graph_config["edges"].items()
+            for edge in edges
         ],
-        description=graph_config["description"],
     )
 
     nodes = AgentGraphDefinition.build_nodes(
@@ -422,7 +400,7 @@ def test_agent_graph_handoff(ldai_client: LDAIClient):
             assert first_edge.handoff == {"state": "from-multi-context-to-minimal"}
             assert first_edge.source_config == "multi-context-agent"
             assert first_edge.target_config == "minimal-agent"
-            assert first_edge.key == "edge-multi-context-agent-minimal-agent"
+            assert first_edge.key == "multi-context-agent-minimal-agent"
         if node.get_key() == "customer-support-agent":
             first_edge = node.get_edges()[0]
             second_edge = node.get_edges()[1]
@@ -430,10 +408,10 @@ def test_agent_graph_handoff(ldai_client: LDAIClient):
             assert second_edge.handoff == {"state": "from-root-to-minimal"}
             assert first_edge.source_config == "customer-support-agent"
             assert first_edge.target_config == "personalized-agent"
-            assert first_edge.key == "edge-customer-support-agent-personalized-agent"
+            assert first_edge.key == "customer-support-agent-personalized-agent"
             assert second_edge.source_config == "customer-support-agent"
             assert second_edge.target_config == "minimal-agent"
-            assert second_edge.key == "edge-customer-support-agent-minimal-agent"
+            assert second_edge.key == "customer-support-agent-minimal-agent"
         return None
 
     graph.traverse(handle_traverse, context)
