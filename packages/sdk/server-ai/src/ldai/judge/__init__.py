@@ -9,8 +9,7 @@ from ldai import log
 from ldai.judge.evaluation_schema_builder import EvaluationSchemaBuilder
 from ldai.models import AIJudgeConfig, LDMessage
 from ldai.providers.ai_provider import AIProvider
-from ldai.providers.types import (ChatResponse, EvalScore, JudgeResponse,
-                                  StructuredResponse)
+from ldai.providers.types import ChatResponse, EvalScore, JudgeResponse
 from ldai.tracker import LDAIConfigTracker
 
 
@@ -70,8 +69,8 @@ class Judge:
                 return None
 
             messages = self._construct_evaluation_messages(input_text, output_text)
+            assert self._evaluation_response_structure is not None
 
-            # Track metrics of the structured model invocation
             response = await self._ai_config_tracker.track_metrics_of(
                 lambda: self._ai_provider.invoke_structured_model(messages, self._evaluation_response_structure),
                 lambda result: result.metrics,
@@ -190,6 +189,10 @@ class Judge:
         evaluations = data['evaluations']
 
         metric_key = self._ai_config.evaluation_metric_key
+        if not metric_key:
+            log.warn('Evaluation metric key is missing')
+            return results
+
         evaluation = evaluations.get(metric_key)
 
         if not evaluation or not isinstance(evaluation, dict):

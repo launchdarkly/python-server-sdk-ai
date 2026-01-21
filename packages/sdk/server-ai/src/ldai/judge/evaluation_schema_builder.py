@@ -17,7 +17,7 @@ class EvaluationSchemaBuilder:
         :param evaluation_metric_key: Evaluation metric key, or None if not available
         :return: Schema dictionary for structured output, or None if evaluation_metric_key is None
         """
-        if evaluation_metric_key is None:
+        if not evaluation_metric_key:
             return None
         
         return {
