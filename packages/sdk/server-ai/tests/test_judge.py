@@ -442,25 +442,15 @@ class TestClientJudgeConfig:
         assert config.messages is not None
         assert len(config.messages) > 0
 
-    def test_judge_config_uses_default_when_key_missing(
+    def test_judge_config_uses_default_when_flag_does_not_exist(
         self, client: LDClient, context: Context
     ):
-        """judge_config should use default evaluation_metric_key when not in variation."""
+        """judge_config should use default evaluation_metric_key when flag does not exist."""
         from ldai import LDAIClient
+        from ldclient import Config, LDClient
+        from ldclient.integrations.test_data import TestData
         
         td = TestData.data_source()
-        td.update(
-            td.flag('judge-no-key')
-            .variations(
-                {
-                    'model': {'name': 'gpt-4'},
-                    'provider': {'name': 'openai'},
-                    'messages': [{'role': 'system', 'content': 'You are a judge.'}],
-                    '_ldMeta': {'enabled': True, 'variationKey': 'judge-v1', 'version': 1},
-                }
-            )
-            .variation_for_all(0)
-        )
         
         test_client = LDClient(Config('sdk-key', update_processor_class=td, send_events=False))
         ldai_client = LDAIClient(test_client)
@@ -520,24 +510,12 @@ class TestClientJudgeConfig:
     def test_judge_config_uses_first_evaluation_metric_keys_from_default(
         self, context: Context
     ):
-        """judge_config should use first value from default evaluation_metric_keys when both variation and default evaluation_metric_key are None."""
+        """judge_config should use first value from default evaluation_metric_keys when flag does not exist."""
         from ldai import LDAIClient
         from ldclient import Config, LDClient
         from ldclient.integrations.test_data import TestData
         
         td = TestData.data_source()
-        td.update(
-            td.flag('judge-fallback-keys')
-            .variations(
-                {
-                    'model': {'name': 'gpt-4'},
-                    'provider': {'name': 'openai'},
-                    'messages': [{'role': 'system', 'content': 'You are a judge.'}],
-                    '_ldMeta': {'enabled': True, 'variationKey': 'judge-v1', 'version': 1},
-                }
-            )
-            .variation_for_all(0)
-        )
         
         test_client = LDClient(Config('sdk-key', update_processor_class=td, send_events=False))
         ldai_client = LDAIClient(test_client)

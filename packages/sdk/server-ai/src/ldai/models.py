@@ -296,6 +296,9 @@ class AIJudgeConfigDefault(AIConfigDefault):
         result = self._base_to_dict()
         result['messages'] = [message.to_dict() for message in self.messages] if self.messages else None
         result['evaluationMetricKey'] = self.evaluation_metric_key
+        # Include deprecated evaluationMetricKeys for backward compatibility
+        if self.evaluation_metric_keys:
+            result['evaluationMetricKeys'] = self.evaluation_metric_keys
         return result
 
 

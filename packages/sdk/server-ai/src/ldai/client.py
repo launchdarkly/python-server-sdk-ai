@@ -98,14 +98,11 @@ class LDAIClient:
             key, context, default_value.to_dict(), variables
         )
 
-        def _extract_evaluation_metric_key(
-            variation: Dict[str, Any], default_value: AIJudgeConfigDefault
-        ) -> Optional[str]:
+        def _extract_evaluation_metric_key(variation: Dict[str, Any]) -> Optional[str]:
             """
             Extract evaluation_metric_key with backward compatibility.
 
-            Priority: 1) evaluationMetricKey from variation, 2) evaluationMetricKeys from variation,
-                      3) evaluation_metric_key from default, 4) evaluation_metric_keys from default
+            Priority: 1) evaluationMetricKey from variation, 2) first from evaluationMetricKeys in variation
             """
             if evaluation_metric_key := variation.get('evaluationMetricKey'):
                 return evaluation_metric_key
@@ -114,15 +111,9 @@ class LDAIClient:
             if isinstance(variation_keys, list) and variation_keys:
                 return variation_keys[0]
 
-            if default_value.evaluation_metric_key:
-                return default_value.evaluation_metric_key
-
-            if default_value.evaluation_metric_keys:
-                return default_value.evaluation_metric_keys[0]
-
             return None
 
-        evaluation_metric_key = _extract_evaluation_metric_key(variation, default_value)
+        evaluation_metric_key = _extract_evaluation_metric_key(variation)
 
         config = AIJudgeConfig(
             key=key,
