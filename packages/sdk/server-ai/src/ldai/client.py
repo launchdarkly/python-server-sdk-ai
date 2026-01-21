@@ -431,25 +431,26 @@ class LDAIClient:
         """
         variation = self._client.variation(key, context, {})
 
-        if not variation.get("rootConfigKey"):
+        if not variation.get("root"):
             log.debug(f"Agent graph {key} is disabled, no root config key found")
             return AgentGraphDefinition(
                 AIAgentGraphConfig(
                     key=key,
-                    name="",
                     root_config_key="",
                     edges=[],
-                    description="",
                     enabled=False,
                 ),
                 nodes={},
                 context=context,
                 enabled=False,
             )
+        
+        edge_keys = list[str](variation.get("edges", {}).keys())
+        all_agent_keys = set[str]([variation.get("root")])
+        for edge_key in edge_keys:
+            for single_edge in variation.get("edges", {}).get(edge_key, []):
+                    all_agent_keys.add(single_edge.get("key", ""))
 
-        all_agent_keys = [variation["rootConfigKey"]] + [
-            edge.get("targetConfig", "") for edge in variation.get("edges", []) if edge.get("targetConfig")
-        ]
         agent_configs = {
             key: self.agent_config(key, context, AIAgentConfigDefault(enabled=False))
             for key in all_agent_keys
@@ -462,10 +463,8 @@ class LDAIClient:
             return AgentGraphDefinition(
                 AIAgentGraphConfig(
                     key=key,
-                    name="",
                     root_config_key="",
                     edges=[],
-                    description="",
                     enabled=False,
                 ),
                 nodes={},
@@ -474,30 +473,28 @@ class LDAIClient:
             )
 
         try:
+            edges: list[Edge] = []
+            for edge_key in edge_keys:
+                for single_edge in variation.get("edges", {}).get(edge_key, []):
+                    edges.append(Edge(
+                        key=edge_key + "-" + single_edge.get("key", ""),
+                        source_config=edge_key,
+                        target_config=single_edge.get("key", ""),
+                        handoff=single_edge.get("handoff", {}),
+                    ))
+
             agent_graph_config = AIAgentGraphConfig(
-                key=variation["key"],
-                name=variation["name"],
-                root_config_key=variation["rootConfigKey"],
-                edges=[
-                    Edge(
-                        key=edge.get("key", ""),
-                        source_config=edge.get("sourceConfig", ""),
-                        target_config=edge.get("targetConfig", ""),
-                        handoff=edge.get("handoff", {}),
-                    )
-                    for edge in variation["edges"]
-                ],
-                description=variation["description"],
+                key=key,
+                root_config_key=variation.get("root"),
+                edges=edges,
             )
         except Exception as e:
             log.debug(f"Agent graph {key} is disabled, invalid agent graph config")
             return AgentGraphDefinition(
                 AIAgentGraphConfig(
                     key=key,
-                    name="",
                     root_config_key="",
                     edges=[],
-                    description="",
                     enabled=False,
                 ),
                 nodes={},

@@ -365,10 +365,8 @@ class AIAgentGraphConfig:
     """
 
     key: str
-    name: str
     root_config_key: str
     edges: List[Edge]
-    description: Optional[str] = ""
     enabled: bool = True
 
 
