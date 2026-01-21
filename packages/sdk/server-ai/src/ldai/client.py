@@ -444,12 +444,12 @@ class LDAIClient:
                 context=context,
                 enabled=False,
             )
-        
+
         edge_keys = list[str](variation.get("edges", {}).keys())
         all_agent_keys = set[str]([variation.get("root")])
         for edge_key in edge_keys:
             for single_edge in variation.get("edges", {}).get(edge_key, []):
-                    all_agent_keys.add(single_edge.get("key", ""))
+                all_agent_keys.add(single_edge.get("key", ""))
 
         agent_configs = {
             key: self.agent_config(key, context, AIAgentConfigDefault(enabled=False))
