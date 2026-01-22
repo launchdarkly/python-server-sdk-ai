@@ -1,5 +1,5 @@
 {
-  "packages/sdk/server-ai": "0.12.0",
+  "packages/sdk/server-ai": "0.13.0",
   "packages/ai-providers/server-ai-langchain": "0.3.0",
   "packages/ai-providers/server-ai-openai": "0.1.0"
 }
