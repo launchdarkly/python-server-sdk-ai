@@ -344,6 +344,37 @@ AIAgents = Dict[str, AIAgentConfig]
 # Type alias for all AI Config variants
 AIConfigKind = Union[AIAgentConfig, AICompletionConfig, AIJudgeConfig]
 
+# ============================================================================
+# AI Config Agent Graph Edge Type
+# ============================================================================
+
+
+@dataclass
+class Edge:
+    """
+    Edge configuration for an agent graph.
+    """
+
+    key: str
+    source_config: str
+    target_config: str
+    handoff: Optional[dict] = field(default_factory=dict)
+
+
+# ============================================================================
+# AI Config Agent Graph
+# ============================================================================
+@dataclass
+class AIAgentGraphConfig:
+    """
+    Agent graph configuration.
+    """
+
+    key: str
+    root_config_key: str
+    edges: List[Edge]
+    enabled: bool = True
+
 
 # ============================================================================
 # Deprecated Type Aliases for Backward Compatibility

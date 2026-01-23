@@ -2,6 +2,13 @@
 
 All notable changes to the LaunchDarkly Python AI package will be documented in this file. This project adheres to [Semantic Versioning](http://semver.org).
 
+## [0.13.0](https://github.com/launchdarkly/python-server-sdk-ai/compare/launchdarkly-server-sdk-ai-0.12.0...launchdarkly-server-sdk-ai-0.13.0) (2026-01-22)
+
+
+### Features
+
+* agent_graph SDK method ([#85](https://github.com/launchdarkly/python-server-sdk-ai/issues/85)) ([e9e8a50](https://github.com/launchdarkly/python-server-sdk-ai/commit/e9e8a5002e982597eb6a454c65d96713ec92e027))
+
 ## [0.12.0](https://github.com/launchdarkly/python-server-sdk-ai/compare/launchdarkly-server-sdk-ai-0.11.0...launchdarkly-server-sdk-ai-0.12.0) (2026-01-02)
 
 

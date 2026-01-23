@@ -1,15 +1,17 @@
-__version__ = "0.12.0"  # x-release-please-version
+__version__ = "0.13.0"  # x-release-please-version
 
 from ldclient import log
 
+from ldai.agent_graph import AgentGraphDefinition
 from ldai.chat import Chat
 from ldai.client import LDAIClient
 from ldai.judge import Judge
 from ldai.models import (  # Deprecated aliases for backward compatibility
-    AIAgentConfig, AIAgentConfigDefault, AIAgentConfigRequest, AIAgents,
-    AICompletionConfig, AICompletionConfigDefault, AIConfig, AIJudgeConfig,
-    AIJudgeConfigDefault, JudgeConfiguration, LDAIAgent, LDAIAgentConfig,
-    LDAIAgentDefaults, LDMessage, ModelConfig, ProviderConfig)
+    AIAgentConfig, AIAgentConfigDefault, AIAgentConfigRequest,
+    AIAgentGraphConfig, AIAgents, AICompletionConfig,
+    AICompletionConfigDefault, AIConfig, AIJudgeConfig, AIJudgeConfigDefault,
+    Edge, JudgeConfiguration, LDAIAgent, LDAIAgentConfig, LDAIAgentDefaults,
+    LDMessage, ModelConfig, ProviderConfig)
 from ldai.providers.types import EvalScore, JudgeResponse
 
 __all__ = [
@@ -18,12 +20,15 @@ __all__ = [
     'AIAgentConfigDefault',
     'AIAgentConfigRequest',
     'AIAgents',
+    'AIAgentGraphConfig',
+    'Edge',
     'AICompletionConfig',
     'AICompletionConfigDefault',
     'AIJudgeConfig',
     'AIJudgeConfigDefault',
     'Chat',
     'EvalScore',
+    'AgentGraphDefinition',
     'Judge',
     'JudgeConfiguration',
     'JudgeResponse',
