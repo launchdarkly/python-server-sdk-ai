@@ -2,12 +2,19 @@
 
 All notable changes to the LaunchDarkly Python AI package will be documented in this file. This project adheres to [Semantic Versioning](http://semver.org).
 
+## [0.14.0](https://github.com/launchdarkly/python-server-sdk-ai/compare/launchdarkly-server-sdk-ai-0.13.0...launchdarkly-server-sdk-ai-0.14.0) (2026-01-27)
+
+
+### Features
+
+* Add support for custom judges via evaluation metric key ([#86](https://github.com/launchdarkly/python-server-sdk-ai/issues/86)) ([a55503b](https://github.com/launchdarkly/python-server-sdk-ai/commit/a55503b13553f53c05a8f004c76b25e01f6a5c40))
+
 ## [0.13.0](https://github.com/launchdarkly/python-server-sdk-ai/compare/launchdarkly-server-sdk-ai-0.12.0...launchdarkly-server-sdk-ai-0.13.0) (2026-01-22)
 
 
 ### Features
 
-* agent_graph SDK method ([#85](https://github.com/launchdarkly/python-server-sdk-ai/issues/85)) ([e9e8a50](https://github.com/launchdarkly/python-server-sdk-ai/commit/e9e8a5002e982597eb6a454c65d96713ec92e027))
+* Added agent_graph SDK method ([#85](https://github.com/launchdarkly/python-server-sdk-ai/issues/85)) ([e9e8a50](https://github.com/launchdarkly/python-server-sdk-ai/commit/e9e8a5002e982597eb6a454c65d96713ec92e027))
 
 ## [0.12.0](https://github.com/launchdarkly/python-server-sdk-ai/compare/launchdarkly-server-sdk-ai-0.11.0...launchdarkly-server-sdk-ai-0.12.0) (2026-01-02)
 
