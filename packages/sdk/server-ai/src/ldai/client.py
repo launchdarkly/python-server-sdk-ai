@@ -42,7 +42,7 @@ class LDAIClient:
         """
         self._client.track('$ld:ai:config:function:single', context, key, 1)
 
-        model, provider, messages, instructions, tracker, enabled, judge_configuration = self.__evaluate(
+        model, provider, messages, instructions, tracker, enabled, judge_configuration, _ = self.__evaluate(
             key, context, default_value.to_dict(), variables
         )
 
@@ -96,18 +96,31 @@ class LDAIClient:
         """
         self._client.track('$ld:ai:judge:function:single', context, key, 1)
 
-        model, provider, messages, instructions, tracker, enabled, judge_configuration = self.__evaluate(
+        model, provider, messages, instructions, tracker, enabled, judge_configuration, variation = self.__evaluate(
             key, context, default_value.to_dict(), variables
         )
 
-        # Extract evaluation_metric_keys from the variation
-        variation = self._client.variation(key, context, default_value.to_dict())
-        evaluation_metric_keys = variation.get('evaluationMetricKeys', default_value.evaluation_metric_keys or [])
+        def _extract_evaluation_metric_key(variation: Dict[str, Any]) -> Optional[str]:
+            """
+            Extract evaluation_metric_key with backward compatibility.
+
+            Priority: 1) evaluationMetricKey from variation, 2) first from evaluationMetricKeys in variation
+            """
+            if evaluation_metric_key := variation.get('evaluationMetricKey'):
+                return evaluation_metric_key
+
+            variation_keys = variation.get('evaluationMetricKeys')
+            if isinstance(variation_keys, list) and variation_keys:
+                return variation_keys[0]
+
+            return None
+
+        evaluation_metric_key = _extract_evaluation_metric_key(variation)
 
         config = AIJudgeConfig(
             key=key,
             enabled=bool(enabled),
-            evaluation_metric_keys=evaluation_metric_keys,
+            evaluation_metric_key=evaluation_metric_key,
             model=model,
             messages=messages,
             provider=provider,
@@ -144,7 +157,7 @@ class LDAIClient:
                     enabled=True,
                     model=ModelConfig("gpt-4"),
                     provider=ProviderConfig("openai"),
-                    evaluation_metric_keys=['$ld:ai:judge:relevance'],
+                    evaluation_metric_key='$ld:ai:judge:relevance',
                     messages=[LDMessage(role='system', content='You are a relevance judge.')]
                 ),
                 variables={'metric': "relevance"}
@@ -160,15 +173,12 @@ class LDAIClient:
         self._client.track('$ld:ai:judge:function:createJudge', context, key, 1)
 
         try:
-            # Warn if reserved variables are provided
             if variables:
                 if 'message_history' in variables:
-                    # Note: Python doesn't have a logger on the client, but we could add one
-                    pass  # Would log warning if logger available
+                    pass
                 if 'response_to_evaluate' in variables:
-                    pass  # Would log warning if logger available
+                    pass
 
-            # Overwrite reserved variables to ensure they remain as placeholders for judge evaluation
             extended_variables = dict(variables) if variables else {}
             extended_variables['message_history'] = '{{message_history}}'
             extended_variables['response_to_evaluate'] = '{{response_to_evaluate}}'
@@ -176,17 +186,14 @@ class LDAIClient:
             judge_config = self.judge_config(key, context, default_value, extended_variables)
 
             if not judge_config.enabled or not judge_config.tracker:
-                # Would log info if logger available
                 return None
 
-            # Create AI provider for the judge
             provider = await AIProviderFactory.create(judge_config, default_ai_provider)
             if not provider:
                 return None
 
             return Judge(judge_config, judge_config.tracker, provider)
         except Exception as error:
-            # Would log error if logger available
             return None
 
     async def _initialize_judges(
@@ -279,7 +286,6 @@ class LDAIClient:
         config = self.completion_config(key, context, default_value, variables)
 
         if not config.enabled or not config.tracker:
-            # Would log info if logger available
             return None
 
         provider = await AIProviderFactory.create(config, default_ai_provider)
@@ -333,7 +339,6 @@ class LDAIClient:
         :param variables: Variables for interpolation.
         :return: Configured AIAgentConfig instance.
         """
-        # Track single agent usage
         self._client.track(
             "$ld:ai:agent:function:single",
             context,
@@ -399,7 +404,6 @@ class LDAIClient:
         :param context: The context to evaluate the agent configurations in.
         :return: Dictionary mapping agent keys to their AIAgentConfig configurations.
         """
-        # Track multiple agents usage
         agent_count = len(agent_configs)
         self._client.track(
             "$ld:ai:agent:function:multiple",
@@ -538,7 +542,7 @@ class LDAIClient:
         variables: Optional[Dict[str, Any]] = None,
     ) -> Tuple[
         Optional[ModelConfig], Optional[ProviderConfig], Optional[List[LDMessage]],
-        Optional[str], LDAIConfigTracker, bool, Optional[Any]
+        Optional[str], LDAIConfigTracker, bool, Optional[Any], Dict[str, Any]
     ]:
         """
         Internal method to evaluate a configuration and extract components.
@@ -547,7 +551,7 @@ class LDAIClient:
         :param context: The evaluation context.
         :param default_dict: Default configuration as dictionary.
         :param variables: Variables for interpolation.
-        :return: Tuple of (model, provider, messages, instructions, tracker, enabled).
+        :return: Tuple of (model, provider, messages, instructions, tracker, enabled, judge_configuration, variation).
         """
         variation = self._client.variation(key, context, default_dict)
 
@@ -556,7 +560,6 @@ class LDAIClient:
             all_variables.update(variables)
         all_variables['ldctx'] = context.to_dict()
 
-        # Extract messages
         messages = None
         if 'messages' in variation and isinstance(variation['messages'], list) and all(
             isinstance(entry, dict) for entry in variation['messages']
@@ -571,18 +574,15 @@ class LDAIClient:
                 for entry in variation['messages']
             ]
 
-        # Extract instructions
         instructions = None
         if 'instructions' in variation and isinstance(variation['instructions'], str):
             instructions = self.__interpolate_template(variation['instructions'], all_variables)
 
-        # Extract provider config
         provider_config = None
         if 'provider' in variation and isinstance(variation['provider'], dict):
             provider = variation['provider']
             provider_config = ProviderConfig(provider.get('name', ''))
 
-        # Extract model config
         model = None
         if 'model' in variation and isinstance(variation['model'], dict):
             parameters = variation['model'].get('parameters', None)
@@ -593,7 +593,6 @@ class LDAIClient:
                 custom=custom
             )
 
-        # Create tracker
         tracker = LDAIConfigTracker(
             self._client,
             variation.get('_ldMeta', {}).get('variationKey', ''),
@@ -606,7 +605,6 @@ class LDAIClient:
 
         enabled = variation.get('_ldMeta', {}).get('enabled', False)
 
-        # Extract judge configuration
         judge_configuration = None
         if 'judgeConfiguration' in variation and isinstance(variation['judgeConfiguration'], dict):
             judge_config = variation['judgeConfiguration']
@@ -622,7 +620,7 @@ class LDAIClient:
                 if judges:
                     judge_configuration = JudgeConfiguration(judges=judges)
 
-        return model, provider_config, messages, instructions, tracker, enabled, judge_configuration
+        return model, provider_config, messages, instructions, tracker, enabled, judge_configuration, variation
 
     def __evaluate_agent(
         self,
@@ -640,7 +638,7 @@ class LDAIClient:
         :param variables: Variables for interpolation.
         :return: Configured AIAgentConfig instance.
         """
-        model, provider, messages, instructions, tracker, enabled, judge_configuration = self.__evaluate(
+        model, provider, messages, instructions, tracker, enabled, judge_configuration, _ = self.__evaluate(
             key, context, default_value.to_dict(), variables
         )
 

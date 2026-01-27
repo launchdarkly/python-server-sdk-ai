@@ -9,8 +9,7 @@ from ldai import log
 from ldai.judge.evaluation_schema_builder import EvaluationSchemaBuilder
 from ldai.models import AIJudgeConfig, LDMessage
 from ldai.providers.ai_provider import AIProvider
-from ldai.providers.types import (ChatResponse, EvalScore, JudgeResponse,
-                                  StructuredResponse)
+from ldai.providers.types import ChatResponse, EvalScore, JudgeResponse
 from ldai.tracker import LDAIConfigTracker
 
 
@@ -38,9 +37,7 @@ class Judge:
         self._ai_config = ai_config
         self._ai_config_tracker = ai_config_tracker
         self._ai_provider = ai_provider
-        self._evaluation_response_structure = EvaluationSchemaBuilder.build(
-            ai_config.evaluation_metric_keys
-        )
+        self._evaluation_response_structure = EvaluationSchemaBuilder.build(ai_config.evaluation_metric_key)
 
     async def evaluate(
         self,
@@ -57,9 +54,9 @@ class Judge:
         :return: Evaluation results or None if not sampled
         """
         try:
-            if not self._ai_config.evaluation_metric_keys or len(self._ai_config.evaluation_metric_keys) == 0:
+            if not self._ai_config.evaluation_metric_key:
                 log.warn(
-                    'Judge configuration is missing required evaluationMetricKeys'
+                    'Judge configuration is missing required evaluationMetricKey'
                 )
                 return None
 
@@ -72,8 +69,8 @@ class Judge:
                 return None
 
             messages = self._construct_evaluation_messages(input_text, output_text)
+            assert self._evaluation_response_structure is not None
 
-            # Track metrics of the structured model invocation
             response = await self._ai_config_tracker.track_metrics_of(
                 lambda: self._ai_provider.invoke_structured_model(messages, self._evaluation_response_structure),
                 lambda result: result.metrics,
@@ -83,8 +80,8 @@ class Judge:
 
             evals = self._parse_evaluation_response(response.data)
 
-            if len(evals) != len(self._ai_config.evaluation_metric_keys):
-                log.warn('Judge evaluation did not return all evaluations')
+            if self._ai_config.evaluation_metric_key not in evals:
+                log.warn('Judge evaluation did not return the expected evaluation')
                 success = False
 
             return JudgeResponse(
@@ -191,30 +188,34 @@ class Judge:
 
         evaluations = data['evaluations']
 
-        for metric_key in self._ai_config.evaluation_metric_keys:
-            evaluation = evaluations.get(metric_key)
+        metric_key = self._ai_config.evaluation_metric_key
+        if not metric_key:
+            log.warn('Evaluation metric key is missing')
+            return results
 
-            if not evaluation or not isinstance(evaluation, dict):
-                log.warn(f'Missing evaluation for metric key: {metric_key}')
-                continue
+        evaluation = evaluations.get(metric_key)
 
-            score = evaluation.get('score')
-            reasoning = evaluation.get('reasoning')
+        if not evaluation or not isinstance(evaluation, dict):
+            log.warn(f'Missing evaluation for metric key: {metric_key}')
+            return results
 
-            if not isinstance(score, (int, float)) or score < 0 or score > 1:
-                log.warn(
-                    f'Invalid score evaluated for {metric_key}: {score}. '
-                    'Score must be a number between 0 and 1 inclusive'
-                )
-                continue
+        score = evaluation.get('score')
+        reasoning = evaluation.get('reasoning')
 
-            if not isinstance(reasoning, str):
-                log.warn(
-                    f'Invalid reasoning evaluated for {metric_key}: {reasoning}. '
-                    'Reasoning must be a string'
-                )
-                continue
+        if not isinstance(score, (int, float)) or score < 0 or score > 1:
+            log.warn(
+                f'Invalid score evaluated for {metric_key}: {score}. '
+                'Score must be a number between 0 and 1 inclusive'
+            )
+            return results
 
-            results[metric_key] = EvalScore(score=float(score), reasoning=reasoning)
+        if not isinstance(reasoning, str):
+            log.warn(
+                f'Invalid reasoning evaluated for {metric_key}: {reasoning}. '
+                'Reasoning must be a string'
+            )
+            return results
+
+        results[metric_key] = EvalScore(score=float(score), reasoning=reasoning)
 
         return results
