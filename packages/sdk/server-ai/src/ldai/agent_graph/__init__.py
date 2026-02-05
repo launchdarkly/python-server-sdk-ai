@@ -1,14 +1,11 @@
 """Graph implementation for managing AI agent graphs."""
 
-from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set
+from typing import Any, Callable, Dict, List, Optional, Set
 
 from ldclient import Context
 
 from ldai.models import AIAgentConfig, AIAgentGraphConfig, Edge
-
-if TYPE_CHECKING:
-    from ldai.tracker import AIGraphTracker
+from ldai.tracker import AIGraphTracker
 
 DEFAULT_FALSE = AIAgentConfig(key="", enabled=False)
 
@@ -57,7 +54,7 @@ class AgentGraphDefinition:
         nodes: Dict[str, AgentGraphNode],
         context: Context,
         enabled: bool,
-        tracker: Optional["AIGraphTracker"] = None,
+        tracker: Optional[AIGraphTracker] = None,
     ):
         self._agent_graph = agent_graph
         self._context = context
@@ -65,7 +62,7 @@ class AgentGraphDefinition:
         self.enabled = enabled
         self._tracker = tracker
 
-    def get_tracker(self) -> Optional["AIGraphTracker"]:
+    def get_tracker(self) -> Optional[AIGraphTracker]:
         """
         Get the graph tracker for this graph definition.
 
