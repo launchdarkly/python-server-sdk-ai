@@ -13,6 +13,7 @@ from ldai.models import (  # Deprecated aliases for backward compatibility
     Edge, JudgeConfiguration, LDAIAgent, LDAIAgentConfig, LDAIAgentDefaults,
     LDMessage, ModelConfig, ProviderConfig)
 from ldai.providers.types import EvalScore, JudgeResponse
+from ldai.tracker import AIGraphTracker
 
 __all__ = [
     'LDAIClient',
@@ -21,6 +22,7 @@ __all__ = [
     'AIAgentConfigRequest',
     'AIAgents',
     'AIAgentGraphConfig',
+    'AIGraphTracker',
     'Edge',
     'AICompletionConfig',
     'AICompletionConfigDefault',
