@@ -6,6 +6,17 @@
 
 [![Twitter Follow](https://img.shields.io/twitter/follow/launchdarkly.svg?style=social&label=Follow&maxAge=2592000)](https://twitter.com/intent/follow?screen_name=launchdarkly)
 
+## Packages
+
+| Package | PyPI | README |
+| ------- | ---- | ------ |
+| [launchdarkly-server-sdk-ai](packages/sdk/server-ai) | [![PyPI](https://img.shields.io/pypi/v/launchdarkly-server-sdk-ai.svg)](https://pypi.org/project/launchdarkly-server-sdk-ai/) | [README](packages/sdk/server-ai/README.md) |
+
+| AI Provider Packages | PyPI | README |
+| -------------------- | ---- | ------ |
+| [launchdarkly-server-sdk-ai-openai](packages/ai-providers/server-ai-openai) | [![PyPI](https://img.shields.io/pypi/v/launchdarkly-server-sdk-ai-openai.svg)](https://pypi.org/project/launchdarkly-server-sdk-ai-openai/) | [README](packages/ai-providers/server-ai-openai/README.md) |
+| [launchdarkly-server-sdk-ai-langchain](packages/ai-providers/server-ai-langchain) | [![PyPI](https://img.shields.io/pypi/v/launchdarkly-server-sdk-ai-langchain.svg)](https://pypi.org/project/launchdarkly-server-sdk-ai-langchain/) | [README](packages/ai-providers/server-ai-langchain/README.md) |
+
 ## Supported Python versions
 
 This version of the library has a minimum Python version of 3.9.
