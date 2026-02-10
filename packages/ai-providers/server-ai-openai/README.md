@@ -2,6 +2,9 @@
 
 [![PyPI](https://img.shields.io/pypi/v/launchdarkly-server-sdk-ai-openai-dev.svg?style=flat-square)](https://pypi.org/project/launchdarkly-server-sdk-ai-openai-dev/)
 
+> [!CAUTION]
+> This package is in pre-release and not subject to backwards compatibility guarantees or semantic versioning. The API may change based on feedback.
+
 This package provides an OpenAI integration for the LaunchDarkly AI SDK.
 
 ## Installation
