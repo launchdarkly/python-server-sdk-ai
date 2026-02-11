@@ -7,6 +7,7 @@ from ldai.chat import Chat
 from ldai.client import LDAIClient
 from ldai.judge import Judge
 from ldai.optimization import (
+    AutoCommitConfig,
     JudgeResult, Message, OptimizeContext, OptimizeJudgeContext,
     OptimizeOptions, OptimizationJudge, StructuredOutputTool)
 from ldai.models import (  # Deprecated aliases for backward compatibility
@@ -39,6 +40,7 @@ __all__ = [
     'LDMessage',
     'Message',
     'ModelConfig',
+    'AutoCommitConfig',
     'OptimizeContext',
     'OptimizeJudgeContext',
     'OptimizeOptions',

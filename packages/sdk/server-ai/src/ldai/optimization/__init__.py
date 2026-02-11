@@ -2,7 +2,11 @@
 
 import inspect
 import json
+import os
 import random
+import uuid
+import urllib.request
+import urllib.error
 from dataclasses import dataclass, field
 from typing import (
     Any,
@@ -48,15 +52,10 @@ class OptimizationJudge:
     )
 
     def __post_init__(self):
-        """Validate that either threshold or acceptance_statement is provided."""
-        if self.threshold is None and self.acceptance_statement is None:
+        """Validate that either judge_key (config-type) or acceptance_statement is provided."""
+        if self.judge_key is None and self.acceptance_statement is None:
             raise ValueError(
-                "OptimizationJudge must have either threshold or acceptance_statement set"
-            )
-        # Threshold should only be used with judge_key (config-type judges)
-        if self.threshold is not None and self.judge_key is None:
-            raise ValueError(
-                "threshold can only be used with judge_key (config-type judges)"
+                "OptimizationJudge must have either judge_key (for config-type judges) or acceptance_statement (for acceptance statement judges)"
             )
 
 
@@ -184,6 +183,14 @@ class OptimizeContext:
 
 
 @dataclass
+class AutoCommitConfig:
+    """Configuration for auto-committing optimization results to LaunchDarkly."""
+
+    enabled: bool = False
+    project_key: Optional[str] = None
+
+
+@dataclass
 class OptimizeOptions:
     """Options for agent optimization."""
 
@@ -215,8 +222,8 @@ class OptimizeOptions:
         None  # if you want manual control of pass/fail
     )
     # Results - Optional
-    auto_commit: bool = (
-        False  # automatically save this back to the agent as a new version?
+    auto_commit: Optional[AutoCommitConfig] = (
+        None  # configuration for automatically saving results back to LaunchDarkly
     )
     on_passing_result: Optional[Callable[[OptimizeContext], None]] = None
     on_failing_result: Optional[Callable[[OptimizeContext], None]] = None
@@ -269,6 +276,13 @@ class AgentOptimizer:
         self._current_parameters: Dict[str, Any] = config.model._parameters or {}
         self._current_model: Optional[str] = config.model.name if config.model else None
         self._history: List[OptimizeContext] = []
+
+        if os.environ.get("LD_API_KEY"):
+            self.has_api_key = True
+            self.api_key = os.environ.get("LD_API_KEY")
+        else:
+            self.has_api_key = False
+            self.api_key = None
 
     def _create_evaluation_tool(self) -> StructuredOutputTool:
         """
@@ -577,6 +591,71 @@ class AgentOptimizer:
 
         return "\n".join(reasoning_parts)
 
+    def _parse_judge_response(
+        self,
+        judge_response_str: str,
+        judge_key: str,
+        judge_identifier: str,
+        iteration: int,
+        clamp_score: bool = True,
+    ) -> JudgeResult:
+        """
+        Parse judge response to extract score and rationale.
+
+        :param judge_response_str: The raw judge response string
+        :param judge_key: The key for this judge in the judges dict
+        :param judge_identifier: Identifier for logging (e.g., judge_key or judge_key from config)
+        :param iteration: Current iteration number
+        :param clamp_score: Whether to clamp score to [0.0, 1.0] range
+        :return: JudgeResult with score and rationale
+        """
+        try:
+            response_data = json.loads(judge_response_str)
+            if isinstance(response_data, dict):
+                # Look for score field (primary) or fallback to keys ending with "_score"
+                score_key = "score" if "score" in response_data else None
+                if not score_key:
+                    for key in response_data.keys():
+                        if key.endswith("_score"):
+                            score_key = key
+                            break
+                
+                if score_key:
+                    score = float(response_data[score_key])
+                    if clamp_score:
+                        score = max(0.0, min(1.0, score))
+                    rationale = response_data.get("rationale") or response_data.get("reasoning")
+                    return JudgeResult(score=score, rationale=rationale)
+                else:
+                    log.warn(
+                        f"[Turn {iteration}] -> Judge {judge_identifier} response missing score field. "
+                        f"Available keys: {list(response_data.keys())}"
+                    )
+                    raise ValueError("No score field in JSON response")
+            else:
+                # If JSON but not a dict, try to convert to float
+                score = float(response_data)
+                if clamp_score:
+                    score = max(0.0, min(1.0, score))
+                return JudgeResult(score=score, rationale=None)
+        except (json.JSONDecodeError, ValueError, TypeError) as e:
+            # Fall back to parsing as plain numeric string (legacy support)
+            try:
+                score = float(judge_response_str.strip())
+                if clamp_score:
+                    score = max(0.0, min(1.0, score))
+                log.warn(
+                    f"[Turn {iteration}] -> Judge {judge_identifier} returned non-JSON response, "
+                    f"parsed as numeric: {score}"
+                )
+                return JudgeResult(score=score, rationale=None)
+            except ValueError:
+                log.warn(
+                    f"[Turn {iteration}] -> Judge {judge_identifier} returned invalid response: "
+                    f"{judge_response_str[:200]}. Error: {e}"
+                )
+                return JudgeResult(score=0.0, rationale=None)
+
     async def _call_judges(
         self, completion_response: str, iteration: int
     ) -> Dict[str, JudgeResult]:
@@ -707,45 +786,10 @@ class AgentOptimizer:
         print(f"[Turn {iteration}] -> Judge response ({judge_key}): {judge_response_str}")
 
         # Parse judge response - expect structured JSON output
-        try:
-            response_data = json.loads(judge_response_str)
-            if isinstance(response_data, dict):
-                # Look for score field (primary) or fallback to keys ending with "_score"
-                score_key = "score" if "score" in response_data else None
-                if not score_key:
-                    for key in response_data.keys():
-                        if key.endswith("_score"):
-                            score_key = key
-                            break
-                
-                if score_key:
-                    score = float(response_data[score_key])
-                    rationale = response_data.get("rationale") or response_data.get("reasoning")
-                    return JudgeResult(score=score, rationale=rationale)
-                else:
-                    log.warn(
-                        f"[Turn {iteration}] -> Judge {optimization_judge.judge_key} response missing score field. "
-                        f"Available keys: {list(response_data.keys())}"
-                    )
-                    raise ValueError("No score field in JSON response")
-            else:
-                # If JSON but not a dict, try to convert to float
-                return JudgeResult(score=float(response_data), rationale=None)
-        except (json.JSONDecodeError, ValueError, TypeError) as e:
-            # Fall back to parsing as plain numeric string (legacy support)
-            try:
-                score = float(judge_response_str.strip())
-                log.warn(
-                    f"[Turn {iteration}] -> Judge {optimization_judge.judge_key} returned non-JSON response, "
-                    f"parsed as numeric: {score}"
-                )
-                return JudgeResult(score=score, rationale=None)
-            except ValueError:
-                log.warn(
-                    f"[Turn {iteration}] -> Judge {optimization_judge.judge_key} returned invalid response: "
-                    f"{judge_response_str[:200]}. Error: {e}"
-                )
-                return JudgeResult(score=0.0, rationale=None)
+        judge_identifier = optimization_judge.judge_key or judge_key
+        return self._parse_judge_response(
+            judge_response_str, judge_key, judge_identifier, iteration, clamp_score=False
+        )
 
     async def _evaluate_acceptance_judge(
         self,
@@ -781,11 +825,20 @@ class AgentOptimizer:
                 content=f"""You are a judge that evaluates the response to the user's question. 
                 
                 Here is the statement that you should evaluate the response against: '{optimization_judge.acceptance_statement}'
-                Here is the history of all messages between the user and the assistant: {message_history_text}""",
-            ),
-            Message(
-                role="assistant",
-                content="Your response should include whether the response passes (boolean) and your reasoning. Call the structured output tool to format your response.",
+                Here is the history of all messages between the user and the assistant: {message_history_text}
+                You should score the response based on how well it meets the acceptance statement using a score between 0.0 and 1.0.
+                A score of 0.0 means it does not match at all, while a score of 1.0 means it matches perfectly. 
+                A score of 0.3-0.7 means it matches partially, while a score of 0.7-1.0 means it matches well.
+                A score of 0.0-0.3 means that it does not match well at all. You can return any value between 0.0 and 1.0.
+                You should also provide a rationale for your score.
+                You should call the structured output tool to format your response.
+
+                Here is an example of a good response:
+                {{
+                    "score": 0.8,
+                    "rationale": "The response matches the acceptance statement well. It provides a detailed explanation of the concept and its applications."
+                }}
+                """,
             ),
             Message(
                 role="user",
@@ -793,60 +846,27 @@ class AgentOptimizer:
             ),
         ]
 
-        # Create structured output tool for boolean response with rationale
-        boolean_tool = self._create_boolean_tool()
+        # Create structured output tool for evaluation response with score and rationale
+        evaluation_tool = self._create_evaluation_tool()
         
         judge_ctx = OptimizeJudgeContext(
             messages=judge_messages,
             parameters={"model": self._options.judge_model},
-            tools=[boolean_tool.to_dict()],
+            tools=[evaluation_tool.to_dict()],
         )
 
         result = self._options.handle_judge_call(self._options.judge_model, judge_ctx)
         judge_response = await self._await_if_needed(result)
 
+        print(f"""--------------------------------
+Judge response: {judge_response}
+--------------------------------""")
+
         print(f"[Turn {iteration}] -> Judge response ({judge_key}): {judge_response}")
-        # Parse judge response - expect structured JSON output
-        passed = False
-        rationale = None
-        try:
-            response_data = json.loads(judge_response)
-            if isinstance(response_data, dict):
-                # Check for "passed" field (primary) or fallback to "pass"/"passes"
-                if "passed" in response_data:
-                    passed = bool(response_data["passed"])
-                elif "pass" in response_data:
-                    passed = bool(response_data["pass"])
-                    log.warn(
-                        f"[Turn {iteration}] -> Judge {judge_key} used 'pass' field instead of 'passed'"
-                    )
-                elif "passes" in response_data:
-                    passed = bool(response_data["passes"])
-                    log.warn(
-                        f"[Turn {iteration}] -> Judge {judge_key} used 'passes' field instead of 'passed'"
-                    )
-                else:
-                    log.warn(
-                        f"[Turn {iteration}] -> Judge {judge_key} response missing pass field. "
-                        f"Available keys: {list(response_data.keys())}"
-                    )
-                    raise ValueError("No pass/passed/passes field in JSON response")
-                
-                # Extract rationale (check multiple possible field names)
-                rationale = response_data.get("rationale") or response_data.get("reasoning")
-            elif isinstance(response_data, bool):
-                passed = response_data
-            else:
-                raise ValueError(f"Unexpected JSON format: {type(response_data)}")
-        except (json.JSONDecodeError, ValueError, TypeError) as e:
-            # Fall back to string parsing for backward compatibility
-            passed = judge_response.lower().strip() in ("true", "yes", "pass", "1")
-            log.warn(
-                f"[Turn {iteration}] -> Judge {judge_key} returned non-JSON response, "
-                f"parsed as boolean: {passed}. Error: {e}"
-            )
-        
-        return JudgeResult(score=1.0 if passed else 0.0, rationale=rationale)
+        # Parse judge response - expect structured JSON output with score and rationale
+        return self._parse_judge_response(
+            judge_response, judge_key, judge_key, iteration, clamp_score=True
+        )
 
     def _check_judge_threshold(
         self,
@@ -864,7 +884,7 @@ class AgentOptimizer:
         """
         if optimization_judge.judge_key is not None:
             # Config-type judge: compare score to threshold
-            threshold = optimization_judge.threshold if optimization_judge.threshold is not None else 1.0
+            threshold = optimization_judge.threshold if optimization_judge.threshold is not None else 0.9
             if score < threshold:
                 print(
                     f"Judge {judge_key} failed: score {score} < threshold {threshold}"
@@ -876,15 +896,17 @@ class AgentOptimizer:
                 )
                 return True
         else:
-            # Acceptance statement judge: score should be 1.0 to pass (boolean true)
-            if score < 1.0:
+            # Acceptance statement judge: compare score to threshold (reuse threshold from OptimizationJudge)
+            threshold = optimization_judge.threshold if optimization_judge.threshold is not None else 0.9
+            
+            if score < threshold:
                 print(
-                    f"Judge {judge_key} (acceptance_statement) failed: score {score} < 1.0"
+                    f"Judge {judge_key} (acceptance_statement) failed: score {score} < threshold {threshold}"
                 )
                 return False
             else:
                 log.debug(
-                    f"Judge {judge_key} (acceptance_statement) passed: score {score} >= 1.0"
+                    f"Judge {judge_key} (acceptance_statement) passed: score {score} >= threshold {threshold}"
                 )
                 return True
 
@@ -936,13 +958,37 @@ class AgentOptimizer:
             "",
         ]
 
+        parameters_instructions = [
+            "Return these values in a JSON object with the following keys: current_instructions, current_parameters, and model.",
+            "Example:",
+            "{",
+            '  "current_instructions": "...',
+            '  "current_parameters": {',
+            '    "...": "..."',
+            "  },",
+            '  "model": "gpt-4o"',
+            "}",
+            "Parameters should only be things that are directly parseable by an LLM call, for example, temperature, max_tokens, etc."
+            "Do not include any other parameters that are not directly parseable by an LLM call. If you want to provide instruction for tone or other attributes, provide them directly in the instructions.",            
+        ]
+
+        model_instructions = [
+            "You may also choose to change the model if you believe that the current model is not performing well or a different model would be better suited for the task. "
+            f"Here are the models you may choose from: {self._options.model_choices}. You must always return a model property, even if it's the same as the current model.",
+            "When suggesting a new model, you should provide a rationale for why you believe the new model would be better suited for the task.",
+        ]
+
+        prev_context_instructions = [
+            f"Model: {previous_ctx.current_model}",
+            f"Instructions: {previous_ctx.current_instructions}",
+            f"Parameters: {previous_ctx.current_parameters}",
+        ]
+
         if previous_ctx:
             instructions_parts.extend(
                 [
                     "## Previous Configuration:",
-                    f"Model: {previous_ctx.current_model}",
-                    f"Instructions: {previous_ctx.current_instructions}",
-                    f"Parameters: {previous_ctx.current_parameters}",
+                    *prev_context_instructions,
                     "",
                     "## Previous Result:",
                     f"{previous_ctx.completion_response}",
@@ -986,44 +1032,24 @@ class AgentOptimizer:
                     "Based on the evaluation feedback above, generate improved agent instructions and parameters.",
                     "Focus on addressing the areas where the evaluation failed or scored below threshold.",
                     "The new configuration should aim to improve the agent's performance on the evaluation criteria.",
-                    "You may also choose to change the model if you believe that the current model is not performing well. "
-                    f"Here are the models you may choose from: {self._options.model_choices}. Always return a model property, even if you don't want to change it.",
+                    *model_instructions,
                     "",
                     "Return the improved configuration in a structured format that can be parsed to update:",
                     "1. The agent instructions (current_instructions)",
                     "2. The agent parameters (current_parameters)",
-                    "3. The model (model) - you must always return a model, even if it's the same as the current model",
-                    "Return these values in a JSON object with the following keys: current_instructions, current_parameters, and model.",
-                    "Example:",
-                    "{",
-                    '  "current_instructions": "...',
-                    '  "current_parameters": {',
-                    '    "...": "..."',
-                    "  },",
-                    '  "model": "gpt-4o"',
-                    "}",
+                    "3. The model (model) - you must always return a model, even if it's the same as the current model.",
+                    *parameters_instructions,
                 ]
             )
         else:
             instructions_parts.extend(
                 [
                     "## Current Configuration:",
-                    f"Model: {self._current_model}",
-                    f"Instructions: {self._current_instructions}",
-                    f"Parameters: {self._current_parameters}",
+                    *prev_context_instructions,
                     "",
                     "Generate an improved version of this configuration.",
-                    "You may also choose to change the model if you believe that the current model is not performing well. "
-                    f"Here are the models you may choose from: {self._options.model_choices}. You must always return a model property, even if it's the same as the current model.",
-                    "Return these values in a JSON object with the following keys: current_instructions, current_parameters, and model.",
-                    "Example:",
-                    "{",
-                    '  "current_instructions": "...',
-                    '  "current_parameters": {',
-                    '    "...": "..."',
-                    "  },",
-                    '  "model": "gpt-4o"',
-                    "}",
+                    *model_instructions,
+                    *parameters_instructions,
                 ]
             )
 
@@ -1054,6 +1080,7 @@ class AgentOptimizer:
         response_str = await self._await_if_needed(result)
 
         # Parse the JSON response to extract instructions and parameters
+        response_data = None
         try:
             # Try to parse as JSON directly
             response_data = json.loads(response_str)
@@ -1062,23 +1089,63 @@ class AgentOptimizer:
             # Some LLMs may wrap the JSON in markdown code blocks or add extra text
             import re
 
-            # Improved regex pattern to handle nested JSON objects
-            json_match = re.search(
-                r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*"current_instructions"[^{}]*(?:\{[^{}]*\}[^{}]*)*\}',
+            # First, try to extract JSON from markdown code blocks
+            code_block_match = re.search(
+                r'```(?:json)?\s*(\{.*?\})\s*```',
                 response_str,
                 re.DOTALL,
             )
-            if json_match:
+            if code_block_match:
                 try:
-                    response_data = json.loads(json_match.group())
+                    response_data = json.loads(code_block_match.group(1))
                 except json.JSONDecodeError:
-                    log.error(
-                        f"[Optimization] Extracted JSON string failed to parse: {json_match.group()[:200]}"
-                    )
-                    raise ValueError(
-                        "Failed to parse extracted JSON from variation generation response"
-                    )
-            else:
+                    pass  # Fall through to general extraction
+
+            # If code block extraction failed, try to find the first complete JSON object
+            if response_data is None:
+                # Find the first opening brace and then match balanced braces
+                brace_count = 0
+                start_idx = response_str.find('{')
+                if start_idx != -1:
+                    for i in range(start_idx, len(response_str)):
+                        if response_str[i] == '{':
+                            brace_count += 1
+                        elif response_str[i] == '}':
+                            brace_count -= 1
+                            if brace_count == 0:
+                                # Found complete JSON object
+                                json_str = response_str[start_idx:i+1]
+                                try:
+                                    response_data = json.loads(json_str)
+                                    break
+                                except json.JSONDecodeError:
+                                    # Try next JSON object
+                                    start_idx = response_str.find('{', start_idx + 1)
+                                    if start_idx == -1:
+                                        break
+                                    brace_count = 0
+                                    i = start_idx - 1
+
+            # If still no valid JSON, try the old regex as fallback
+            if response_data is None:
+                json_match = re.search(
+                    r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*"current_instructions"[^{}]*(?:\{[^{}]*\}[^{}]*)*\}',
+                    response_str,
+                    re.DOTALL,
+                )
+                if json_match:
+                    try:
+                        response_data = json.loads(json_match.group())
+                    except json.JSONDecodeError:
+                        log.error(
+                            f"[Optimization] Extracted JSON string failed to parse: {json_match.group()[:200]}"
+                        )
+                        raise ValueError(
+                            "Failed to parse extracted JSON from variation generation response"
+                        )
+
+            # Final check - if we still don't have response_data, raise error
+            if response_data is None:
                 log.error(
                     f"[Optimization] Failed to extract JSON from variation generation response. "
                     f"Response length: {len(response_str)}, first 200 chars: {response_str[:200]}"
@@ -1089,6 +1156,15 @@ class AgentOptimizer:
                 )
 
         # Extract and update current state from the parsed response
+        # Log the parsed response for debugging
+        log.debug(
+            f"[Turn {iteration}] -> Parsed response_data keys: {list(response_data.keys()) if response_data else 'None'}"
+        )
+        if response_data and "model" in response_data:
+            log.debug(
+                f"[Turn {iteration}] -> Model field value: '{response_data['model']}'"
+            )
+        
         missing_fields = []
         if "current_instructions" not in response_data:
             missing_fields.append("current_instructions")
@@ -1098,6 +1174,11 @@ class AgentOptimizer:
             missing_fields.append("model")
         
         if missing_fields:
+            log.error(
+                f"[Turn {iteration}] -> Response missing required fields: {', '.join(missing_fields)}. "
+                f"Received fields: {list(response_data.keys())}. "
+                f"Full response_data: {json.dumps(response_data, indent=2)}"
+            )
             raise ValueError(
                 f"Response missing required fields: {', '.join(missing_fields)}. "
                 f"Received fields: {list(response_data.keys())}"
@@ -1106,16 +1187,21 @@ class AgentOptimizer:
         self._current_instructions = response_data["current_instructions"]
         self._current_parameters = response_data["current_parameters"]
         # Update model - it should always be provided since it's required
-        if not response_data["model"]:
+        model_value = response_data.get("model", "").strip() if isinstance(response_data.get("model"), str) else response_data.get("model")
+        if not model_value:
             log.warn(
-                f"[Turn {iteration}] -> Model field is empty in response, keeping current model {self._current_model}"
+                f"[Turn {iteration}] -> Model field is empty or None in response, keeping current model {self._current_model}"
             )
-        elif response_data["model"] not in self._options.model_choices:
+        elif model_value not in self._options.model_choices:
             log.warn(
-                f"[Turn {iteration}] -> Model {response_data['model']} not in model_choices, keeping current model {self._current_model}"
+                f"[Turn {iteration}] -> Model '{model_value}' not in model_choices {self._options.model_choices}, keeping current model {self._current_model}"
             )
         else:
-            self._current_model = response_data["model"]
+            old_model = self._current_model
+            self._current_model = model_value
+            log.info(
+                f"[Turn {iteration}] -> Model updated from '{old_model}' to '{self._current_model}'"
+            )
 
         print(f"""[Turn {iteration}] -> New variation generated: 
         Instructions: {self._current_instructions[:100]}...
@@ -1159,11 +1245,8 @@ class AgentOptimizer:
         # Call on_status_update with "success" status
         self._safe_status_update("success", optimize_ctx, iteration)
 
-        if self._options.auto_commit:
-            log.warn(
-                f"[Turn {iteration}] Auto-commit is enabled but not yet implemented. "
-                "The optimized configuration will not be automatically saved to LaunchDarkly."
-            )
+        if self._options.auto_commit and self._options.auto_commit.enabled:
+            self.auto_commit(optimize_ctx)
 
         if self._options.on_passing_result:
             self._options.on_passing_result(optimize_ctx)
@@ -1198,3 +1281,65 @@ class AgentOptimizer:
         if self._options.on_failing_result:
             self._options.on_failing_result(final_ctx)
         return final_ctx
+
+    def auto_commit(self, optimize_ctx: OptimizeContext) -> None:
+        """
+        Auto-commit the optimization context to LaunchDarkly.
+
+        :param optimize_ctx: The optimization context to commit
+        """
+        if not self._options.auto_commit or not self._options.auto_commit.enabled:
+            return
+        
+        if not self.has_api_key:
+            log.warn("Auto-commit is enabled but no API key is available. Skipping commit.")
+            return
+
+        project_key = self._options.auto_commit.project_key
+        if not project_key:
+            log.warn("Auto-commit is enabled but no project_key is provided. Skipping commit.")
+            return
+
+        base_url = "https://api.launchdarkly.com"
+        url_endpoint = f"{base_url}/api/v2/projects/{project_key}/ai-configs/{self._key}/variations"
+
+        print(url_endpoint)
+        
+        request_body = {
+          "key": f"autogenerated-variation-{uuid.uuid4()}",
+          "name": f"Autogenerated Variation {uuid.uuid4()}",
+          "modelConfigKey": optimize_ctx.current_model,
+          "model": {
+            "parameters": optimize_ctx.current_parameters,
+          },
+          "instructions": optimize_ctx.current_instructions,
+        }
+
+        request_data = json.dumps(request_body).encode('utf-8')
+        req = urllib.request.Request(url_endpoint, data=request_data, method='POST')
+        req.add_header('Content-Type', 'application/json')
+        req.add_header('LD-API-Version', 'beta')
+        req.add_header('Authorization', f'Bearer {self.api_key}')
+        
+        try:
+            response = urllib.request.urlopen(req)
+            contents = response.read()
+            log.info(f"Auto-commit successful: {response.getcode()}")
+            print(contents.decode('utf-8'))
+        except urllib.error.HTTPError as e:
+            error_body = e.read().decode('utf-8') if e.fp else "No error body"
+            log.error(
+                f"Auto-commit failed with HTTP {e.code}: {e.reason}. "
+                f"Response: {error_body}"
+            )
+            raise
+        except urllib.error.URLError as e:
+            log.error(
+                f"Auto-commit failed with URL error: {e.reason}. "
+                f"URL: {url_endpoint}"
+            )
+            raise
+        except Exception as e:
+            log.error(f"Auto-commit failed with unexpected error: {e}")
+            raise
+        
