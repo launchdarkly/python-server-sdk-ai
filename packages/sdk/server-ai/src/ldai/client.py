@@ -14,6 +14,7 @@ from ldai.models import (AIAgentConfig, AIAgentConfigDefault,
                          AIJudgeConfig, AIJudgeConfigDefault, Edge,
                          JudgeConfiguration, LDMessage, ModelConfig,
                          ProviderConfig)
+from ldai.optimization import AgentOptimizer, OptimizeContext, OptimizeOptions
 from ldai.providers.ai_provider_factory import AIProviderFactory
 from ldai.tracker import LDAIConfigTracker
 
@@ -533,6 +534,57 @@ class LDAIClient:
         :return: Dictionary mapping agent keys to their AIAgentConfig configurations.
         """
         return self.agent_configs(agent_configs, context)
+
+    async def optimize_agent(
+        self,
+        key: str,
+        options: OptimizeOptions,
+        default_ai_provider: Optional[str] = None,
+    ) -> OptimizeContext:
+        """
+        Optimize an agent configuration through iterative improvement.
+
+        This method runs an optimization loop that:
+        1. Executes the agent with current instructions
+        2. Evaluates the result using judges or custom evaluation
+        3. Updates instructions based on feedback
+        4. Repeats until acceptance criteria are met or max_attempts is reached
+
+        :param key: The key of the agent to optimize
+        :param options: Configuration options for the optimization process
+        :param default_ai_provider: Optional default AI provider to use for judge creation
+        :return: The final optimization context (may be passing or failing)
+
+        Example::
+
+            from ldai import OptimizeOptions, OptimizationJudge, Message
+
+            options = OptimizeOptions(
+                context_choices=[context_one, context_two],
+                max_attempts=100,
+                model_choices=["gpt-4", "gpt-4-turbo"],
+                judge_model="gpt-4",
+                variable_choices=[{"some-variable": "value-1"}],
+                judges={
+                    "my-custom-accuracy-judge": OptimizationJudge(
+                        judge_key="my-custom-accuracy-judge",
+                        threshold=0.9
+                    )
+                },
+                handle_agent_call=lambda ctx: run_agent(ctx),
+                handle_judge_call=lambda ctx: call_judge(ctx),
+            )
+
+            result = await client.optimize_agent("agent-im-testing", options)
+        """
+        self._client.track('$ld:ai:agent:function:optimize', options.context_choices[0], key, 1)
+        config = self.agent_config(key, options.context_choices[0], AIAgentConfigDefault(enabled=False))
+
+        if not config.enabled or not config.tracker:
+            raise ValueError(f"Agent {key} is disabled or has no tracker")
+
+        optimizer = AgentOptimizer(key, options, config, self.judge_config)
+        return await optimizer.optimize()
 
     def __evaluate(
         self,

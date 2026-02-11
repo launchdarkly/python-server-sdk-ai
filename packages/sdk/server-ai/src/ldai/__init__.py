@@ -6,6 +6,9 @@ from ldai.agent_graph import AgentGraphDefinition
 from ldai.chat import Chat
 from ldai.client import LDAIClient
 from ldai.judge import Judge
+from ldai.optimization import (
+    JudgeResult, Message, OptimizeContext, OptimizeJudgeContext,
+    OptimizeOptions, OptimizationJudge, StructuredOutputTool)
 from ldai.models import (  # Deprecated aliases for backward compatibility
     AIAgentConfig, AIAgentConfigDefault, AIAgentConfigRequest,
     AIAgentGraphConfig, AIAgents, AICompletionConfig,
@@ -32,9 +35,16 @@ __all__ = [
     'Judge',
     'JudgeConfiguration',
     'JudgeResponse',
+    'JudgeResult',
     'LDMessage',
+    'Message',
     'ModelConfig',
+    'OptimizeContext',
+    'OptimizeJudgeContext',
+    'OptimizeOptions',
+    'OptimizationJudge',
     'ProviderConfig',
+    'StructuredOutputTool',
     'log',
     # Deprecated exports
     'AIConfig',
