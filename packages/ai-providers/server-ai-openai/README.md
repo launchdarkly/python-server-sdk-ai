@@ -6,7 +6,7 @@
 > This package is in pre-release and not subject to backwards compatibility
 > guarantees. The API may change based on feedback.
 >
-> Pin to a specific minor version to avoid breaking changes.
+> Pin to a specific minor version and review the [changelog](CHANGELOG.md) before upgrading.
 
 This package provides an OpenAI integration for the LaunchDarkly AI SDK.
 
