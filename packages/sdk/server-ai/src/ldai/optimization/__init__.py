@@ -198,11 +198,11 @@ class OptimizeOptions:
     ]  # choices of interpolated variables to be chosen at random per turn, 1 min required
     # Actual agent/completion (judge) calls - Required
     handle_agent_call: Union[
-        Callable[[OptimizeContext], str], Callable[[OptimizeContext], Awaitable[str]]
+        Callable[[str, OptimizeContext], str], Callable[[str, OptimizeContext], Awaitable[str]]
     ]
     handle_judge_call: Union[
-        Callable[[OptimizeJudgeContext], str],
-        Callable[[OptimizeJudgeContext], Awaitable[str]],
+        Callable[[str, OptimizeJudgeContext], str],
+        Callable[[str, OptimizeJudgeContext], Awaitable[str]],
     ]
     # Criteria for pass/fail - Optional
     user_input_options: Optional[List[str]] = (
@@ -494,7 +494,7 @@ class AgentOptimizer:
             self._safe_status_update("generating", optimize_ctx, iteration)
             
             try:
-                result = self._options.handle_agent_call(optimize_ctx)
+                result = self._options.handle_agent_call(self._key, optimize_ctx)
                 completion_response = await self._await_if_needed(result)
                 optimize_ctx.completion_response = completion_response
             except Exception as e:
@@ -701,7 +701,7 @@ class AgentOptimizer:
             tools=tools,
         )
 
-        result = self._options.handle_judge_call(judge_ctx)
+        result = self._options.handle_judge_call(self._options.judge_model, judge_ctx)
         judge_response_str = await self._await_if_needed(result)
 
         print(f"[Turn {iteration}] -> Judge response ({judge_key}): {judge_response_str}")
@@ -802,7 +802,7 @@ class AgentOptimizer:
             tools=[boolean_tool.to_dict()],
         )
 
-        result = self._options.handle_judge_call(judge_ctx)
+        result = self._options.handle_judge_call(self._options.judge_model, judge_ctx)
         judge_response = await self._await_if_needed(result)
 
         print(f"[Turn {iteration}] -> Judge response ({judge_key}): {judge_response}")
@@ -1050,7 +1050,7 @@ class AgentOptimizer:
 
         # Call handle_agent_call to generate new variation
         # This should return a JSON string matching the structured output schema
-        result = self._options.handle_agent_call(variation_ctx)
+        result = self._options.handle_agent_call(self._key, variation_ctx)
         response_str = await self._await_if_needed(result)
 
         # Parse the JSON response to extract instructions and parameters
