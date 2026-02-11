@@ -15,7 +15,7 @@ from ldai.models import (AIAgentConfig, AIAgentConfigDefault,
                          JudgeConfiguration, LDMessage, ModelConfig,
                          ProviderConfig)
 from ldai.providers.ai_provider_factory import AIProviderFactory
-from ldai.tracker import LDAIConfigTracker
+from ldai.tracker import AIGraphTracker, LDAIConfigTracker
 
 
 class LDAIClient:
@@ -435,6 +435,19 @@ class LDAIClient:
         """
         variation = self._client.variation(key, context, {})
 
+        # Extract variation metadata for tracker
+        variation_key = variation.get("_ldMeta", {}).get("variationKey", "")
+        version = int(variation.get("_ldMeta", {}).get("version", 1))
+
+        # Create graph tracker
+        tracker = AIGraphTracker(
+            self._client,
+            variation_key,
+            key,
+            version,
+            context,
+        )
+
         if not variation.get("root"):
             log.debug(f"Agent graph {key} is disabled, no root config key found")
             return AgentGraphDefinition(
@@ -447,6 +460,7 @@ class LDAIClient:
                 nodes={},
                 context=context,
                 enabled=False,
+                tracker=tracker,
             )
 
         edge_keys = list[str](variation.get("edges", {}).keys())
@@ -474,6 +488,7 @@ class LDAIClient:
                 nodes={},
                 context=context,
                 enabled=False,
+                tracker=tracker,
             )
 
         try:
@@ -504,6 +519,7 @@ class LDAIClient:
                 nodes={},
                 context=context,
                 enabled=False,
+                tracker=tracker,
             )
 
         nodes = AgentGraphDefinition.build_nodes(
@@ -516,6 +532,7 @@ class LDAIClient:
             nodes=nodes,
             context=context,
             enabled=agent_graph_config.enabled,
+            tracker=tracker,
         )
 
     def agents(
