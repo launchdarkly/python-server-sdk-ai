@@ -3,7 +3,10 @@
 [![PyPI](https://img.shields.io/pypi/v/launchdarkly-server-sdk-ai-langchain.svg)](https://pypi.org/project/launchdarkly-server-sdk-ai-langchain/)
 
 > [!CAUTION]
-> This package is in pre-release and not subject to backwards compatibility guarantees or semantic versioning. The API may change based on feedback.
+> This package is in pre-release and not subject to backwards compatibility
+> guarantees. The API may change based on feedback.
+>
+> Pin to a specific minor version to avoid breaking changes.
 
 This package provides LangChain integration for the LaunchDarkly Server-Side AI SDK, allowing you to use LangChain models and chains with LaunchDarkly's tracking and configuration capabilities.
 

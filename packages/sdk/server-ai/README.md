@@ -3,7 +3,10 @@
 This package contains the LaunchDarkly Server-Side AI SDK for Python (`launchdarkly-server-sdk-ai`).
 
 > [!CAUTION]
-> This SDK is in pre-release and not subject to backwards compatibility guarantees or semantic versioning. The API may change based on feedback.
+> This SDK is in pre-release and not subject to backwards compatibility
+> guarantees. The API may change based on feedback.
+>
+> Pin to a specific minor version to avoid breaking changes.
 
 ## LaunchDarkly overview
 
