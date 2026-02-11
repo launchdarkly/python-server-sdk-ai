@@ -1,10 +1,6 @@
 # LaunchDarkly Server-side AI library for Python
 
-## LaunchDarkly overview
-
-[LaunchDarkly](https://www.launchdarkly.com) is a feature management platform that serves trillions of feature flags daily to help teams build better software, faster. [Get started](https://docs.launchdarkly.com/home/getting-started) using LaunchDarkly today!
-
-[![Twitter Follow](https://img.shields.io/twitter/follow/launchdarkly.svg?style=social&label=Follow&maxAge=2592000)](https://twitter.com/intent/follow?screen_name=launchdarkly)
+This repository contains LaunchDarkly AI SDK packages for Python, including the core AI SDK and AI provider integrations.
 
 ## Packages
 
@@ -28,6 +24,12 @@ Refer to the [SDK reference guide](https://docs.launchdarkly.com/sdk/ai/python) 
 ## Learn more
 
 Read our [documentation](http://docs.launchdarkly.com) for in-depth instructions on configuring and using LaunchDarkly. You can also head straight to the [reference guide for the python SDK](http://docs.launchdarkly.com/docs/python-sdk-ai-reference).
+
+## LaunchDarkly overview
+
+[LaunchDarkly](https://www.launchdarkly.com) is a feature management platform that serves trillions of feature flags daily to help teams build better software, faster. [Get started](https://docs.launchdarkly.com/home/getting-started) using LaunchDarkly today!
+
+[![Twitter Follow](https://img.shields.io/twitter/follow/launchdarkly.svg?style=social&label=Follow&maxAge=2592000)](https://twitter.com/intent/follow?screen_name=launchdarkly)
 
 ## Contributing
 
