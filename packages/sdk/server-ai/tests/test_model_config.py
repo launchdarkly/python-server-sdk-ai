@@ -307,7 +307,7 @@ def test_model_initial_config_enabled(ldai_client: LDAIClient):
 
 
 def test_config_method_tracking(ldai_client: LDAIClient):
-    from unittest.mock import Mock, call
+    from unittest.mock import Mock
 
     mock_client = Mock()
     mock_client.variation.return_value = {
@@ -332,8 +332,9 @@ def test_config_method_tracking(ldai_client: LDAIClient):
 
 
 def test_sdk_info_tracked_on_init():
-    from unittest.mock import Mock, call
+    from unittest.mock import Mock
 
+    from ldai import __version__ as ai_sdk_version
     from ldai.client import _INIT_TRACK_CONTEXT
 
     mock_client = Mock()
@@ -345,7 +346,7 @@ def test_sdk_info_tracked_on_init():
         _INIT_TRACK_CONTEXT,
         {
             'aiSdkName': 'launchdarkly-server-sdk-ai',
-            'aiSdkVersion': '0.14.0',
+            'aiSdkVersion': ai_sdk_version,
             'aiSdkLanguage': 'python',
         },
         1,
