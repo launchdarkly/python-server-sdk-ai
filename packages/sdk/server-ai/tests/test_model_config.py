@@ -323,9 +323,31 @@ def test_config_method_tracking(ldai_client: LDAIClient):
 
     config = client.config('test-config-key', context, default_value)
 
-    mock_client.track.assert_called_once_with(
-        '$ld:ai:config:function:single',
+    mock_client.track.assert_any_call(
+        '$ld:ai:usage:completion-config',
         context,
         'test-config-key',
         1
+    )
+
+
+def test_sdk_info_tracked_on_init():
+    from unittest.mock import Mock
+
+    from ldai.client import _INIT_TRACK_CONTEXT
+    from ldai.sdk_info import AI_SDK_LANGUAGE, AI_SDK_NAME, AI_SDK_VERSION
+
+    mock_client = Mock()
+
+    client = LDAIClient(mock_client)
+
+    mock_client.track.assert_called_once_with(
+        '$ld:ai:sdk-info',
+        _INIT_TRACK_CONTEXT,
+        {
+            'aiSdkName': AI_SDK_NAME,
+            'aiSdkVersion': AI_SDK_VERSION,
+            'aiSdkLanguage': AI_SDK_LANGUAGE,
+        },
+        1,
     )

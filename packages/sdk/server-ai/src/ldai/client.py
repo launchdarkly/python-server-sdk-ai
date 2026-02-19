@@ -15,7 +15,18 @@ from ldai.models import (AIAgentConfig, AIAgentConfigDefault,
                          JudgeConfiguration, LDMessage, ModelConfig,
                          ProviderConfig)
 from ldai.providers.ai_provider_factory import AIProviderFactory
+from ldai.sdk_info import AI_SDK_LANGUAGE, AI_SDK_NAME, AI_SDK_VERSION
 from ldai.tracker import LDAIConfigTracker
+
+_TRACK_SDK_INFO = '$ld:ai:sdk-info'
+_TRACK_USAGE_COMPLETION_CONFIG = '$ld:ai:usage:completion-config'
+_TRACK_USAGE_CREATE_CHAT = '$ld:ai:usage:create-chat'
+_TRACK_USAGE_JUDGE_CONFIG = '$ld:ai:usage:judge-config'
+_TRACK_USAGE_CREATE_JUDGE = '$ld:ai:usage:create-judge'
+_TRACK_USAGE_AGENT_CONFIG = '$ld:ai:usage:agent-config'
+_TRACK_USAGE_AGENT_CONFIGS = '$ld:ai:usage:agent-configs'
+
+_INIT_TRACK_CONTEXT = Context.builder('ld-internal-tracking').anonymous(True).build()
 
 
 class LDAIClient:
@@ -23,6 +34,16 @@ class LDAIClient:
 
     def __init__(self, client: LDClient):
         self._client = client
+        self._client.track(
+            _TRACK_SDK_INFO,
+            _INIT_TRACK_CONTEXT,
+            {
+                'aiSdkName': AI_SDK_NAME,
+                'aiSdkVersion': AI_SDK_VERSION,
+                'aiSdkLanguage': AI_SDK_LANGUAGE,
+            },
+            1,
+        )
 
     def completion_config(
         self,
@@ -40,7 +61,7 @@ class LDAIClient:
         :param variables: Additional variables for the completion configuration.
         :return: The completion configuration with a tracker used for gathering metrics.
         """
-        self._client.track('$ld:ai:config:function:single', context, key, 1)
+        self._client.track(_TRACK_USAGE_COMPLETION_CONFIG, context, key, 1)
 
         model, provider, messages, instructions, tracker, enabled, judge_configuration, _ = self.__evaluate(
             key, context, default_value.to_dict(), variables
@@ -94,7 +115,7 @@ class LDAIClient:
         :param variables: Additional variables for the judge configuration.
         :return: The judge configuration with a tracker used for gathering metrics.
         """
-        self._client.track('$ld:ai:judge:function:single', context, key, 1)
+        self._client.track(_TRACK_USAGE_JUDGE_CONFIG, context, key, 1)
 
         model, provider, messages, instructions, tracker, enabled, judge_configuration, variation = self.__evaluate(
             key, context, default_value.to_dict(), variables
@@ -170,7 +191,7 @@ class LDAIClient:
                     if relevance_eval:
                         print('Relevance score:', relevance_eval.score)
         """
-        self._client.track('$ld:ai:judge:function:createJudge', context, key, 1)
+        self._client.track(_TRACK_USAGE_CREATE_JUDGE, context, key, 1)
 
         try:
             if variables:
@@ -281,7 +302,7 @@ class LDAIClient:
                 messages = chat.get_messages()
                 print(f"Conversation has {len(messages)} messages")
         """
-        self._client.track('$ld:ai:config:function:createChat', context, key, 1)
+        self._client.track(_TRACK_USAGE_CREATE_CHAT, context, key, 1)
         log.debug(f"Creating chat for key: {key}")
         config = self.completion_config(key, context, default_value, variables)
 
@@ -340,7 +361,7 @@ class LDAIClient:
         :return: Configured AIAgentConfig instance.
         """
         self._client.track(
-            "$ld:ai:agent:function:single",
+            _TRACK_USAGE_AGENT_CONFIG,
             context,
             key,
             1
@@ -406,7 +427,7 @@ class LDAIClient:
         """
         agent_count = len(agent_configs)
         self._client.track(
-            "$ld:ai:agent:function:multiple",
+            _TRACK_USAGE_AGENT_CONFIGS,
             context,
             agent_count,
             agent_count
