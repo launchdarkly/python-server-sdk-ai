@@ -4,7 +4,6 @@ import chevron
 from ldclient import Context
 from ldclient.client import LDClient
 
-from ldai import __version__ as ai_sdk_version
 from ldai import log
 from ldai.agent_graph import AgentGraphDefinition
 from ldai.chat import Chat
@@ -16,6 +15,7 @@ from ldai.models import (AIAgentConfig, AIAgentConfigDefault,
                          JudgeConfiguration, LDMessage, ModelConfig,
                          ProviderConfig)
 from ldai.providers.ai_provider_factory import AIProviderFactory
+from ldai.sdk_info import AI_SDK_LANGUAGE, AI_SDK_NAME, AI_SDK_VERSION
 from ldai.tracker import LDAIConfigTracker
 
 _TRACK_SDK_INFO = '$ld:ai:sdk-info'
@@ -38,9 +38,9 @@ class LDAIClient:
             _TRACK_SDK_INFO,
             _INIT_TRACK_CONTEXT,
             {
-                'aiSdkName': 'launchdarkly-server-sdk-ai',
-                'aiSdkVersion': ai_sdk_version,
-                'aiSdkLanguage': 'python',
+                'aiSdkName': AI_SDK_NAME,
+                'aiSdkVersion': AI_SDK_VERSION,
+                'aiSdkLanguage': AI_SDK_LANGUAGE,
             },
             1,
         )

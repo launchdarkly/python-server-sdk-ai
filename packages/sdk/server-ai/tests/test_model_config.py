@@ -334,8 +334,8 @@ def test_config_method_tracking(ldai_client: LDAIClient):
 def test_sdk_info_tracked_on_init():
     from unittest.mock import Mock
 
-    from ldai import __version__ as ai_sdk_version
     from ldai.client import _INIT_TRACK_CONTEXT
+    from ldai.sdk_info import AI_SDK_LANGUAGE, AI_SDK_NAME, AI_SDK_VERSION
 
     mock_client = Mock()
 
@@ -345,9 +345,9 @@ def test_sdk_info_tracked_on_init():
         '$ld:ai:sdk-info',
         _INIT_TRACK_CONTEXT,
         {
-            'aiSdkName': 'launchdarkly-server-sdk-ai',
-            'aiSdkVersion': ai_sdk_version,
-            'aiSdkLanguage': 'python',
+            'aiSdkName': AI_SDK_NAME,
+            'aiSdkVersion': AI_SDK_VERSION,
+            'aiSdkLanguage': AI_SDK_LANGUAGE,
         },
         1,
     )
