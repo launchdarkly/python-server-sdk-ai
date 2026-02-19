@@ -307,7 +307,7 @@ def test_model_initial_config_enabled(ldai_client: LDAIClient):
 
 
 def test_config_method_tracking(ldai_client: LDAIClient):
-    from unittest.mock import Mock
+    from unittest.mock import Mock, call
 
     mock_client = Mock()
     mock_client.variation.return_value = {
@@ -323,9 +323,30 @@ def test_config_method_tracking(ldai_client: LDAIClient):
 
     config = client.config('test-config-key', context, default_value)
 
-    mock_client.track.assert_called_once_with(
-        '$ld:ai:config:function:single',
+    mock_client.track.assert_any_call(
+        '$ld:ai:usage:completion-config',
         context,
         'test-config-key',
         1
+    )
+
+
+def test_sdk_info_tracked_on_init():
+    from unittest.mock import Mock, call
+
+    from ldai.client import _INIT_TRACK_CONTEXT
+
+    mock_client = Mock()
+
+    client = LDAIClient(mock_client)
+
+    mock_client.track.assert_called_once_with(
+        '$ld:ai:sdk-info',
+        _INIT_TRACK_CONTEXT,
+        {
+            'aiSdkName': 'launchdarkly-server-sdk-ai',
+            'aiSdkVersion': '0.14.0',
+            'aiSdkLanguage': 'python',
+        },
+        1,
     )
