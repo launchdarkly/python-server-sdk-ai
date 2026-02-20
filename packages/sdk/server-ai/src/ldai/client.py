@@ -26,7 +26,7 @@ _TRACK_USAGE_CREATE_JUDGE = '$ld:ai:usage:create-judge'
 _TRACK_USAGE_AGENT_CONFIG = '$ld:ai:usage:agent-config'
 _TRACK_USAGE_AGENT_CONFIGS = '$ld:ai:usage:agent-configs'
 
-_INIT_TRACK_CONTEXT = Context.builder('ld-internal-tracking').anonymous(True).build()
+_INIT_TRACK_CONTEXT = Context.builder('ld-internal-tracking').kind('ld-ai').anonymous(True).build()
 
 
 class LDAIClient:
