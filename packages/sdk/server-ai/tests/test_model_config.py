@@ -342,7 +342,7 @@ def test_sdk_info_tracked_on_init():
     client = LDAIClient(mock_client)
 
     mock_client.track.assert_called_once_with(
-        '$ld:ai:sdk-info',
+        '$ld:ai:sdk:info',
         _INIT_TRACK_CONTEXT,
         {
             'aiSdkName': AI_SDK_NAME,
