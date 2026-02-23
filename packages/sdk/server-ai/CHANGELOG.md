@@ -2,6 +2,14 @@
 
 All notable changes to the LaunchDarkly Python AI package will be documented in this file. This project adheres to [Semantic Versioning](http://semver.org).
 
+## [0.14.1](https://github.com/launchdarkly/python-server-sdk-ai/compare/launchdarkly-server-sdk-ai-0.14.0...launchdarkly-server-sdk-ai-0.14.1) (2026-02-23)
+
+
+### Bug Fixes
+
+* Improve usage reporting ([#92](https://github.com/launchdarkly/python-server-sdk-ai/issues/92)) ([e21eb89](https://github.com/launchdarkly/python-server-sdk-ai/commit/e21eb890cc190822fd857f7a1032d2543400b356))
+* Update pre-release usage guidance ([#90](https://github.com/launchdarkly/python-server-sdk-ai/issues/90)) ([4f986c4](https://github.com/launchdarkly/python-server-sdk-ai/commit/4f986c4b4f74f001e5487892509129bdc9aa091c))
+
 ## [0.14.0](https://github.com/launchdarkly/python-server-sdk-ai/compare/launchdarkly-server-sdk-ai-0.13.0...launchdarkly-server-sdk-ai-0.14.0) (2026-01-27)
 
 
