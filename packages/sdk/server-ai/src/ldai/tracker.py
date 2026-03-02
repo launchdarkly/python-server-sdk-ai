@@ -448,7 +448,6 @@ class AIGraphTracker:
             "graphKey": self._graph_key,
             "version": self._version,
         }
-        # Note: aiSdkName and aiSdkVersion are optional and not included for now
         return track_data
 
     def track_invocation_success(self) -> None:
