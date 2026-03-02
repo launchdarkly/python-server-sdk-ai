@@ -15,7 +15,18 @@ from ldai.models import (AIAgentConfig, AIAgentConfigDefault,
                          JudgeConfiguration, LDMessage, ModelConfig,
                          ProviderConfig)
 from ldai.providers.ai_provider_factory import AIProviderFactory
+from ldai.sdk_info import AI_SDK_LANGUAGE, AI_SDK_NAME, AI_SDK_VERSION
 from ldai.tracker import AIGraphTracker, LDAIConfigTracker
+
+_TRACK_SDK_INFO = '$ld:ai:sdk:info'
+_TRACK_USAGE_COMPLETION_CONFIG = '$ld:ai:usage:completion-config'
+_TRACK_USAGE_CREATE_CHAT = '$ld:ai:usage:create-chat'
+_TRACK_USAGE_JUDGE_CONFIG = '$ld:ai:usage:judge-config'
+_TRACK_USAGE_CREATE_JUDGE = '$ld:ai:usage:create-judge'
+_TRACK_USAGE_AGENT_CONFIG = '$ld:ai:usage:agent-config'
+_TRACK_USAGE_AGENT_CONFIGS = '$ld:ai:usage:agent-configs'
+
+_INIT_TRACK_CONTEXT = Context.builder('ld-internal-tracking').kind('ld_ai').anonymous(True).build()
 
 
 class LDAIClient:
@@ -23,6 +34,39 @@ class LDAIClient:
 
     def __init__(self, client: LDClient):
         self._client = client
+        self._client.track(
+            _TRACK_SDK_INFO,
+            _INIT_TRACK_CONTEXT,
+            {
+                'aiSdkName': AI_SDK_NAME,
+                'aiSdkVersion': AI_SDK_VERSION,
+                'aiSdkLanguage': AI_SDK_LANGUAGE,
+            },
+            1,
+        )
+
+    def _completion_config(
+        self,
+        key: str,
+        context: Context,
+        default_value: AICompletionConfigDefault,
+        variables: Optional[Dict[str, Any]] = None,
+    ) -> AICompletionConfig:
+        model, provider, messages, instructions, tracker, enabled, judge_configuration, _ = self.__evaluate(
+            key, context, default_value.to_dict(), variables
+        )
+
+        config = AICompletionConfig(
+            key=key,
+            enabled=bool(enabled),
+            model=model,
+            messages=messages,
+            provider=provider,
+            tracker=tracker,
+            judge_configuration=judge_configuration,
+        )
+
+        return config
 
     def completion_config(
         self,
@@ -40,23 +84,9 @@ class LDAIClient:
         :param variables: Additional variables for the completion configuration.
         :return: The completion configuration with a tracker used for gathering metrics.
         """
-        self._client.track('$ld:ai:config:function:single', context, key, 1)
+        self._client.track(_TRACK_USAGE_COMPLETION_CONFIG, context, key, 1)
 
-        model, provider, messages, instructions, tracker, enabled, judge_configuration, _ = self.__evaluate(
-            key, context, default_value.to_dict(), variables
-        )
-
-        config = AICompletionConfig(
-            key=key,
-            enabled=bool(enabled),
-            model=model,
-            messages=messages,
-            provider=provider,
-            tracker=tracker,
-            judge_configuration=judge_configuration,
-        )
-
-        return config
+        return self._completion_config(key, context, default_value, variables)
 
     def config(
         self,
@@ -78,24 +108,13 @@ class LDAIClient:
         """
         return self.completion_config(key, context, default_value, variables)
 
-    def judge_config(
+    def _judge_config(
         self,
         key: str,
         context: Context,
         default_value: AIJudgeConfigDefault,
         variables: Optional[Dict[str, Any]] = None,
     ) -> AIJudgeConfig:
-        """
-        Get the value of a judge configuration.
-
-        :param key: The key of the judge configuration.
-        :param context: The context to evaluate the judge configuration in.
-        :param default_value: The default value of the judge configuration.
-        :param variables: Additional variables for the judge configuration.
-        :return: The judge configuration with a tracker used for gathering metrics.
-        """
-        self._client.track('$ld:ai:judge:function:single', context, key, 1)
-
         model, provider, messages, instructions, tracker, enabled, judge_configuration, variation = self.__evaluate(
             key, context, default_value.to_dict(), variables
         )
@@ -128,6 +147,26 @@ class LDAIClient:
         )
 
         return config
+
+    def judge_config(
+        self,
+        key: str,
+        context: Context,
+        default_value: AIJudgeConfigDefault,
+        variables: Optional[Dict[str, Any]] = None,
+    ) -> AIJudgeConfig:
+        """
+        Get the value of a judge configuration.
+
+        :param key: The key of the judge configuration.
+        :param context: The context to evaluate the judge configuration in.
+        :param default_value: The default value of the judge configuration.
+        :param variables: Additional variables for the judge configuration.
+        :return: The judge configuration with a tracker used for gathering metrics.
+        """
+        self._client.track(_TRACK_USAGE_JUDGE_CONFIG, context, key, 1)
+
+        return self._judge_config(key, context, default_value, variables)
 
     async def create_judge(
         self,
@@ -170,7 +209,7 @@ class LDAIClient:
                     if relevance_eval:
                         print('Relevance score:', relevance_eval.score)
         """
-        self._client.track('$ld:ai:judge:function:createJudge', context, key, 1)
+        self._client.track(_TRACK_USAGE_CREATE_JUDGE, context, key, 1)
 
         try:
             if variables:
@@ -183,7 +222,7 @@ class LDAIClient:
             extended_variables['message_history'] = '{{message_history}}'
             extended_variables['response_to_evaluate'] = '{{response_to_evaluate}}'
 
-            judge_config = self.judge_config(key, context, default_value, extended_variables)
+            judge_config = self._judge_config(key, context, default_value, extended_variables)
 
             if not judge_config.enabled or not judge_config.tracker:
                 return None
@@ -281,9 +320,9 @@ class LDAIClient:
                 messages = chat.get_messages()
                 print(f"Conversation has {len(messages)} messages")
         """
-        self._client.track('$ld:ai:config:function:createChat', context, key, 1)
+        self._client.track(_TRACK_USAGE_CREATE_CHAT, context, key, 1)
         log.debug(f"Creating chat for key: {key}")
-        config = self.completion_config(key, context, default_value, variables)
+        config = self._completion_config(key, context, default_value, variables)
 
         if not config.enabled or not config.tracker:
             return None
@@ -340,7 +379,7 @@ class LDAIClient:
         :return: Configured AIAgentConfig instance.
         """
         self._client.track(
-            "$ld:ai:agent:function:single",
+            _TRACK_USAGE_AGENT_CONFIG,
             context,
             key,
             1
@@ -406,7 +445,7 @@ class LDAIClient:
         """
         agent_count = len(agent_configs)
         self._client.track(
-            "$ld:ai:agent:function:multiple",
+            _TRACK_USAGE_AGENT_CONFIGS,
             context,
             agent_count,
             agent_count

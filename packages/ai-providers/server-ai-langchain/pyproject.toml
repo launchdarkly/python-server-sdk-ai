@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "launchdarkly-server-sdk-ai-langchain"
-version = "0.3.0"
+version = "0.3.1"
 description = "LaunchDarkly AI SDK LangChain Provider"
 authors = ["LaunchDarkly <dev@launchdarkly.com>"]
 license = "Apache-2.0"
