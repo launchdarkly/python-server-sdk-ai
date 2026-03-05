@@ -340,3 +340,26 @@ def test_agent_config_dataclass():
 
     assert config_no_vars.key == 'test-agent-2'
     assert config_no_vars.variables is None
+
+
+def test_agent_config_without_default_uses_disabled(ldai_client: LDAIClient):
+    """Test that agent_config uses disabled config when no default is provided."""
+    context = Context.create('user-key')
+
+    agent = ldai_client.agent_config('missing-agent', context)
+
+    assert agent.enabled is False
+
+
+def test_agents_request_without_default_uses_disabled(ldai_client: LDAIClient):
+    """Test that agent_configs uses disabled config when request has no default_value."""
+    context = Context.create('user-key')
+
+    agent_requests = [
+        LDAIAgentConfig(key='missing-agent'),
+    ]
+
+    agents = ldai_client.agents(agent_requests, context)
+
+    assert 'missing-agent' in agents
+    assert agents['missing-agent'].enabled is False

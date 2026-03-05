@@ -574,6 +574,23 @@ class TestClientJudgeConfig:
         assert config is not None
         assert config.evaluation_metric_key == '$ld:ai:judge:preferred'
 
+    def test_judge_config_without_default_uses_disabled(
+        self, context: Context
+    ):
+        """judge_config should use a disabled config when no default is provided."""
+        from ldai import LDAIClient
+        from ldclient import Config, LDClient
+        from ldclient.integrations.test_data import TestData
+
+        td = TestData.data_source()
+        test_client = LDClient(Config('sdk-key', update_processor_class=td, send_events=False))
+        ldai_client = LDAIClient(test_client)
+
+        config = ldai_client.judge_config('missing-judge', context)
+
+        assert config is not None
+        assert config.enabled is False
+
     def test_judge_config_uses_same_variation_for_consistency(
         self, context: Context
     ):
