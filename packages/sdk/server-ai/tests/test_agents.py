@@ -122,7 +122,7 @@ def test_single_agent_method(ldai_client: LDAIClient):
     context = Context.builder('user-key').set('expertise', 'advanced').build()
     config = LDAIAgentConfig(
         key='research-agent',
-        default_value=LDAIAgentDefaults(
+        default=LDAIAgentDefaults(
             enabled=False,
             model=ModelConfig('fallback-model'),
             instructions="Default instructions"
@@ -148,7 +148,7 @@ def test_single_agent_with_defaults(ldai_client: LDAIClient):
     context = Context.create('user-key')
     config = LDAIAgentConfig(
         key='non-existent-agent',
-        default_value=LDAIAgentDefaults(
+        default=LDAIAgentDefaults(
             enabled=True,
             model=ModelConfig('default-model', parameters={'temp': 0.8}),
             provider=ProviderConfig('default-provider'),
@@ -174,7 +174,7 @@ def test_agents_method_with_configs(ldai_client: LDAIClient):
     agent_configs = [
         LDAIAgentConfig(
             key='customer-support-agent',
-            default_value=LDAIAgentDefaults(
+            default=LDAIAgentDefaults(
                 enabled=False,
                 model=ModelConfig('fallback-model'),
                 instructions="Default support"
@@ -183,7 +183,7 @@ def test_agents_method_with_configs(ldai_client: LDAIClient):
         ),
         LDAIAgentConfig(
             key='sales-assistant',
-            default_value=LDAIAgentDefaults(
+            default=LDAIAgentDefaults(
                 enabled=False,
                 model=ModelConfig('fallback-model'),
                 instructions="Default sales"
@@ -215,7 +215,7 @@ def test_agents_method_different_variables_per_agent(ldai_client: LDAIClient):
     agent_configs = [
         LDAIAgentConfig(
             key='personalized-agent',
-            default_value=LDAIAgentDefaults(
+            default=LDAIAgentDefaults(
                 enabled=True,
                 instructions="Default personal"
             ),
@@ -223,7 +223,7 @@ def test_agents_method_different_variables_per_agent(ldai_client: LDAIClient):
         ),
         LDAIAgentConfig(
             key='customer-support-agent',
-            default_value=LDAIAgentDefaults(
+            default=LDAIAgentDefaults(
                 enabled=True,
                 instructions="Default support"
             ),
@@ -249,7 +249,7 @@ def test_agents_with_multi_context_interpolation(ldai_client: LDAIClient):
     agent_configs = [
         LDAIAgentConfig(
             key='multi-context-agent',
-            default_value=LDAIAgentDefaults(
+            default=LDAIAgentDefaults(
                 enabled=True,
                 instructions="Default multi-context"
             ),
@@ -268,7 +268,7 @@ def test_disabled_agent_single_method(ldai_client: LDAIClient):
     context = Context.create('user-key')
     config = LDAIAgentConfig(
         key='disabled-agent',
-        default_value=LDAIAgentDefaults(enabled=False),
+        default=LDAIAgentDefaults(enabled=False),
         variables={}
     )
 
@@ -285,7 +285,7 @@ def test_disabled_agent_multiple_method(ldai_client: LDAIClient):
     agent_configs = [
         LDAIAgentConfig(
             key='disabled-agent',
-            default_value=LDAIAgentDefaults(enabled=False),
+            default=LDAIAgentDefaults(enabled=False),
             variables={}
         )
     ]
@@ -301,7 +301,7 @@ def test_agent_with_missing_metadata(ldai_client: LDAIClient):
     context = Context.create('user-key')
     config = LDAIAgentConfig(
         key='minimal-agent',
-        default_value=LDAIAgentDefaults(
+        default=LDAIAgentDefaults(
             enabled=False,
             model=ModelConfig('default-model'),
             instructions="Default instructions"
@@ -312,7 +312,7 @@ def test_agent_with_missing_metadata(ldai_client: LDAIClient):
 
     assert agent.enabled is True  # From flag
     assert agent.instructions == 'Minimal agent configuration.'
-    assert agent.model == config.default_value.model  # Falls back to default
+    assert agent.model == config.default.model  # Falls back to default
     assert agent.tracker is not None
 
 
@@ -320,7 +320,7 @@ def test_agent_config_dataclass():
     """Test the LDAIAgentConfig dataclass functionality."""
     config = LDAIAgentConfig(
         key='test-agent',
-        default_value=LDAIAgentDefaults(
+        default=LDAIAgentDefaults(
             enabled=True,
             instructions="Test instructions"
         ),
@@ -328,14 +328,14 @@ def test_agent_config_dataclass():
     )
 
     assert config.key == 'test-agent'
-    assert config.default_value.enabled is True
-    assert config.default_value.instructions == "Test instructions"
+    assert config.default.enabled is True
+    assert config.default.instructions == "Test instructions"
     assert config.variables == {'key': 'value'}
 
     # Test with no variables
     config_no_vars = LDAIAgentConfig(
         key='test-agent-2',
-        default_value=LDAIAgentDefaults(enabled=False)
+        default=LDAIAgentDefaults(enabled=False)
     )
 
     assert config_no_vars.key == 'test-agent-2'
@@ -352,7 +352,7 @@ def test_agent_config_without_default_uses_disabled(ldai_client: LDAIClient):
 
 
 def test_agents_request_without_default_uses_disabled(ldai_client: LDAIClient):
-    """Test that agent_configs uses disabled config when request has no default_value."""
+    """Test that agent_configs uses disabled config when request has no default."""
     context = Context.create('user-key')
 
     agent_requests = [

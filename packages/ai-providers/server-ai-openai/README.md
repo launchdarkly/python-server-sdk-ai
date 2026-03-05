@@ -31,7 +31,7 @@ async def main():
     ai_config = ai_client.config(
         "my-ai-config-key",
         context,
-        default_value
+        default
     )
     
     # Create an OpenAI provider from the config

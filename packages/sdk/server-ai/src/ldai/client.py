@@ -49,11 +49,11 @@ class LDAIClient:
         self,
         key: str,
         context: Context,
-        default_value: AICompletionConfigDefault,
+        default: AICompletionConfigDefault,
         variables: Optional[Dict[str, Any]] = None,
     ) -> AICompletionConfig:
         model, provider, messages, instructions, tracker, enabled, judge_configuration, _ = self.__evaluate(
-            key, context, default_value.to_dict(), variables
+            key, context, default.to_dict(), variables
         )
 
         config = AICompletionConfig(
@@ -72,7 +72,7 @@ class LDAIClient:
         self,
         key: str,
         context: Context,
-        default_value: Optional[AICompletionConfigDefault] = None,
+        default: Optional[AICompletionConfigDefault] = None,
         variables: Optional[Dict[str, Any]] = None,
     ) -> AICompletionConfig:
         """
@@ -80,7 +80,7 @@ class LDAIClient:
 
         :param key: The key of the completion configuration.
         :param context: The context to evaluate the completion configuration in.
-        :param default_value: The default value of the completion configuration. When not provided,
+        :param default: The default value of the completion configuration. When not provided,
             a disabled config is used as the fallback.
         :param variables: Additional variables for the completion configuration.
         :return: The completion configuration with a tracker used for gathering metrics.
@@ -88,14 +88,14 @@ class LDAIClient:
         self._client.track(_TRACK_USAGE_COMPLETION_CONFIG, context, key, 1)
 
         return self._completion_config(
-            key, context, default_value or AICompletionConfigDefault.disabled(), variables
+            key, context, default or AICompletionConfigDefault.disabled(), variables
         )
 
     def config(
         self,
         key: str,
         context: Context,
-        default_value: Optional[AICompletionConfigDefault] = None,
+        default: Optional[AICompletionConfigDefault] = None,
         variables: Optional[Dict[str, Any]] = None,
     ) -> AICompletionConfig:
         """
@@ -105,21 +105,21 @@ class LDAIClient:
 
         :param key: The key of the model configuration.
         :param context: The context to evaluate the model configuration in.
-        :param default_value: The default value of the model configuration.
+        :param default: The default value of the model configuration.
         :param variables: Additional variables for the model configuration.
         :return: The value of the model configuration along with a tracker used for gathering metrics.
         """
-        return self.completion_config(key, context, default_value, variables)
+        return self.completion_config(key, context, default, variables)
 
     def _judge_config(
         self,
         key: str,
         context: Context,
-        default_value: AIJudgeConfigDefault,
+        default: AIJudgeConfigDefault,
         variables: Optional[Dict[str, Any]] = None,
     ) -> AIJudgeConfig:
         model, provider, messages, instructions, tracker, enabled, judge_configuration, variation = self.__evaluate(
-            key, context, default_value.to_dict(), variables
+            key, context, default.to_dict(), variables
         )
 
         def _extract_evaluation_metric_key(variation: Dict[str, Any]) -> Optional[str]:
@@ -155,7 +155,7 @@ class LDAIClient:
         self,
         key: str,
         context: Context,
-        default_value: Optional[AIJudgeConfigDefault] = None,
+        default: Optional[AIJudgeConfigDefault] = None,
         variables: Optional[Dict[str, Any]] = None,
     ) -> AIJudgeConfig:
         """
@@ -163,7 +163,7 @@ class LDAIClient:
 
         :param key: The key of the judge configuration.
         :param context: The context to evaluate the judge configuration in.
-        :param default_value: The default value of the judge configuration. When not provided,
+        :param default: The default value of the judge configuration. When not provided,
             a disabled config is used as the fallback.
         :param variables: Additional variables for the judge configuration.
         :return: The judge configuration with a tracker used for gathering metrics.
@@ -171,14 +171,14 @@ class LDAIClient:
         self._client.track(_TRACK_USAGE_JUDGE_CONFIG, context, key, 1)
 
         return self._judge_config(
-            key, context, default_value or AIJudgeConfigDefault.disabled(), variables
+            key, context, default or AIJudgeConfigDefault.disabled(), variables
         )
 
     async def create_judge(
         self,
         key: str,
         context: Context,
-        default_value: Optional[AIJudgeConfigDefault] = None,
+        default: Optional[AIJudgeConfigDefault] = None,
         variables: Optional[Dict[str, Any]] = None,
         default_ai_provider: Optional[str] = None,
     ) -> Optional[Judge]:
@@ -187,7 +187,7 @@ class LDAIClient:
 
         :param key: The key identifying the AI judge configuration to use
         :param context: Standard Context used when evaluating flags
-        :param default_value: A default value representing a standard AI config result
+        :param default: A default value representing a standard AI config result
         :param variables: Dictionary of values for instruction interpolation.
             The variables `message_history` and `response_to_evaluate` are reserved for the judge and will be ignored.
         :param default_ai_provider: Optional default AI provider to use.
@@ -229,7 +229,7 @@ class LDAIClient:
             extended_variables['response_to_evaluate'] = '{{response_to_evaluate}}'
 
             judge_config = self._judge_config(
-                key, context, default_value or AIJudgeConfigDefault.disabled(), extended_variables
+                key, context, default or AIJudgeConfigDefault.disabled(), extended_variables
             )
 
             if not judge_config.enabled or not judge_config.tracker:
@@ -292,7 +292,7 @@ class LDAIClient:
         self,
         key: str,
         context: Context,
-        default_value: AICompletionConfigDefault,
+        default: AICompletionConfigDefault,
         variables: Optional[Dict[str, Any]] = None,
         default_ai_provider: Optional[str] = None,
     ) -> Optional[Chat]:
@@ -301,7 +301,7 @@ class LDAIClient:
 
         :param key: The key identifying the AI completion configuration to use
         :param context: Standard Context used when evaluating flags
-        :param default_value: A default value representing a standard AI config result
+        :param default: A default value representing a standard AI config result
         :param variables: Dictionary of values for instruction interpolation
         :param default_ai_provider: Optional default AI provider to use
         :return: Chat instance or None if disabled/unsupported
@@ -330,7 +330,7 @@ class LDAIClient:
         """
         self._client.track(_TRACK_USAGE_CREATE_CHAT, context, key, 1)
         log.debug(f"Creating chat for key: {key}")
-        config = self._completion_config(key, context, default_value, variables)
+        config = self._completion_config(key, context, default, variables)
 
         if not config.enabled or not config.tracker:
             return None
@@ -354,7 +354,7 @@ class LDAIClient:
         self,
         key: str,
         context: Context,
-        default_value: Optional[AIAgentConfigDefault] = None,
+        default: Optional[AIAgentConfigDefault] = None,
         variables: Optional[Dict[str, Any]] = None,
     ) -> AIAgentConfig:
         """
@@ -382,7 +382,7 @@ class LDAIClient:
 
         :param key: The agent configuration key.
         :param context: The context to evaluate the agent configuration in.
-        :param default_value: Default agent values. When not provided, a disabled config is used
+        :param default: Default agent values. When not provided, a disabled config is used
             as the fallback.
         :param variables: Variables for interpolation.
         :return: Configured AIAgentConfig instance.
@@ -395,7 +395,7 @@ class LDAIClient:
         )
 
         return self.__evaluate_agent(
-            key, context, default_value or AIAgentConfigDefault.disabled(), variables
+            key, context, default or AIAgentConfigDefault.disabled(), variables
         )
 
     def agent(
@@ -412,7 +412,7 @@ class LDAIClient:
         :param context: The context to evaluate the agent configuration in.
         :return: Configured AIAgentConfig instance.
         """
-        return self.agent_config(config.key, context, config.default_value, config.variables)
+        return self.agent_config(config.key, context, config.default, config.variables)
 
     def agent_configs(
         self,
@@ -431,7 +431,7 @@ class LDAIClient:
             agents = client.agent_configs([
                 AIAgentConfigRequest(
                     key='research_agent',
-                    default_value=AIAgentConfigDefault(
+                    default=AIAgentConfigDefault(
                         enabled=True,
                         instructions='You are a research assistant.'
                     ),
@@ -439,7 +439,7 @@ class LDAIClient:
                 ),
                 AIAgentConfigRequest(
                     key='writing_agent',
-                    default_value=AIAgentConfigDefault(
+                    default=AIAgentConfigDefault(
                         enabled=True,
                         instructions='You are a writing assistant.'
                     ),
@@ -468,7 +468,7 @@ class LDAIClient:
             agent = self.__evaluate_agent(
                 config.key,
                 context,
-                config.default_value or AIAgentConfigDefault.disabled(),
+                config.default or AIAgentConfigDefault.disabled(),
                 config.variables
             )
             result[config.key] = agent
@@ -676,7 +676,7 @@ class LDAIClient:
         self,
         key: str,
         context: Context,
-        default_value: AIAgentConfigDefault,
+        default: AIAgentConfigDefault,
         variables: Optional[Dict[str, Any]] = None,
     ) -> AIAgentConfig:
         """
@@ -684,25 +684,25 @@ class LDAIClient:
 
         :param key: The agent configuration key.
         :param context: The evaluation context.
-        :param default_value: Default agent values.
+        :param default: Default agent values.
         :param variables: Variables for interpolation.
         :return: Configured AIAgentConfig instance.
         """
         model, provider, messages, instructions, tracker, enabled, judge_configuration, _ = self.__evaluate(
-            key, context, default_value.to_dict(), variables
+            key, context, default.to_dict(), variables
         )
 
         # For agents, prioritize instructions over messages
-        final_instructions = instructions if instructions is not None else default_value.instructions
+        final_instructions = instructions if instructions is not None else default.instructions
 
         return AIAgentConfig(
             key=key,
-            enabled=bool(enabled) if enabled is not None else (default_value.enabled or False),
-            model=model or default_value.model,
-            provider=provider or default_value.provider,
+            enabled=bool(enabled) if enabled is not None else (default.enabled or False),
+            model=model or default.model,
+            provider=provider or default.provider,
             instructions=final_instructions,
             tracker=tracker,
-            judge_configuration=judge_configuration or default_value.judge_configuration,
+            judge_configuration=judge_configuration or default.judge_configuration,
         )
 
     def __interpolate_template(self, template: str, variables: Dict[str, Any]) -> str:

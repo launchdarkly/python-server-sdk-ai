@@ -342,7 +342,7 @@ class AIAgentConfigRequest:
     Combines agent key with its specific default configuration and variables.
     """
     key: str
-    default_value: Optional[AIAgentConfigDefault] = None
+    default: Optional[AIAgentConfigDefault] = None
     variables: Optional[Dict[str, Any]] = None
 
 
