@@ -426,7 +426,7 @@ class TestClientJudgeConfig:
         
         ldai_client = LDAIClient(client)
         
-        default_value = AIJudgeConfigDefault(
+        default = AIJudgeConfigDefault(
             enabled=True,
             evaluation_metric_key='$ld:ai:judge:relevance',
             messages=[LDMessage(role='system', content='You are a judge.')],
@@ -434,7 +434,7 @@ class TestClientJudgeConfig:
             provider=ProviderConfig('openai'),
         )
         
-        config = ldai_client.judge_config('judge-config', context, default_value)
+        config = ldai_client.judge_config('judge-config', context, default)
         
         assert config is not None
         assert config.evaluation_metric_key == '$ld:ai:judge:relevance'
@@ -455,7 +455,7 @@ class TestClientJudgeConfig:
         test_client = LDClient(Config('sdk-key', update_processor_class=td, send_events=False))
         ldai_client = LDAIClient(test_client)
         
-        default_value = AIJudgeConfigDefault(
+        default = AIJudgeConfigDefault(
             enabled=True,
             evaluation_metric_key='$ld:ai:judge:default',
             messages=[LDMessage(role='system', content='You are a judge.')],
@@ -463,7 +463,7 @@ class TestClientJudgeConfig:
             provider=ProviderConfig('openai'),
         )
         
-        config = ldai_client.judge_config('judge-no-key', context, default_value)
+        config = ldai_client.judge_config('judge-no-key', context, default)
         
         assert config is not None
         assert config.evaluation_metric_key == '$ld:ai:judge:default'
@@ -494,7 +494,7 @@ class TestClientJudgeConfig:
         test_client = LDClient(Config('sdk-key', update_processor_class=td, send_events=False))
         ldai_client = LDAIClient(test_client)
         
-        default_value = AIJudgeConfigDefault(
+        default = AIJudgeConfigDefault(
             enabled=True,
             evaluation_metric_key=None,
             messages=[LDMessage(role='system', content='You are a judge.')],
@@ -502,7 +502,7 @@ class TestClientJudgeConfig:
             provider=ProviderConfig('openai'),
         )
         
-        config = ldai_client.judge_config('judge-with-keys', context, default_value)
+        config = ldai_client.judge_config('judge-with-keys', context, default)
         
         assert config is not None
         assert config.evaluation_metric_key == '$ld:ai:judge:relevance'
@@ -520,7 +520,7 @@ class TestClientJudgeConfig:
         test_client = LDClient(Config('sdk-key', update_processor_class=td, send_events=False))
         ldai_client = LDAIClient(test_client)
         
-        default_value = AIJudgeConfigDefault(
+        default = AIJudgeConfigDefault(
             enabled=True,
             evaluation_metric_key=None,
             evaluation_metric_keys=['$ld:ai:judge:default-key', '$ld:ai:judge:secondary'],
@@ -529,7 +529,7 @@ class TestClientJudgeConfig:
             provider=ProviderConfig('openai'),
         )
         
-        config = ldai_client.judge_config('judge-fallback-keys', context, default_value)
+        config = ldai_client.judge_config('judge-fallback-keys', context, default)
         
         assert config is not None
         assert config.evaluation_metric_key == '$ld:ai:judge:default-key'
@@ -561,7 +561,7 @@ class TestClientJudgeConfig:
         test_client = LDClient(Config('sdk-key', update_processor_class=td, send_events=False))
         ldai_client = LDAIClient(test_client)
         
-        default_value = AIJudgeConfigDefault(
+        default = AIJudgeConfigDefault(
             enabled=True,
             evaluation_metric_key=None,
             messages=[LDMessage(role='system', content='You are a judge.')],
@@ -569,10 +569,27 @@ class TestClientJudgeConfig:
             provider=ProviderConfig('openai'),
         )
         
-        config = ldai_client.judge_config('judge-both-present', context, default_value)
+        config = ldai_client.judge_config('judge-both-present', context, default)
         
         assert config is not None
         assert config.evaluation_metric_key == '$ld:ai:judge:preferred'
+
+    def test_judge_config_without_default_uses_disabled(
+        self, context: Context
+    ):
+        """judge_config should use a disabled config when no default is provided."""
+        from ldai import LDAIClient
+        from ldclient import Config, LDClient
+        from ldclient.integrations.test_data import TestData
+
+        td = TestData.data_source()
+        test_client = LDClient(Config('sdk-key', update_processor_class=td, send_events=False))
+        ldai_client = LDAIClient(test_client)
+
+        config = ldai_client.judge_config('missing-judge', context)
+
+        assert config is not None
+        assert config.enabled is False
 
     def test_judge_config_uses_same_variation_for_consistency(
         self, context: Context
@@ -601,7 +618,7 @@ class TestClientJudgeConfig:
         test_client = LDClient(Config('sdk-key', update_processor_class=td, send_events=False))
         ldai_client = LDAIClient(test_client)
 
-        default_value = AIJudgeConfigDefault(
+        default = AIJudgeConfigDefault(
             enabled=True,
             evaluation_metric_key='$ld:ai:judge:from-default',
             messages=[LDMessage(role='system', content='You are a judge.')],
@@ -618,7 +635,7 @@ class TestClientJudgeConfig:
             return result
 
         with patch.object(test_client, 'variation', side_effect=tracked_variation):
-            config = ldai_client.judge_config('judge-consistency-test', context, default_value)
+            config = ldai_client.judge_config('judge-consistency-test', context, default)
 
         assert len(variation_calls) == 1, f"Expected 1 variation call, got {len(variation_calls)}"
         assert config is not None

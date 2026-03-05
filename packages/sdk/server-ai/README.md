@@ -145,7 +145,7 @@ from ldai.providers.types import LDAIMetrics, TokenUsage
 from ldai_langchain import LangChainProvider
 
 async def main():
-    ai_config = ai_client.completion_config(ai_config_key, context, default_value)
+    ai_config = ai_client.completion_config(ai_config_key, context, default)
     
     # Create LangChain model from configuration
     llm = await LangChainProvider.create_langchain_model(ai_config)
@@ -169,7 +169,7 @@ from ldai import LDAIClient, AICompletionConfigDefault, ModelConfig
 from ldai.providers.types import LDAIMetrics, TokenUsage
 
 async def main():
-    ai_config = ai_client.completion_config(ai_config_key, context, default_value)
+    ai_config = ai_client.completion_config(ai_config_key, context, default)
     
     # Define custom metrics mapping for your provider
     def map_custom_provider_metrics(response):
