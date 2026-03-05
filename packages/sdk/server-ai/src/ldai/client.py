@@ -292,7 +292,7 @@ class LDAIClient:
         self,
         key: str,
         context: Context,
-        default: AICompletionConfigDefault,
+        default: Optional[AICompletionConfigDefault] = None,
         variables: Optional[Dict[str, Any]] = None,
         default_ai_provider: Optional[str] = None,
     ) -> Optional[Chat]:
@@ -301,7 +301,8 @@ class LDAIClient:
 
         :param key: The key identifying the AI completion configuration to use
         :param context: Standard Context used when evaluating flags
-        :param default: A default value representing a standard AI config result
+        :param default: A default value representing a standard AI config result. When not provided,
+            a disabled config is used as the fallback.
         :param variables: Dictionary of values for instruction interpolation
         :param default_ai_provider: Optional default AI provider to use
         :return: Chat instance or None if disabled/unsupported
@@ -330,7 +331,7 @@ class LDAIClient:
         """
         self._client.track(_TRACK_USAGE_CREATE_CHAT, context, key, 1)
         log.debug(f"Creating chat for key: {key}")
-        config = self._completion_config(key, context, default, variables)
+        config = self._completion_config(key, context, default or AICompletionConfigDefault.disabled(), variables)
 
         if not config.enabled or not config.tracker:
             return None
