@@ -26,13 +26,18 @@ from ldai_openai import OpenAIProvider
 async def main():
     # Initialize the AI client
     ai_client = AIClient(ld_client)
-    
-    # Get AI config
-    ai_config = ai_client.config(
-        "my-ai-config-key",
-        context,
-        default
-    )
+
+    # Get AI config. Pass a default for improved resiliency when the flag is unavailable or
+    # LaunchDarkly is unreachable; omit for a disabled default. Example:
+    #   from ldai.models import AICompletionConfigDefault, LDMessage, ModelConfig, ProviderConfig
+    #   default = AICompletionConfigDefault(
+    #       enabled=True,
+    #       model=ModelConfig("gpt-4"),
+    #       provider=ProviderConfig("openai"),
+    #       messages=[LDMessage(role="system", content="You are a helpful assistant.")]
+    #   )
+    #   ai_config = ai_client.config("my-ai-config-key", context, default)
+    ai_config = ai_client.config("my-ai-config-key", context)
     
     # Create an OpenAI provider from the config
     provider = await OpenAIProvider.create(ai_config)

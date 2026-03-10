@@ -41,9 +41,18 @@ from ldai_langchain import LangChainProvider
 ld_client = LDClient(Config("your-sdk-key"))
 ai_client = init(ld_client)
 
-# Get AI configuration
+# Get AI configuration. Pass a default for improved resiliency when the flag is unavailable or
+# LaunchDarkly is unreachable; omit for a disabled default. Example:
+#   from ldai.models import AICompletionConfigDefault, LDMessage, ModelConfig, ProviderConfig
+#   default = AICompletionConfigDefault(
+#       enabled=True,
+#       model=ModelConfig("gpt-4"),
+#       provider=ProviderConfig("openai"),
+#       messages=[LDMessage(role="system", content="You are a helpful assistant.")]
+#   )
+#   config = ai_client.config("ai-config-key", context, default)
 context = Context.builder("user-123").build()
-config = ai_client.config("ai-config-key", context, {})
+config = ai_client.config("ai-config-key", context)
 
 async def main():
     # Create a LangChain provider from the AI configuration
@@ -120,7 +129,7 @@ Use the provider with LaunchDarkly's tracking capabilities:
 
 ```python
 # Get the AI config with tracker
-config = ai_client.config("ai-config-key", context, {})
+config = ai_client.config("ai-config-key", context)
 
 # Create provider
 provider = await LangChainProvider.create(config)
