@@ -32,7 +32,7 @@ lint: install
 .PHONY: build
 build: #! Build distribution files
 build: install
-	uv build
+	uv build --out-dir dist
 
 .PHONY: docs
 docs: #! Generate sphinx-based documentation
