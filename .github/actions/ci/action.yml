@@ -12,18 +12,14 @@ inputs:
 runs:
   using: composite
   steps:
-    - name: Set up Python ${{ inputs.python_version }}
-      uses: actions/setup-python@v5
+    - name: Set up uv
+      uses: astral-sh/setup-uv@6ee6290f1cbc4156c0bdd66691b2c144ef8df19a # v7.4
       with:
         python-version: ${{ inputs.python_version }}
 
-    - name: Install poetry
-      uses: abatilo/actions-poetry@7b6d33e44b4f08d7021a1dee3c044e9c253d6439
-
     - name: Install Dependencies
       shell: bash
-      working-directory: ${{ inputs.workspace_path }}
-      run: poetry install
+      run: uv sync --all-groups
 
     - name: Lint
       shell: bash

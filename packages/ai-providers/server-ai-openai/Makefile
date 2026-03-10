@@ -9,22 +9,21 @@ help: #! Show this help message
 
 .PHONY: install
 install: #! Install package dependencies
-	poetry install
+	uv sync --group dev
 
 .PHONY: test
 test: #! Run unit tests
 test: install
-	poetry run pytest $(PYTEST_FLAGS)
+	uv run pytest $(PYTEST_FLAGS)
 
 .PHONY: lint
 lint: #! Run type analysis and linting checks
 lint: install
-	poetry run mypy src/ldai_openai
-	poetry run isort --check --atomic src/ldai_openai
-	poetry run pycodestyle src/ldai_openai
+	uv run mypy src/ldai_openai
+	uv run isort --check --atomic src/ldai_openai
+	uv run pycodestyle src/ldai_openai
 
 .PHONY: build
 build: #! Build distribution files
 build: install
-	poetry build
-
+	uv build --out-dir dist

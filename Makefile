@@ -23,10 +23,8 @@ help: #! Show this help message
 #
 
 .PHONY: install
-install: #! Install all packages
-	$(MAKE) install-server-ai
-	$(MAKE) install-langchain
-	$(MAKE) install-openai
+install: #! Install all packages and dev dependencies into the shared workspace environment
+	uv sync --all-groups
 
 .PHONY: install-server-ai
 install-server-ai: #! Install server-ai package

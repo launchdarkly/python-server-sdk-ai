@@ -44,17 +44,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+      - name: Set up uv
+        uses: astral-sh/setup-uv@6ee6290f1cbc4156c0bdd66691b2c144ef8df19a # v7.4
         with:
           python-version: ${{ matrix.python-version }}
-
-      - name: Install poetry
-        uses: abatilo/actions-poetry@7b6d33e44b4f08d7021a1dee3c044e9c253d6439
-
-      - name: Install requirements
-        working-directory: packages/sdk/server-ai
-        run: poetry install
 
       - name: Run tests
         run: make -C packages/sdk/server-ai test
@@ -90,24 +83,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+      - name: Set up uv
+        uses: astral-sh/setup-uv@6ee6290f1cbc4156c0bdd66691b2c144ef8df19a # v7.4
         with:
           python-version: ${{ matrix.python-version }}
-
-      - name: Install poetry
-        uses: abatilo/actions-poetry@7b6d33e44b4f08d7021a1dee3c044e9c253d6439
-
-      - name: Configure poetry for local virtualenvs
-        run: poetry config virtualenvs.in-project true
-
-      - name: Install server-ai dependency first
-        working-directory: packages/sdk/server-ai
-        run: poetry install
-
-      - name: Install requirements
-        working-directory: packages/ai-providers/server-ai-langchain
-        run: poetry install
 
       - name: Run tests
         run: make -C packages/ai-providers/server-ai-langchain test
@@ -143,24 +122,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+      - name: Set up uv
+        uses: astral-sh/setup-uv@6ee6290f1cbc4156c0bdd66691b2c144ef8df19a # v7.4
         with:
           python-version: ${{ matrix.python-version }}
-
-      - name: Install poetry
-        uses: abatilo/actions-poetry@7b6d33e44b4f08d7021a1dee3c044e9c253d6439
-
-      - name: Configure poetry for local virtualenvs
-        run: poetry config virtualenvs.in-project true
-
-      - name: Install server-ai dependency first
-        working-directory: packages/sdk/server-ai
-        run: poetry install
-
-      - name: Install requirements
-        working-directory: packages/ai-providers/server-ai-openai
-        run: poetry install
 
       - name: Run tests
         run: make -C packages/ai-providers/server-ai-openai test
