@@ -2,6 +2,18 @@
 
 All notable changes to the LaunchDarkly Python AI package will be documented in this file. This project adheres to [Semantic Versioning](http://semver.org).
 
+## [0.16.0](https://github.com/launchdarkly/python-server-sdk-ai/compare/launchdarkly-server-sdk-ai-0.15.0...launchdarkly-server-sdk-ai-0.16.0) (2026-03-09)
+
+
+### ⚠ BREAKING CHANGES
+
+* Rename default_value args to default
+
+### Bug Fixes
+
+* Make default optional with a disabled config default ([#97](https://github.com/launchdarkly/python-server-sdk-ai/issues/97)) ([39e09c6](https://github.com/launchdarkly/python-server-sdk-ai/commit/39e09c616bcb36af56983094039ee72a97bd1a19))
+* Rename default_value args to default ([39e09c6](https://github.com/launchdarkly/python-server-sdk-ai/commit/39e09c616bcb36af56983094039ee72a97bd1a19))
+
 ## [0.15.0](https://github.com/launchdarkly/python-server-sdk-ai/compare/launchdarkly-server-sdk-ai-0.14.2...launchdarkly-server-sdk-ai-0.15.0) (2026-03-02)
 
 
