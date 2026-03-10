@@ -13,7 +13,7 @@ runs:
   using: composite
   steps:
     - name: Set up uv
-      uses: astral-sh/setup-uv@v5
+      uses: astral-sh/setup-uv@6ee6290f1cbc4156c0bdd66691b2c144ef8df19a # v7.4
       with:
         python-version: ${{ inputs.python_version }}
 
