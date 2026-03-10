@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/launchdarkly/python-server-sdk-ai/compare/launchdarkly-server-sdk-ai-openai-0.2.0...launchdarkly-server-sdk-ai-openai-0.2.1) (2026-03-10)
+
+
+### Bug Fixes
+
+* Update comments for setting default ([#99](https://github.com/launchdarkly/python-server-sdk-ai/issues/99)) ([a14761d](https://github.com/launchdarkly/python-server-sdk-ai/commit/a14761d0f832e2fd07323f1f5322c76a1d7d7bf6))
+
 ## [0.2.0](https://github.com/launchdarkly/python-server-sdk-ai/compare/launchdarkly-server-sdk-ai-openai-0.1.1...launchdarkly-server-sdk-ai-openai-0.2.0) (2026-03-09)
 
 
