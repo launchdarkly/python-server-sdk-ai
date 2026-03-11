@@ -114,15 +114,6 @@ class TestJudgeInitialization:
         assert eval_schema['required'] == ['score', 'reasoning']
         assert 'score' in eval_schema['properties'] and 'reasoning' in eval_schema['properties']
 
-    def test_judge_initializes_without_evaluation_metric_key(
-        self, judge_config_without_key: AIJudgeConfig, tracker: LDAIConfigTracker, mock_ai_provider
-    ):
-        """Judge should initialize but have None for evaluation_response_structure."""
-        judge = Judge(judge_config_without_key, tracker, mock_ai_provider)
-        
-        assert judge._ai_config == judge_config_without_key
-        assert judge._evaluation_response_structure is None
-
 
 class TestJudgeEvaluate:
     """Tests for Judge.evaluate() method."""
@@ -158,14 +149,12 @@ class TestJudgeEvaluate:
         """Evaluate should return JudgeResponse with valid evaluation."""
         mock_response = StructuredResponse(
             data={
-                'evaluations': {
-                    '$ld:ai:judge:relevance': {
-                        'score': 0.85,
-                        'reasoning': 'The response is highly relevant to the input.'
-                    }
+                'evaluation': {
+                    'score': 0.85,
+                    'reasoning': 'The response is highly relevant to the input.'
                 }
             },
-            raw_response='{"evaluations": {...}}',
+            raw_response='{"evaluation": {"score": 0.85, "reasoning": "..."}}',
             metrics=LDAIMetrics(success=True)
         )
         
@@ -211,45 +200,13 @@ class TestJudgeEvaluate:
         assert 'accurate' in result.evals['$ld:ai:judge:relevance'].reasoning.lower()
 
     @pytest.mark.asyncio
-    async def test_evaluate_success_with_evaluations_backward_compat(
-        self, judge_config_with_key: AIJudgeConfig, tracker: LDAIConfigTracker, mock_ai_provider
-    ):
-        """Evaluate should accept legacy shape { evaluations: { score, reasoning } }."""
-        mock_response = StructuredResponse(
-            data={
-                'evaluations': {
-                    'score': 0.7,
-                    'reasoning': 'Partially correct.',
-                }
-            },
-            raw_response='{"evaluations": {"score": 0.7, "reasoning": "..."}}',
-            metrics=LDAIMetrics(success=True),
-        )
-        mock_ai_provider.invoke_structured_model.return_value = mock_response
-        tracker.track_metrics_of = AsyncMock(return_value=mock_response)
-
-        judge = Judge(judge_config_with_key, tracker, mock_ai_provider)
-        result = await judge.evaluate("input", "output")
-
-        assert result is not None
-        assert result.success is True
-        assert result.evals['$ld:ai:judge:relevance'].score == 0.7
-
-    @pytest.mark.asyncio
     async def test_evaluate_handles_missing_evaluation_in_response(
         self, judge_config_with_key: AIJudgeConfig, tracker: LDAIConfigTracker, mock_ai_provider
     ):
         """Evaluate should handle missing evaluation in response."""
         mock_response = StructuredResponse(
-            data={
-                'evaluations': {
-                    'wrong-key': {
-                        'score': 0.5,
-                        'reasoning': 'Some reasoning'
-                    }
-                }
-            },
-            raw_response='{"evaluations": {...}}',
+            data={},
+            raw_response='{}',
             metrics=LDAIMetrics(success=True)
         )
         
@@ -271,14 +228,12 @@ class TestJudgeEvaluate:
         """Evaluate should handle invalid score values."""
         mock_response = StructuredResponse(
             data={
-                'evaluations': {
-                    '$ld:ai:judge:relevance': {
-                        'score': 1.5,
-                        'reasoning': 'Some reasoning'
-                    }
+                'evaluation': {
+                    'score': 1.5,
+                    'reasoning': 'Some reasoning'
                 }
             },
-            raw_response='{"evaluations": {...}}',
+            raw_response='{"evaluation": {"score": 1.5, "reasoning": "..."}}',
             metrics=LDAIMetrics(success=True)
         )
         
@@ -300,13 +255,11 @@ class TestJudgeEvaluate:
         """Evaluate should handle missing reasoning."""
         mock_response = StructuredResponse(
             data={
-                'evaluations': {
-                    '$ld:ai:judge:relevance': {
-                        'score': 0.8,
-                    }
+                'evaluation': {
+                    'score': 0.8,
                 }
             },
-            raw_response='{"evaluations": {...}}',
+            raw_response='{"evaluation": {"score": 0.8}}',
             metrics=LDAIMetrics(success=True)
         )
         
@@ -364,14 +317,12 @@ class TestJudgeEvaluateMessages:
         
         mock_response = StructuredResponse(
             data={
-                'evaluations': {
-                    '$ld:ai:judge:relevance': {
-                        'score': 0.9,
-                        'reasoning': 'Very relevant'
-                    }
+                'evaluation': {
+                    'score': 0.9,
+                    'reasoning': 'Very relevant'
                 }
             },
-            raw_response='{"evaluations": {...}}',
+            raw_response='{"evaluation": {"score": 0.9, "reasoning": "..."}}',
             metrics=LDAIMetrics(success=True)
         )
         
