@@ -42,8 +42,8 @@ class RunnerFactory:
 
             if provider_type == 'openai':
                 RunnerFactory._pkg_exists('ldai_openai')
-                from ldai_openai import OpenAIProvider
-                return OpenAIProvider()
+                from ldai_openai import OpenAIRunnerFactory
+                return OpenAIRunnerFactory()
 
             log.warn(
                 f"Provider '{provider_type}' is not supported. "
@@ -178,4 +178,3 @@ class RunnerFactory:
         """
         if util.find_spec(package_name) is None:
             raise ImportError(f"Package '{package_name}' not found")
-
