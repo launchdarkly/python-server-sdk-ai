@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Optional
 
 from ldai import log
 from ldai.models import LDMessage
-from ldai.providers.types import ChatResponse, StructuredResponse
+from ldai.providers.types import ModelResponse, StructuredResponse
 
 
 class AIProvider(ABC):
@@ -16,12 +16,9 @@ class AIProvider(ABC):
     (with no arguments — credentials are read from environment variables) and is
     responsible for constructing focused runtime capability objects via
     create_model(), create_agent(), and create_agent_graph().
-
-    The invoke_model() / invoke_structured_model() methods remain on this base
-    class for compatibility and will migrate to ModelExecutor in PR 2.
     """
 
-    async def invoke_model(self, messages: List[LDMessage]) -> ChatResponse:
+    async def invoke_model(self, messages: List[LDMessage]) -> ModelResponse:
         """
         Invoke the chat model with an array of messages.
 
@@ -29,14 +26,14 @@ class AIProvider(ABC):
         Connector implementations should override this method.
 
         :param messages: Array of LDMessage objects representing the conversation
-        :return: ChatResponse containing the model's response
+        :return: ModelResponse containing the model's response
         """
         log.warn('invoke_model not implemented by this connector')
 
         from ldai.models import LDMessage
         from ldai.providers.types import LDAIMetrics
 
-        return ChatResponse(
+        return ModelResponse(
             message=LDMessage(role='assistant', content=''),
             metrics=LDAIMetrics(success=False, usage=None),
         )
@@ -66,14 +63,14 @@ class AIProvider(ABC):
             metrics=LDAIMetrics(success=False, usage=None),
         )
 
-    def create_model(self, config: Any) -> Optional['AIProvider']:
+    def create_model(self, config: Any) -> Optional[Any]:
         """
         Create a configured model executor for the given AI config.
 
         Default implementation warns. Provider connectors should override this method.
 
         :param config: The LaunchDarkly AI configuration
-        :return: Configured AIProvider instance, or None if unsupported
+        :return: Configured model runner instance, or None if unsupported
         """
         log.warn('create_model not implemented by this connector')
         return None
@@ -103,4 +100,3 @@ class AIProvider(ABC):
         """
         log.warn('create_agent_graph not implemented by this connector')
         return None
-
