@@ -1,4 +1,4 @@
-"""LangChain implementation of AIProvider for LaunchDarkly AI SDK."""
+"""LangChain connector for LaunchDarkly AI SDK."""
 
 from typing import Any, Dict, List, Optional, Union
 
@@ -11,31 +11,46 @@ from ldai.providers.types import ChatResponse, LDAIMetrics, StructuredResponse
 from ldai.tracker import TokenUsage
 
 
-class LangChainProvider(AIProvider):
+class LangChainRunnerFactory(AIProvider):
     """
-    LangChain implementation of AIProvider.
+    LangChain connector for the LaunchDarkly AI SDK.
 
-    This provider integrates LangChain models with LaunchDarkly's tracking capabilities.
+    Can be used in two ways:
+    - Transparently via ExecutorFactory (pass ``default_ai_provider='langchain'`` to
+      ``create_model()`` / ``create_chat()``).
+    - Directly for full control: instantiate with a ``BaseChatModel``, then call
+      ``invoke_model()`` yourself and use the static convenience methods
+      (``get_ai_metrics_from_response``, ``convert_messages_to_langchain``,
+      ``map_provider``, ``create_langchain_model``).
     """
 
-    def __init__(self, llm: BaseChatModel):
+    def __init__(self, llm: Optional[BaseChatModel] = None):
         """
-        Initialize the LangChain provider.
+        Initialize the LangChain connector.
 
-        :param llm: A LangChain BaseChatModel instance
+        When called with no arguments the connector acts as a per-provider factory
+        — call ``create_model(config)`` to obtain a configured instance.
+
+        When called with an explicit ``llm`` the connector is ready to invoke
+        the model immediately.
+
+        :param llm: A LangChain BaseChatModel instance (optional)
         """
         self._llm = llm
 
-    @staticmethod
-    async def create(ai_config: AIConfigKind) -> 'LangChainProvider':
-        """
-        Static factory method to create a LangChain AIProvider from an AI configuration.
+    # --- AIProvider factory methods ---
 
-        :param ai_config: The LaunchDarkly AI configuration
-        :return: Configured LangChainProvider instance
+    def create_model(self, config: AIConfigKind) -> 'LangChainRunnerFactory':
         """
-        llm = LangChainProvider.create_langchain_model(ai_config)
-        return LangChainProvider(llm)
+        Create a configured LangChain model connector for the given AI config.
+
+        :param config: The LaunchDarkly AI configuration
+        :return: Configured LangChainRunnerFactory ready to invoke the model
+        """
+        llm = LangChainRunnerFactory.create_langchain_model(config)
+        return LangChainRunnerFactory(llm)
+
+    # --- Model invocation ---
 
     async def invoke_model(self, messages: List[LDMessage]) -> ChatResponse:
         """
@@ -45,9 +60,9 @@ class LangChainProvider(AIProvider):
         :return: ChatResponse containing the model's response and metrics
         """
         try:
-            langchain_messages = LangChainProvider.convert_messages_to_langchain(messages)
+            langchain_messages = LangChainRunnerFactory.convert_messages_to_langchain(messages)
             response: BaseMessage = await self._llm.ainvoke(langchain_messages)
-            metrics = LangChainProvider.get_ai_metrics_from_response(response)
+            metrics = LangChainRunnerFactory.get_ai_metrics_from_response(response)
 
             content: str = ''
             if isinstance(response.content, str):
@@ -84,7 +99,7 @@ class LangChainProvider(AIProvider):
         :return: StructuredResponse containing the structured data
         """
         try:
-            langchain_messages = LangChainProvider.convert_messages_to_langchain(messages)
+            langchain_messages = LangChainRunnerFactory.convert_messages_to_langchain(messages)
             structured_llm = self._llm.with_structured_output(response_structure)
             response = await structured_llm.ainvoke(langchain_messages)
 
@@ -122,11 +137,13 @@ class LangChainProvider(AIProvider):
                 ),
             )
 
-    def get_chat_model(self) -> BaseChatModel:
+    # --- Convenience accessors ---
+
+    def get_chat_model(self) -> Optional[BaseChatModel]:
         """
         Get the underlying LangChain model instance.
 
-        :return: The underlying BaseChatModel
+        :return: The underlying BaseChatModel, or None if not yet configured
         """
         return self._llm
 
@@ -134,9 +151,6 @@ class LangChainProvider(AIProvider):
     def map_provider(ld_provider_name: str) -> str:
         """
         Map LaunchDarkly provider names to LangChain provider names.
-
-        This method enables seamless integration between LaunchDarkly's standardized
-        provider naming and LangChain's naming conventions.
 
         :param ld_provider_name: LaunchDarkly provider name
         :return: LangChain-compatible provider name
@@ -152,25 +166,24 @@ class LangChainProvider(AIProvider):
     @staticmethod
     def get_ai_metrics_from_response(response: BaseMessage) -> LDAIMetrics:
         """
-        Get AI metrics from a LangChain provider response.
-
-        This method extracts token usage information and success status from LangChain responses
-        and returns a LaunchDarkly AIMetrics object.
+        Extract LaunchDarkly AI metrics from a LangChain response.
 
         :param response: The response from the LangChain model
         :return: LDAIMetrics with success status and token usage
 
-        Example:
-            # Use with tracker.track_metrics_of for automatic tracking
+        Example::
+
             response = await tracker.track_metrics_of(
                 lambda: llm.ainvoke(messages),
-                LangChainProvider.get_ai_metrics_from_response
+                LangChainRunnerFactory.get_ai_metrics_from_response
             )
         """
-        # Extract token usage if available
         usage: Optional[TokenUsage] = None
         if hasattr(response, 'response_metadata') and response.response_metadata:
-            token_usage = response.response_metadata.get('tokenUsage') or response.response_metadata.get('token_usage')
+            token_usage = (
+                response.response_metadata.get('tokenUsage')
+                or response.response_metadata.get('token_usage')
+            )
             if token_usage:
                 usage = TokenUsage(
                     total=token_usage.get('totalTokens', 0) or token_usage.get('total_tokens', 0),
@@ -186,9 +199,6 @@ class LangChainProvider(AIProvider):
     ) -> List[Union[HumanMessage, SystemMessage, AIMessage]]:
         """
         Convert LaunchDarkly messages to LangChain messages.
-
-        This helper method enables developers to work directly with LangChain message types
-        while maintaining compatibility with LaunchDarkly's standardized message format.
 
         :param messages: List of LDMessage objects
         :return: List of LangChain message objects
@@ -211,10 +221,7 @@ class LangChainProvider(AIProvider):
     @staticmethod
     def create_langchain_model(ai_config: AIConfigKind) -> BaseChatModel:
         """
-        Create a LangChain model from an AI configuration.
-
-        This public helper method enables developers to initialize their own LangChain models
-        using LaunchDarkly AI configurations.
+        Create a LangChain model from a LaunchDarkly AI configuration.
 
         :param ai_config: The LaunchDarkly AI configuration
         :return: A configured LangChain BaseChatModel
@@ -231,6 +238,7 @@ class LangChainProvider(AIProvider):
 
         return init_chat_model(
             model_name,
-            model_provider=LangChainProvider.map_provider(provider),
+            model_provider=LangChainRunnerFactory.map_provider(provider),
             **parameters,
         )
+

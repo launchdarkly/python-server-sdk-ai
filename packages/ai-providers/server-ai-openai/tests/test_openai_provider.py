@@ -277,11 +277,10 @@ class TestGetClient:
         assert provider.get_client() is mock_client
 
 
-class TestCreate:
-    """Tests for create static factory method."""
+class TestCreateModel:
+    """Tests for create_model instance method."""
 
-    @pytest.mark.asyncio
-    async def test_creates_provider_with_correct_model_and_parameters(self):
+    def test_creates_connector_with_correct_model_and_parameters(self):
         """Should create OpenAIProvider with correct model and parameters."""
         mock_ai_config = MagicMock()
         mock_ai_config.to_dict.return_value = {
@@ -295,27 +294,26 @@ class TestCreate:
             'provider': {'name': 'openai'},
         }
 
-        with patch('ldai_openai.openai_provider.AsyncOpenAI') as mock_openai_class:
+        with patch('ldai_openai.openai_runner_factory.AsyncOpenAI') as mock_openai_class:
             mock_client = MagicMock()
             mock_openai_class.return_value = mock_client
 
-            result = await OpenAIProvider.create(mock_ai_config)
+            result = OpenAIProvider().create_model(mock_ai_config)
 
             assert isinstance(result, OpenAIProvider)
             assert result._model_name == 'gpt-4'
             assert result._parameters == {'temperature': 0.7, 'max_tokens': 1000}
 
-    @pytest.mark.asyncio
-    async def test_handles_missing_model_config(self):
+    def test_handles_missing_model_config(self):
         """Should handle missing model configuration."""
         mock_ai_config = MagicMock()
         mock_ai_config.to_dict.return_value = {}
 
-        with patch('ldai_openai.openai_provider.AsyncOpenAI') as mock_openai_class:
+        with patch('ldai_openai.openai_runner_factory.AsyncOpenAI') as mock_openai_class:
             mock_client = MagicMock()
             mock_openai_class.return_value = mock_client
 
-            result = await OpenAIProvider.create(mock_ai_config)
+            result = OpenAIProvider().create_model(mock_ai_config)
 
             assert isinstance(result, OpenAIProvider)
             assert result._model_name == ''

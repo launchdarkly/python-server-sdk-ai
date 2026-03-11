@@ -1,4 +1,4 @@
-"""OpenAI implementation of AIProvider for LaunchDarkly AI SDK."""
+"""OpenAI connector for LaunchDarkly AI SDK."""
 
 import json
 import os
@@ -15,46 +15,60 @@ from openai.types.chat import ChatCompletionMessageParam
 
 class OpenAIProvider(AIProvider):
     """
-    OpenAI implementation of AIProvider.
+    OpenAI connector for the LaunchDarkly AI SDK.
 
-    This provider integrates OpenAI's chat completions API with LaunchDarkly's tracking capabilities.
+    Can be used in two ways:
+    - Transparently via ExecutorFactory (pass ``default_ai_provider='openai'`` to
+      ``create_model()`` / ``create_chat()``).
+    - Directly for full control: instantiate with an ``AsyncOpenAI`` client,
+      model name, and parameters, then call ``invoke_model()`` yourself.
     """
 
     def __init__(
         self,
-        client: AsyncOpenAI,
-        model_name: str,
-        parameters: Dict[str, Any],
+        client: Optional[AsyncOpenAI] = None,
+        model_name: str = '',
+        parameters: Optional[Dict[str, Any]] = None,
     ):
         """
-        Initialize the OpenAI provider.
+        Initialize the OpenAI connector.
 
-        :param client: An AsyncOpenAI client instance
+        When called with no arguments the connector reads credentials from the
+        environment (``OPENAI_API_KEY``) and acts as a per-provider factory —
+        call ``create_model(config)`` to obtain a configured instance.
+
+        When called with explicit arguments the connector is ready to invoke
+        the model immediately.
+
+        :param client: An AsyncOpenAI client instance (created from env if omitted)
         :param model_name: The name of the model to use
         :param parameters: Additional model parameters
         """
-        self._client = client
-        self._model_name = model_name
-        self._parameters = parameters
-
-    @staticmethod
-    async def create(ai_config: AIConfigKind) -> 'OpenAIProvider':
-        """
-        Static factory method to create an OpenAI AIProvider from an AI configuration.
-
-        :param ai_config: The LaunchDarkly AI configuration
-        :return: Configured OpenAIProvider instance
-        """
-        client = AsyncOpenAI(
+        self._client = client if client is not None else AsyncOpenAI(
             api_key=os.environ.get('OPENAI_API_KEY'),
         )
+        self._model_name = model_name
+        self._parameters = parameters or {}
 
-        config_dict = ai_config.to_dict()
+    # --- AIProvider factory methods ---
+
+    def create_model(self, config: AIConfigKind) -> 'OpenAIProvider':
+        """
+        Create a configured OpenAI model connector for the given AI config.
+
+        Reuses the underlying AsyncOpenAI client so that connection pooling is
+        preserved across calls.
+
+        :param config: The LaunchDarkly AI configuration
+        :return: Configured OpenAIProvider ready to invoke the model
+        """
+        config_dict = config.to_dict()
         model_dict = config_dict.get('model') or {}
         model_name = model_dict.get('name', '')
         parameters = model_dict.get('parameters') or {}
+        return OpenAIProvider(self._client, model_name, parameters)
 
-        return OpenAIProvider(client, model_name, parameters)
+    # --- Model invocation ---
 
     async def invoke_model(self, messages: List[LDMessage]) -> ChatResponse:
         """
@@ -64,7 +78,6 @@ class OpenAIProvider(AIProvider):
         :return: ChatResponse containing the model's response and metrics
         """
         try:
-            # Convert LDMessage to OpenAI message format
             openai_messages: Iterable[ChatCompletionMessageParam] = cast(
                 Iterable[ChatCompletionMessageParam],
                 [{'role': msg.role, 'content': msg.content} for msg in messages]
@@ -76,10 +89,8 @@ class OpenAIProvider(AIProvider):
                 **self._parameters,
             )
 
-            # Generate metrics early (assumes success by default)
             metrics = OpenAIProvider.get_ai_metrics_from_response(response)
 
-            # Safely extract the first choice content
             content = ''
             if response.choices and len(response.choices) > 0:
                 message = response.choices[0].message
@@ -115,7 +126,6 @@ class OpenAIProvider(AIProvider):
         :return: StructuredResponse containing the structured data
         """
         try:
-            # Convert LDMessage to OpenAI message format
             openai_messages: Iterable[ChatCompletionMessageParam] = cast(
                 Iterable[ChatCompletionMessageParam],
                 [{'role': msg.role, 'content': msg.content} for msg in messages]
@@ -135,10 +145,8 @@ class OpenAIProvider(AIProvider):
                 **self._parameters,
             )
 
-            # Generate metrics early (assumes success by default)
             metrics = OpenAIProvider.get_ai_metrics_from_response(response)
 
-            # Safely extract the first choice content
             content = ''
             if response.choices and len(response.choices) > 0:
                 message = response.choices[0].message
@@ -178,6 +186,8 @@ class OpenAIProvider(AIProvider):
                 metrics=LDAIMetrics(success=False, usage=None),
             )
 
+    # --- Convenience accessors ---
+
     def get_client(self) -> AsyncOpenAI:
         """
         Get the underlying OpenAI client instance.
@@ -189,21 +199,18 @@ class OpenAIProvider(AIProvider):
     @staticmethod
     def get_ai_metrics_from_response(response: Any) -> LDAIMetrics:
         """
-        Get AI metrics from an OpenAI response.
-
-        This method extracts token usage information and success status from OpenAI responses
-        and returns a LaunchDarkly AIMetrics object.
+        Extract LaunchDarkly AI metrics from an OpenAI response.
 
         :param response: The response from OpenAI chat completions API
         :return: LDAIMetrics with success status and token usage
 
-        Example:
+        Example::
+
             response = await tracker.track_metrics_of(
                 lambda: client.chat.completions.create(config),
                 OpenAIProvider.get_ai_metrics_from_response
             )
         """
-        # Extract token usage if available
         usage: Optional[TokenUsage] = None
         if hasattr(response, 'usage') and response.usage:
             usage = TokenUsage(
@@ -212,5 +219,5 @@ class OpenAIProvider(AIProvider):
                 output=response.usage.completion_tokens or 0,
             )
 
-        # OpenAI responses that complete successfully are considered successful by default
         return LDAIMetrics(success=True, usage=usage)
+
