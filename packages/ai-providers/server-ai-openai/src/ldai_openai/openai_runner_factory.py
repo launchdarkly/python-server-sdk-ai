@@ -47,6 +47,32 @@ class OpenAIRunnerFactory(AIProvider):
         from ldai_openai.openai_agent_graph_runner import OpenAIAgentGraphRunner
         return OpenAIAgentGraphRunner(graph_def, tools)
 
+    def create_agent(self, config: Any, tools: Optional[ToolRegistry] = None) -> 'OpenAIAgentRunner':
+        """
+        Create a configured OpenAIAgentRunner for the given AI agent config.
+
+        :param config: The LaunchDarkly AI agent configuration
+        :param tools: ToolRegistry mapping tool names to callables
+        :return: OpenAIAgentRunner ready to run the agent
+        """
+        from ldai_openai.openai_agent_runner import OpenAIAgentRunner
+
+        config_dict = config.to_dict()
+        model_dict = config_dict.get('model') or {}
+        model_name = model_dict.get('name', '')
+        parameters = dict(model_dict.get('parameters') or {})
+        tool_definitions = parameters.pop('tools', []) or []
+        instructions = (config.instructions or '') if hasattr(config, 'instructions') else ''
+
+        return OpenAIAgentRunner(
+            self._client,
+            model_name,
+            parameters,
+            instructions,
+            tool_definitions,
+            tools or {},
+        )
+
     def get_client(self) -> AsyncOpenAI:
         """
         Return the underlying AsyncOpenAI client.

@@ -330,3 +330,125 @@ class TestGetLlm:
         runner = LangChainModelRunner(mock_llm)
 
         assert runner.get_llm() is mock_llm
+
+
+class TestCreateAgent:
+    """Tests for LangChainRunnerFactory.create_agent."""
+
+    def test_creates_agent_runner_with_instructions_and_tool_definitions(self):
+        """Should create LangChainAgentRunner with instructions and tool definitions."""
+        from unittest.mock import patch
+        from ldai_langchain import LangChainAgentRunner
+
+        mock_ai_config = MagicMock()
+        mock_ai_config.instructions = "You are a helpful assistant."
+        mock_ai_config.to_dict.return_value = {
+            'model': {
+                'name': 'gpt-4',
+                'parameters': {
+                    'tools': [
+                        {'name': 'get-weather', 'description': 'Get weather', 'parameters': {}},
+                    ],
+                },
+            },
+            'provider': {'name': 'openai'},
+        }
+
+        with patch.object(LangChainHelper, 'create_langchain_model') as mock_create:
+            mock_llm = MagicMock()
+            mock_create.return_value = mock_llm
+
+            factory = LangChainRunnerFactory()
+            result = factory.create_agent(mock_ai_config, {'get-weather': lambda loc: 'sunny'})
+
+            assert isinstance(result, LangChainAgentRunner)
+            assert result._instructions == "You are a helpful assistant."
+            assert len(result._tool_definitions) == 1
+
+    def test_creates_agent_runner_with_no_tools(self):
+        """Should create LangChainAgentRunner with no tool definitions."""
+        from unittest.mock import patch
+        from ldai_langchain import LangChainAgentRunner
+
+        mock_ai_config = MagicMock()
+        mock_ai_config.instructions = "You are a helpful assistant."
+        mock_ai_config.to_dict.return_value = {
+            'model': {'name': 'gpt-4', 'parameters': {}},
+            'provider': {'name': 'openai'},
+        }
+
+        with patch.object(LangChainHelper, 'create_langchain_model') as mock_create:
+            mock_create.return_value = MagicMock()
+
+            factory = LangChainRunnerFactory()
+            result = factory.create_agent(mock_ai_config, {})
+
+            assert isinstance(result, LangChainAgentRunner)
+            assert result._tool_definitions == []
+
+
+class TestLangChainAgentRunner:
+    """Tests for LangChainAgentRunner.run."""
+
+    @pytest.mark.asyncio
+    async def test_runs_agent_and_returns_result_with_no_tool_calls(self):
+        """Should return AgentResult when model responds with no tool calls."""
+        from ldai_langchain import LangChainAgentRunner
+        from langchain_core.messages import AIMessage
+
+        mock_llm = MagicMock()
+        mock_response = AIMessage(content="The answer is 42.")
+        mock_llm.bind_tools = MagicMock(return_value=mock_llm)
+        mock_llm.ainvoke = AsyncMock(return_value=mock_response)
+
+        runner = LangChainAgentRunner(mock_llm, "You are helpful.", [], {})
+        result = await runner.run("What is the answer?")
+
+        assert result.output == "The answer is 42."
+        assert result.metrics.success is True
+
+    @pytest.mark.asyncio
+    async def test_executes_tool_calls_and_returns_final_response(self):
+        """Should execute tool calls and continue loop until final response."""
+        from ldai_langchain import LangChainAgentRunner
+        from langchain_core.messages import AIMessage
+
+        # First response: has a tool call
+        first_response = AIMessage(content="")
+        first_response.tool_calls = [
+            {"name": "get-weather", "args": {"location": "Paris"}, "id": "call_123"}
+        ]
+
+        # Second response: final answer
+        second_response = AIMessage(content="It is sunny in Paris.")
+
+        mock_llm = MagicMock()
+        mock_llm.bind_tools = MagicMock(return_value=mock_llm)
+        mock_llm.ainvoke = AsyncMock(side_effect=[first_response, second_response])
+
+        weather_fn = MagicMock(return_value="Sunny, 25°C")
+        runner = LangChainAgentRunner(
+            mock_llm, "You are helpful.",
+            [{'name': 'get-weather', 'description': 'Get weather', 'parameters': {}}],
+            {'get-weather': weather_fn},
+        )
+        result = await runner.run("What is the weather in Paris?")
+
+        assert result.output == "It is sunny in Paris."
+        assert result.metrics.success is True
+        weather_fn.assert_called_once_with(location="Paris")
+
+    @pytest.mark.asyncio
+    async def test_returns_failure_when_exception_thrown(self):
+        """Should return unsuccessful AgentResult when exception is thrown."""
+        from ldai_langchain import LangChainAgentRunner
+
+        mock_llm = MagicMock()
+        mock_llm.bind_tools = MagicMock(return_value=mock_llm)
+        mock_llm.ainvoke = AsyncMock(side_effect=Exception("LLM Error"))
+
+        runner = LangChainAgentRunner(mock_llm, "", [], {})
+        result = await runner.run("Hello")
+
+        assert result.output == ""
+        assert result.metrics.success is False

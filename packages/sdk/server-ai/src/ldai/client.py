@@ -7,6 +7,7 @@ from ldclient.client import LDClient
 from ldai import log
 from ldai.agent_graph import AgentGraphDefinition
 from ldai.judge import Judge
+from ldai.managed_agent import ManagedAgent
 from ldai.managed_agent_graph import ManagedAgentGraph
 from ldai.managed_model import ManagedModel
 from ldai.models import (
@@ -33,6 +34,7 @@ from ldai.tracker import AIGraphTracker, LDAIConfigTracker
 _TRACK_SDK_INFO = '$ld:ai:sdk:info'
 _TRACK_USAGE_COMPLETION_CONFIG = '$ld:ai:usage:completion-config'
 _TRACK_USAGE_CREATE_MODEL = '$ld:ai:usage:create-model'
+_TRACK_USAGE_CREATE_AGENT = '$ld:ai:usage:create-agent'
 _TRACK_USAGE_JUDGE_CONFIG = '$ld:ai:usage:judge-config'
 _TRACK_USAGE_CREATE_JUDGE = '$ld:ai:usage:create-judge'
 _TRACK_USAGE_AGENT_CONFIG = '$ld:ai:usage:agent-config'
@@ -376,6 +378,58 @@ class LDAIClient:
         """
         log.warning('create_chat() is deprecated, use create_model() instead')
         return await self.create_model(key, context, default, variables, default_ai_provider)
+
+    async def create_agent(
+        self,
+        key: str,
+        context: Context,
+        tools: Optional[ToolRegistry] = None,
+        default: Optional[AIAgentConfigDefault] = None,
+        variables: Optional[Dict[str, Any]] = None,
+        default_ai_provider: Optional[str] = None,
+    ) -> Optional[ManagedAgent]:
+        """
+        Creates and returns a new ManagedAgent for AI agent invocations.
+
+        :param key: The key identifying the AI agent configuration to use
+        :param context: Standard Context used when evaluating flags
+        :param tools: ToolRegistry mapping tool names to callable implementations
+        :param default: A default value representing a standard AI agent config result.
+            When not provided, a disabled config is used as the fallback.
+        :param variables: Dictionary of values for instruction interpolation
+        :param default_ai_provider: Optional default AI provider to use
+        :return: ManagedAgent instance or None if disabled/unsupported
+
+        Example::
+
+            agent = await client.create_agent(
+                "customer-support-agent",
+                context,
+                tools={"get-order": fetch_order_fn},
+                default=AIAgentConfigDefault(
+                    enabled=True,
+                    model=ModelConfig("gpt-4"),
+                    provider=ProviderConfig("openai"),
+                    instructions="You are a helpful customer support agent."
+                ),
+            )
+
+            if agent:
+                result = await agent.run("Where is my order?")
+                print(result.output)
+        """
+        self._client.track(_TRACK_USAGE_CREATE_AGENT, context, key, 1)
+        log.debug(f"Creating managed agent for key: {key}")
+        config = self.__evaluate_agent(key, context, default or AIAgentConfigDefault.disabled(), variables)
+
+        if not config.enabled or not config.tracker:
+            return None
+
+        runner = await RunnerFactory.create_agent(config, tools or {}, default_ai_provider)
+        if not runner:
+            return None
+
+        return ManagedAgent(config, config.tracker, runner)
 
     def agent_config(
         self,
