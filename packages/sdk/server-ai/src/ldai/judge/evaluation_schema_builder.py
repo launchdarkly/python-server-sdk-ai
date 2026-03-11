@@ -45,7 +45,9 @@ class EvaluationSchemaBuilder:
                         },
                     },
                     'required': ['score', 'reasoning'],
+                    'additionalProperties': False,
                 },
             },
             'required': ['evaluation'],
+            'additionalProperties': False,
         }
