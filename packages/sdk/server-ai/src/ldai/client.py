@@ -11,7 +11,7 @@ from ldai.judge import Judge
 from ldai.models import (AIAgentConfig, AIAgentConfigDefault,
                          AIAgentConfigRequest, AIAgentGraphConfig, AIAgents,
                          AICompletionConfig, AICompletionConfigDefault,
-                         AIJudgeConfig, AIJudgeConfigDefault, Edge,
+                         AIJudgeConfig, AIJudgeConfigDefault, AITool, Edge,
                          JudgeConfiguration, LDMessage, ModelConfig,
                          ProviderConfig)
 from ldai.providers.ai_provider_factory import AIProviderFactory
@@ -52,15 +52,31 @@ class LDAIClient:
         default: AICompletionConfigDefault,
         variables: Optional[Dict[str, Any]] = None,
     ) -> AICompletionConfig:
-        model, provider, messages, instructions, tracker, enabled, judge_configuration, _ = self.__evaluate(
+        model, provider, messages, instructions, tracker, enabled, judge_configuration, variation = self.__evaluate(
             key, context, default.to_dict(), variables
         )
+
+        # Parse tools from variation data
+        tools = None
+        if 'tools' in variation and isinstance(variation['tools'], list):
+            tools = [
+                AITool(
+                    key=tool['key'],
+                    version=tool.get('version', 0),
+                    instructions=tool.get('instructions'),
+                    examples=tool.get('examples'),
+                    custom_parameters=tool.get('customParameters'),
+                )
+                for tool in variation['tools']
+                if isinstance(tool, dict) and 'key' in tool
+            ]
 
         config = AICompletionConfig(
             key=key,
             enabled=bool(enabled),
             model=model,
             messages=messages,
+            tools=tools if tools is not None else default.tools,
             provider=provider,
             tracker=tracker,
             judge_configuration=judge_configuration,
@@ -706,12 +722,27 @@ class LDAIClient:
         :param variables: Variables for interpolation.
         :return: Configured AIAgentConfig instance.
         """
-        model, provider, messages, instructions, tracker, enabled, judge_configuration, _ = self.__evaluate(
+        model, provider, messages, instructions, tracker, enabled, judge_configuration, variation = self.__evaluate(
             key, context, default.to_dict(), variables
         )
 
         # For agents, prioritize instructions over messages
         final_instructions = instructions if instructions is not None else default.instructions
+
+        # Parse tools from variation data
+        tools = None
+        if 'tools' in variation and isinstance(variation['tools'], list):
+            tools = [
+                AITool(
+                    key=tool['key'],
+                    version=tool.get('version', 0),
+                    instructions=tool.get('instructions'),
+                    examples=tool.get('examples'),
+                    custom_parameters=tool.get('customParameters'),
+                )
+                for tool in variation['tools']
+                if isinstance(tool, dict) and 'key' in tool
+            ]
 
         return AIAgentConfig(
             key=key,
@@ -719,6 +750,7 @@ class LDAIClient:
             model=model or default.model,
             provider=provider or default.provider,
             instructions=final_instructions,
+            tools=tools if tools is not None else default.tools,
             tracker=tracker,
             judge_configuration=judge_configuration or default.judge_configuration,
         )

@@ -140,6 +140,38 @@ class JudgeConfiguration:
 
 
 # ============================================================================
+# Tool Types
+# ============================================================================
+
+@dataclass(frozen=True)
+class AITool:
+    """
+    Configuration for an AI tool.
+    """
+    key: str
+    version: int
+    instructions: Optional[str] = None
+    examples: Optional[str] = None
+    custom_parameters: Optional[Dict[str, Any]] = None
+
+    def to_dict(self) -> dict:
+        """
+        Render the tool as a dictionary object.
+        """
+        result: Dict[str, Any] = {
+            'key': self.key,
+            'version': self.version,
+        }
+        if self.instructions is not None:
+            result['instructions'] = self.instructions
+        if self.examples is not None:
+            result['examples'] = self.examples
+        if self.custom_parameters is not None:
+            result['customParameters'] = self.custom_parameters
+        return result
+
+
+# ============================================================================
 # Base AI Config Types
 # ============================================================================
 
@@ -207,6 +239,7 @@ class AICompletionConfigDefault(AIConfigDefault):
     Default Completion AI Config (default mode).
     """
     messages: Optional[List[LDMessage]] = None
+    tools: Optional[List[AITool]] = None
     judge_configuration: Optional[JudgeConfiguration] = None
 
     def to_dict(self) -> dict:
@@ -215,6 +248,8 @@ class AICompletionConfigDefault(AIConfigDefault):
         """
         result = self._base_to_dict()
         result['messages'] = [message.to_dict() for message in self.messages] if self.messages else None
+        if self.tools is not None:
+            result['tools'] = [tool.to_dict() for tool in self.tools]
         if self.judge_configuration is not None:
             result['judgeConfiguration'] = self.judge_configuration.to_dict()
         return result
@@ -226,6 +261,7 @@ class AICompletionConfig(AIConfig):
     Completion AI Config (default mode).
     """
     messages: Optional[List[LDMessage]] = None
+    tools: Optional[List[AITool]] = None
     judge_configuration: Optional[JudgeConfiguration] = None
 
     def to_dict(self) -> dict:
@@ -234,6 +270,8 @@ class AICompletionConfig(AIConfig):
         """
         result = self._base_to_dict()
         result['messages'] = [message.to_dict() for message in self.messages] if self.messages else None
+        if self.tools is not None:
+            result['tools'] = [tool.to_dict() for tool in self.tools]
         if self.judge_configuration is not None:
             result['judgeConfiguration'] = self.judge_configuration.to_dict()
         return result
@@ -249,6 +287,7 @@ class AIAgentConfigDefault(AIConfigDefault):
     Default Agent-specific AI Config with instructions.
     """
     instructions: Optional[str] = None
+    tools: Optional[List[AITool]] = None
     judge_configuration: Optional[JudgeConfiguration] = None
 
     def to_dict(self) -> Dict[str, Any]:
@@ -258,6 +297,8 @@ class AIAgentConfigDefault(AIConfigDefault):
         result = self._base_to_dict()
         if self.instructions is not None:
             result['instructions'] = self.instructions
+        if self.tools is not None:
+            result['tools'] = [tool.to_dict() for tool in self.tools]
         if self.judge_configuration is not None:
             result['judgeConfiguration'] = self.judge_configuration.to_dict()
         return result
@@ -269,6 +310,7 @@ class AIAgentConfig(AIConfig):
     Agent-specific AI Config with instructions.
     """
     instructions: Optional[str] = None
+    tools: Optional[List[AITool]] = None
     judge_configuration: Optional[JudgeConfiguration] = None
 
     def to_dict(self) -> Dict[str, Any]:
@@ -278,6 +320,8 @@ class AIAgentConfig(AIConfig):
         result = self._base_to_dict()
         if self.instructions is not None:
             result['instructions'] = self.instructions
+        if self.tools is not None:
+            result['tools'] = [tool.to_dict() for tool in self.tools]
         if self.judge_configuration is not None:
             result['judgeConfiguration'] = self.judge_configuration.to_dict()
         return result
