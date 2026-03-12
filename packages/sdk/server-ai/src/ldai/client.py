@@ -69,14 +69,14 @@ class LDAIClient:
                 )
                 for tool in variation['tools']
                 if isinstance(tool, dict) and 'key' in tool
-            ] or None
+            ]
 
         config = AICompletionConfig(
             key=key,
             enabled=bool(enabled),
             model=model,
             messages=messages,
-            tools=tools if tools is not None else (default.tools if default.tools else None),
+            tools=tools if tools is not None else default.tools,
             provider=provider,
             tracker=tracker,
             judge_configuration=judge_configuration,
@@ -742,7 +742,7 @@ class LDAIClient:
                 )
                 for tool in variation['tools']
                 if isinstance(tool, dict) and 'key' in tool
-            ] or None
+            ]
 
         return AIAgentConfig(
             key=key,
@@ -750,7 +750,7 @@ class LDAIClient:
             model=model or default.model,
             provider=provider or default.provider,
             instructions=final_instructions,
-            tools=tools if tools is not None else (default.tools if default.tools else None),
+            tools=tools if tools is not None else default.tools,
             tracker=tracker,
             judge_configuration=judge_configuration or default.judge_configuration,
         )

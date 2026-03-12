@@ -207,14 +207,34 @@ def test_completion_config_without_tools(ldai_client: LDAIClient):
 
 
 def test_completion_config_empty_tools(ldai_client: LDAIClient):
-    """Test that completion config handles empty tools array."""
+    """Test that completion config preserves empty tools array from server."""
     context = Context.create('user-key')
     default = AICompletionConfigDefault(enabled=False, model=ModelConfig('fallback'))
 
     config = ldai_client.completion_config('empty-tools-config', context, default)
 
     assert config.enabled is True
-    assert config.tools is None
+    # An explicit empty tools array from server should be preserved as empty list,
+    # NOT fall back to defaults
+    assert config.tools is not None
+    assert config.tools == []
+
+
+def test_completion_config_empty_tools_no_default_fallback(ldai_client: LDAIClient):
+    """Test that empty tools array from server does NOT fall back to defaults."""
+    context = Context.create('user-key')
+    default_tools = [AITool(key='default-tool', version=1)]
+    default = AICompletionConfigDefault(
+        enabled=False,
+        model=ModelConfig('fallback'),
+        tools=default_tools,
+    )
+
+    config = ldai_client.completion_config('empty-tools-config', context, default)
+
+    assert config.enabled is True
+    # Server sent empty tools=[], so we should honor that, not use defaults
+    assert config.tools == []
 
 
 def test_completion_config_uses_default_tools(ldai_client: LDAIClient):
