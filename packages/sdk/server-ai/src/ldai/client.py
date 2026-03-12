@@ -52,15 +52,31 @@ class LDAIClient:
         default: AICompletionConfigDefault,
         variables: Optional[Dict[str, Any]] = None,
     ) -> AICompletionConfig:
-        model, provider, messages, instructions, tracker, enabled, judge_configuration, _ = self.__evaluate(
+        model, provider, messages, instructions, tracker, enabled, judge_configuration, variation = self.__evaluate(
             key, context, default.to_dict(), variables
         )
+
+        # Parse tools from variation data
+        tools = None
+        if 'tools' in variation and isinstance(variation['tools'], list):
+            tools = [
+                AITool(
+                    key=tool['key'],
+                    version=tool.get('version', 0),
+                    instructions=tool.get('instructions'),
+                    examples=tool.get('examples'),
+                    custom_parameters=tool.get('customParameters'),
+                )
+                for tool in variation['tools']
+                if isinstance(tool, dict) and 'key' in tool
+            ] or None
 
         config = AICompletionConfig(
             key=key,
             enabled=bool(enabled),
             model=model,
             messages=messages,
+            tools=tools if tools is not None else (default.tools if default.tools else None),
             provider=provider,
             tracker=tracker,
             judge_configuration=judge_configuration,

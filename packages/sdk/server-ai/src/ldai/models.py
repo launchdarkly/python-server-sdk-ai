@@ -239,6 +239,7 @@ class AICompletionConfigDefault(AIConfigDefault):
     Default Completion AI Config (default mode).
     """
     messages: Optional[List[LDMessage]] = None
+    tools: Optional[List[AITool]] = None
     judge_configuration: Optional[JudgeConfiguration] = None
 
     def to_dict(self) -> dict:
@@ -247,6 +248,8 @@ class AICompletionConfigDefault(AIConfigDefault):
         """
         result = self._base_to_dict()
         result['messages'] = [message.to_dict() for message in self.messages] if self.messages else None
+        if self.tools is not None:
+            result['tools'] = [tool.to_dict() for tool in self.tools]
         if self.judge_configuration is not None:
             result['judgeConfiguration'] = self.judge_configuration.to_dict()
         return result
@@ -258,6 +261,7 @@ class AICompletionConfig(AIConfig):
     Completion AI Config (default mode).
     """
     messages: Optional[List[LDMessage]] = None
+    tools: Optional[List[AITool]] = None
     judge_configuration: Optional[JudgeConfiguration] = None
 
     def to_dict(self) -> dict:
@@ -266,6 +270,8 @@ class AICompletionConfig(AIConfig):
         """
         result = self._base_to_dict()
         result['messages'] = [message.to_dict() for message in self.messages] if self.messages else None
+        if self.tools is not None:
+            result['tools'] = [tool.to_dict() for tool in self.tools]
         if self.judge_configuration is not None:
             result['judgeConfiguration'] = self.judge_configuration.to_dict()
         return result
