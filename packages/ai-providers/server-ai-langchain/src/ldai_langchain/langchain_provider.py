@@ -134,18 +134,18 @@ class LangChainProvider(AIProvider):
         """
         Map LaunchDarkly provider names to LangChain provider names.
 
-        This method enables seamless integration between LaunchDarkly's standardized
-        provider naming and LangChain's naming conventions.
-
         :param ld_provider_name: LaunchDarkly provider name
         :return: LangChain-compatible provider name
         """
         lowercased_name = ld_provider_name.lower()
+        # Bedrock is the only provider that uses "provider:model_family" (e.g. Bedrock:Anthropic).
+        if lowercased_name.startswith('bedrock:'):
+            return 'bedrock_converse'
 
         mapping: Dict[str, str] = {
             'gemini': 'google-genai',
+            'bedrock': 'bedrock_converse',
         }
-
         return mapping.get(lowercased_name, lowercased_name)
 
     @staticmethod
@@ -232,10 +232,15 @@ class LangChainProvider(AIProvider):
 
         model_name = model_dict.get('name', '')
         provider = provider_dict.get('name', '')
-        parameters = model_dict.get('parameters') or {}
+        parameters = dict(model_dict.get('parameters') or {})
+        mapped_provider = LangChainProvider.map_provider(provider)
 
+        # Bedrock requires the foundation provider (e.g. Bedrock:Anthropic) passed in
+        # parameters separately from model_provider, which is used for LangChain routing.
+        if mapped_provider == 'bedrock_converse' and 'provider' not in parameters:
+            parameters['provider'] = provider
         return init_chat_model(
             model_name,
-            model_provider=LangChainProvider.map_provider(provider),
+            model_provider=mapped_provider,
             **parameters,
         )

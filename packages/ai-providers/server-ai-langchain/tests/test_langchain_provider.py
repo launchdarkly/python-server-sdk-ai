@@ -130,6 +130,14 @@ class TestMapProvider:
         assert LangChainProvider.map_provider('Gemini') == 'google-genai'
         assert LangChainProvider.map_provider('GEMINI') == 'google-genai'
 
+    def test_maps_bedrock_and_model_families_to_bedrock_converse(self):
+        """Should map bedrock and bedrock:model_family to bedrock_converse."""
+        assert LangChainProvider.map_provider('bedrock') == 'bedrock_converse'
+        assert LangChainProvider.map_provider('Bedrock:Anthropic') == 'bedrock_converse'
+        assert LangChainProvider.map_provider('bedrock:anthropic') == 'bedrock_converse'
+        assert LangChainProvider.map_provider('bedrock:amazon') == 'bedrock_converse'
+        assert LangChainProvider.map_provider('bedrock:cohere') == 'bedrock_converse'
+
     def test_returns_provider_name_unchanged_for_unmapped_providers(self):
         """Should return provider name unchanged for unmapped providers."""
         assert LangChainProvider.map_provider('openai') == 'openai'
@@ -197,7 +205,8 @@ class TestInvokeStructuredModel:
     @pytest.mark.asyncio
     async def test_returns_success_true_for_successful_invocation(self, mock_llm):
         """Should return success=True for successful invocation."""
-        mock_response = {'result': 'structured data'}
+        parsed_data = {'result': 'structured data'}
+        mock_response = {'parsed': parsed_data, 'raw': None}
         mock_structured_llm = MagicMock()
         mock_structured_llm.ainvoke = AsyncMock(return_value=mock_response)
         mock_llm.with_structured_output = MagicMock(return_value=mock_structured_llm)
@@ -208,7 +217,7 @@ class TestInvokeStructuredModel:
         result = await provider.invoke_structured_model(messages, response_structure)
 
         assert result.metrics.success is True
-        assert result.data == mock_response
+        assert result.data == parsed_data
 
     @pytest.mark.asyncio
     async def test_returns_success_false_when_structured_model_invocation_throws_error(self, mock_llm):
