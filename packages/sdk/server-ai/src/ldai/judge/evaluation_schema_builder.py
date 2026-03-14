@@ -1,79 +1,53 @@
-"""Internal class for building dynamic evaluation response schemas."""
+"""Internal class for building evaluation response schemas."""
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 
 class EvaluationSchemaBuilder:
     """
-    Internal class for building dynamic evaluation response schemas.
+    Internal class for building evaluation response schemas.
     Not exported - only used internally by Judge.
+    Schema is a fixed shape: one "evaluation" object with score and reasoning.
+    The judge config's evaluation_metric_key is only used when keying the result,
+    not in the schema.
     """
 
     @staticmethod
-    def build(evaluation_metric_key: Optional[str]) -> Optional[Dict[str, Any]]:
+    def build() -> Dict[str, Any]:
         """
-        Build an evaluation response schema from evaluation metric key.
+        Build the evaluation response schema. No parameters; the schema is
+        always the same. The judge keys the parsed result by its config's
+        evaluation_metric_key.
 
-        :param evaluation_metric_key: Evaluation metric key, or None if not available
-        :return: Schema dictionary for structured output, or None if evaluation_metric_key is None
+        In practice the model returns JSON like:
+          {"evaluation": {"score": 0.85, "reasoning": "The response is accurate."}}
+
+        :return: Schema dictionary for structured output
         """
-        if not evaluation_metric_key:
-            return None
-
         return {
             'title': 'EvaluationResponse',
-            'description': f"Response containing evaluation results for {evaluation_metric_key} metric",
+            'description': 'Response containing an evaluation (score and reasoning).',
             'type': 'object',
             'properties': {
-                'evaluations': {
+                'evaluation': {
                     'type': 'object',
-                    'description': (
-                        f"Object containing evaluation results for "
-                        f"{evaluation_metric_key} metric"
-                    ),
-                    'properties': EvaluationSchemaBuilder._build_key_properties(evaluation_metric_key),
-                    'required': [evaluation_metric_key],
+                    'description': 'The evaluation result.',
+                    'properties': {
+                        'score': {
+                            'type': 'number',
+                            'minimum': 0,
+                            'maximum': 1,
+                            'description': 'Score between 0.0 and 1.0.',
+                        },
+                        'reasoning': {
+                            'type': 'string',
+                            'description': 'Reasoning behind the score.',
+                        },
+                    },
+                    'required': ['score', 'reasoning'],
                     'additionalProperties': False,
                 },
             },
-            'required': ['evaluations'],
-            'additionalProperties': False,
-        }
-
-    @staticmethod
-    def _build_key_properties(evaluation_metric_key: str) -> Dict[str, Any]:
-        """
-        Build properties for a single evaluation metric key.
-
-        :param evaluation_metric_key: Evaluation metric key
-        :return: Dictionary of properties for the key
-        """
-        return {
-            evaluation_metric_key: EvaluationSchemaBuilder._build_key_schema(evaluation_metric_key)
-        }
-
-    @staticmethod
-    def _build_key_schema(key: str) -> Dict[str, Any]:
-        """
-        Build schema for a single evaluation metric key.
-
-        :param key: Evaluation metric key
-        :return: Schema dictionary for the key
-        """
-        return {
-            'type': 'object',
-            'properties': {
-                'score': {
-                    'type': 'number',
-                    'minimum': 0,
-                    'maximum': 1,
-                    'description': f'Score between 0.0 and 1.0 for {key}',
-                },
-                'reasoning': {
-                    'type': 'string',
-                    'description': f'Reasoning behind the score for {key}',
-                },
-            },
-            'required': ['score', 'reasoning'],
+            'required': ['evaluation'],
             'additionalProperties': False,
         }
