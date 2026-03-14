@@ -102,7 +102,7 @@ class LangChainProvider(AIProvider):
                     f'Got: {type(response)}'
                 )
                 return structured_response
-            
+
             raw_response = response.get('raw')
             if raw_response is not None:
                 if hasattr(raw_response, 'content'):
