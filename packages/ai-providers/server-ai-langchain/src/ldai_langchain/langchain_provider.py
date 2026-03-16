@@ -1,6 +1,5 @@
 """LangChain implementation of AIProvider for LaunchDarkly AI SDK."""
 
-from tokenize import Token
 from typing import Any, Dict, List, Optional, Union
 
 from langchain_core.language_models.chat_models import BaseChatModel
@@ -87,10 +86,7 @@ class LangChainProvider(AIProvider):
         structured_response = StructuredResponse(
             data={},
             raw_response='',
-            metrics=LDAIMetrics(
-                success=False,
-                usage=TokenUsage(total=0, input=0, output=0),
-            ),
+            metrics=LDAIMetrics(success=False, usage=None),
         )
         try:
             langchain_messages = LangChainProvider.convert_messages_to_langchain(messages)
