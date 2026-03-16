@@ -7,7 +7,6 @@
 
 * Improve metric token collection for Judge evaluations when using LangChain ([f951dac](https://github.com/launchdarkly/python-server-sdk-ai/commit/f951daccd569a0b5ff598f571d105a7d244939d1))
 * Improved raw response when performing Judge evaluations using LangChain ([f951dac](https://github.com/launchdarkly/python-server-sdk-ai/commit/f951daccd569a0b5ff598f571d105a7d244939d1))
-* Simplify judge structured output for improve reliability for judge scores for some LLMs ([#105](https://github.com/launchdarkly/python-server-sdk-ai/issues/105)) ([f951dac](https://github.com/launchdarkly/python-server-sdk-ai/commit/f951daccd569a0b5ff598f571d105a7d244939d1))
 * Update comments for setting default ([#99](https://github.com/launchdarkly/python-server-sdk-ai/issues/99)) ([a14761d](https://github.com/launchdarkly/python-server-sdk-ai/commit/a14761d0f832e2fd07323f1f5322c76a1d7d7bf6))
 
 ## [0.3.1](https://github.com/launchdarkly/python-server-sdk-ai/compare/launchdarkly-server-sdk-ai-langchain-0.3.0...launchdarkly-server-sdk-ai-langchain-0.3.1) (2026-02-23)

@@ -7,8 +7,6 @@ All notable changes to the LaunchDarkly Python AI package will be documented in 
 
 ### Bug Fixes
 
-* Improve metric token collection for Judge evaluations when using LangChain ([f951dac](https://github.com/launchdarkly/python-server-sdk-ai/commit/f951daccd569a0b5ff598f571d105a7d244939d1))
-* Improved raw response when performing Judge evaluations using LangChain ([f951dac](https://github.com/launchdarkly/python-server-sdk-ai/commit/f951daccd569a0b5ff598f571d105a7d244939d1))
 * Simplify judge structured output for improve reliability for judge scores for some LLMs ([#105](https://github.com/launchdarkly/python-server-sdk-ai/issues/105)) ([f951dac](https://github.com/launchdarkly/python-server-sdk-ai/commit/f951daccd569a0b5ff598f571d105a7d244939d1))
 
 ## [0.16.0](https://github.com/launchdarkly/python-server-sdk-ai/compare/launchdarkly-server-sdk-ai-0.15.0...launchdarkly-server-sdk-ai-0.16.0) (2026-03-09)
