@@ -235,8 +235,7 @@ class TestInvokeStructuredModel:
         assert result.metrics.success is False
         assert result.data == {}
         assert result.raw_response == ''
-        assert result.metrics.usage is not None
-        assert result.metrics.usage.total == 0
+        assert result.metrics.usage is None
 
 
 class TestGetChatModel:
