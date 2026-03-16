@@ -174,7 +174,7 @@ class Judge:
 
     def _parse_evaluation_response(self, data: Dict[str, Any]) -> Dict[str, EvalScore]:
         """
-        Parses the structured evaluation response. Expects {"evaluation": {"score": n, "reasoning": "..."}}.
+        Parses the structured evaluation response. Expects {"score": n, "reasoning": "..."}.
         """
         results: Dict[str, EvalScore] = {}
         metric_key = self._ai_config.evaluation_metric_key
@@ -182,13 +182,12 @@ class Judge:
             log.warn('Evaluation metric key is missing')
             return results
 
-        evaluation = data.get('evaluation') if isinstance(data, dict) else None
-        if not isinstance(evaluation, dict):
+        if not isinstance(data, dict):
             log.warn('Invalid response: missing or invalid evaluation')
             return results
 
-        score = evaluation.get('score')
-        reasoning = evaluation.get('reasoning')
+        score = data.get('score')
+        reasoning = data.get('reasoning')
         if not isinstance(score, (int, float)) or score < 0 or score > 1:
             log.warn(f'Invalid score: {score}. Score must be a number between 0 and 1 inclusive')
             return results

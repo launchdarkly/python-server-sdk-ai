@@ -7,7 +7,7 @@ class EvaluationSchemaBuilder:
     """
     Internal class for building evaluation response schemas.
     Not exported - only used internally by Judge.
-    Schema is a fixed shape: one "evaluation" object with score and reasoning.
+    Schema is a fixed shape: top-level score and reasoning.
     The judge config's evaluation_metric_key is only used when keying the result,
     not in the schema.
     """
@@ -20,7 +20,7 @@ class EvaluationSchemaBuilder:
         evaluation_metric_key.
 
         In practice the model returns JSON like:
-          {"evaluation": {"score": 0.85, "reasoning": "The response is accurate."}}
+          {"score": 0.85, "reasoning": "The response is accurate."}
 
         :return: Schema dictionary for structured output
         """
@@ -29,25 +29,17 @@ class EvaluationSchemaBuilder:
             'description': 'Response containing an evaluation (score and reasoning).',
             'type': 'object',
             'properties': {
-                'evaluation': {
-                    'type': 'object',
-                    'description': 'The evaluation result.',
-                    'properties': {
-                        'score': {
-                            'type': 'number',
-                            'minimum': 0,
-                            'maximum': 1,
-                            'description': 'Score between 0.0 and 1.0.',
-                        },
-                        'reasoning': {
-                            'type': 'string',
-                            'description': 'Reasoning behind the score.',
-                        },
-                    },
-                    'required': ['score', 'reasoning'],
-                    'additionalProperties': False,
+                'score': {
+                    'type': 'number',
+                    'minimum': 0,
+                    'maximum': 1,
+                    'description': 'Score between 0.0 and 1.0.',
+                },
+                'reasoning': {
+                    'type': 'string',
+                    'description': 'Reasoning behind the score.',
                 },
             },
-            'required': ['evaluation'],
+            'required': ['score', 'reasoning'],
             'additionalProperties': False,
         }
