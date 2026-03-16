@@ -143,7 +143,7 @@ class LangChainProvider(AIProvider):
             'bedrock': 'bedrock_converse',
         }
         return mapping.get(lowercased_name, lowercased_name)
-    
+
     @staticmethod
     def get_ai_usage_from_response(response: BaseMessage) -> TokenUsage:
         """
