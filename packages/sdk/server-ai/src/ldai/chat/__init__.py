@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Optional
 from ldai import log
 from ldai.judge import Judge
 from ldai.models import AICompletionConfig, LDMessage
+from ldai.observe import _span_scope, annotate_span_with_ai_config_metadata
 from ldai.providers.ai_provider import AIProvider
 from ldai.providers.types import ChatResponse, JudgeResponse
 from ldai.tracker import LDAIConfigTracker
@@ -50,29 +51,44 @@ class Chat:
         :param prompt: The user prompt to send to the chat model
         :return: ChatResponse containing the model's response and metrics
         """
-        # Convert prompt string to LDMessage with role 'user' and add to conversation history
         user_message: LDMessage = LDMessage(role='user', content=prompt)
         self._messages.append(user_message)
 
-        # Prepend config messages to conversation history for model invocation
         config_messages = self._ai_config.messages or []
         all_messages = config_messages + self._messages
 
-        # Delegate to provider-specific implementation with tracking
-        response = await self._tracker.track_metrics_of(
-            lambda: self._provider.invoke_model(all_messages),
-            lambda result: result.metrics,
-        )
+        observe_config = self._tracker._observe_config
+        create_if_none = observe_config.annotate_spans and observe_config.create_span_if_none
 
-        # Start judge evaluations as async tasks (don't await them)
-        if (
-            self._ai_config.judge_configuration
-            and self._ai_config.judge_configuration.judges
-            and len(self._ai_config.judge_configuration.judges) > 0
-        ):
-            response.evaluations = self._start_judge_evaluations(self._messages, response)
+        # Open (or reuse) a span for the full invoke — LLM call AND judge task
+        # creation must happen inside this block so that asyncio.create_task()
+        # captures the active span in its context copy.  Judge spans created
+        # later in those tasks will then be correctly parented to this span.
+        with _span_scope("ld.ai.completion", create_if_none=create_if_none):
+            if observe_config.annotate_spans:
+                annotate_span_with_ai_config_metadata(
+                    self._ai_config.key,
+                    self._tracker._variation_key,
+                    self._tracker._model_name,
+                    self._tracker._provider_name,
+                    version=self._tracker._version,
+                    context_key=self._tracker._context.key,
+                    enabled=self._tracker._enabled,
+                )
 
-        # Add the response message to conversation history
+            response = await self._tracker.track_metrics_of(
+                lambda: self._provider.invoke_model(all_messages),
+                lambda result: result.metrics,
+            )
+
+            # Create judge tasks INSIDE the span scope so asyncio.create_task()
+            # snapshots the context while the completion span is still active.
+            if (
+                self._ai_config.judge_configuration
+                and self._ai_config.judge_configuration.judges
+            ):
+                response.evaluations = self._start_judge_evaluations(self._messages, response)
+
         self._messages.append(response.message)
         return response
 
@@ -113,9 +129,18 @@ class Chat:
 
             return eval_result
 
+        observe_config = self._tracker._observe_config
+        create_judge_span = observe_config.annotate_spans and observe_config.create_span_if_none
+
+        async def evaluate_judge_with_span(judge_config):
+            # Open the ld.ai.judge span BEFORE the judge LLM call so the
+            # judge's openai.chat span is nested inside it, not beside it.
+            with _span_scope("ld.ai.judge", create_if_none=create_judge_span):
+                return await evaluate_judge(judge_config)
+
         # Create tasks for each judge evaluation
         tasks = [
-            asyncio.create_task(evaluate_judge(judge_config))
+            asyncio.create_task(evaluate_judge_with_span(judge_config))
             for judge_config in judge_configs
         ]
 

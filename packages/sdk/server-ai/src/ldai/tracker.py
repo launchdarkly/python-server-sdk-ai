@@ -5,6 +5,18 @@ from typing import Any, Dict, List, Optional
 
 from ldclient import Context, LDClient
 
+from ldai.observe import (
+    LDAIObserveConfig,
+    _span_scope,
+    annotate_span_success,
+    annotate_span_with_ai_config_metadata,
+    annotate_span_with_duration,
+    annotate_span_with_feedback,
+    annotate_span_with_judge_response,
+    annotate_span_with_tokens,
+    annotate_span_with_ttft,
+)
+
 
 class FeedbackKind(Enum):
     """
@@ -77,6 +89,8 @@ class LDAIConfigTracker:
         model_name: str,
         provider_name: str,
         context: Context,
+        observe_config: Optional[LDAIObserveConfig] = None,
+        enabled: bool = True,
     ):
         """
         Initialize an AI Config tracker.
@@ -88,6 +102,8 @@ class LDAIConfigTracker:
         :param model_name: Name of the model used.
         :param provider_name: Name of the provider used.
         :param context: Context for evaluation.
+        :param observe_config: OTel integration options (defaults to LDAIObserveConfig()).
+        :param enabled: Whether the AI Config variation is enabled (mode).
         """
         self._ld_client = ld_client
         self._variation_key = variation_key
@@ -96,6 +112,8 @@ class LDAIConfigTracker:
         self._model_name = model_name
         self._provider_name = provider_name
         self._context = context
+        self._observe_config = observe_config if observe_config is not None else LDAIObserveConfig()
+        self._enabled = enabled
         self._summary = LDAIMetricSummary()
 
     def __get_track_data(self):
@@ -119,6 +137,8 @@ class LDAIConfigTracker:
         :param duration: Duration in milliseconds.
         """
         self._summary._duration = duration
+        if self._observe_config.annotate_spans:
+            annotate_span_with_duration(duration)
         self._ld_client.track(
             "$ld:ai:duration:total", self._context, self.__get_track_data(), duration
         )
@@ -130,6 +150,8 @@ class LDAIConfigTracker:
         :param time_to_first_token: Time to first token in milliseconds.
         """
         self._summary._time_to_first_token = time_to_first_token
+        if self._observe_config.annotate_spans:
+            annotate_span_with_ttft(time_to_first_token)
         self._ld_client.track(
             "$ld:ai:tokens:ttf",
             self._context,
@@ -231,7 +253,10 @@ class LDAIConfigTracker:
         from ldai.providers.types import EvalScore, JudgeResponse
 
         if isinstance(judge_response, JudgeResponse):
-            # Track evaluation scores with judge config key included in metadata
+            if self._observe_config.annotate_spans:
+                with _span_scope("ld.ai.judge", create_if_none=self._observe_config.create_span_if_none):
+                    annotate_span_with_judge_response(judge_response)
+
             if judge_response.evals:
                 track_data = self.__get_track_data()
                 if judge_response.judge_config_key:
@@ -253,6 +278,8 @@ class LDAIConfigTracker:
         :param feedback: Dictionary containing feedback kind.
         """
         self._summary._feedback = feedback
+        if self._observe_config.annotate_spans:
+            annotate_span_with_feedback(feedback["kind"].value)
         if feedback["kind"] == FeedbackKind.Positive:
             self._ld_client.track(
                 "$ld:ai:feedback:user:positive",
@@ -273,6 +300,8 @@ class LDAIConfigTracker:
         Track a successful AI generation.
         """
         self._summary._success = True
+        if self._observe_config.annotate_spans:
+            annotate_span_success(True)
         self._ld_client.track(
             "$ld:ai:generation:success", self._context, self.__get_track_data(), 1
         )
@@ -282,44 +311,72 @@ class LDAIConfigTracker:
         Track an unsuccessful AI generation attempt.
         """
         self._summary._success = False
+        if self._observe_config.annotate_spans:
+            annotate_span_success(False)
         self._ld_client.track(
             "$ld:ai:generation:error", self._context, self.__get_track_data(), 1
         )
 
     def track_openai_metrics(self, func):
         """
-        Track OpenAI-specific operations.
+        Track an OpenAI chat completion call end-to-end.
 
-        This function will track the duration of the operation, the token
-        usage, and the success or error status.
+        Wraps ``func`` (a zero-argument callable that returns an OpenAI
+        ``ChatCompletion`` response) and automatically records:
 
-        If the provided function throws, then this method will also throw.
+        - AI Config metadata on the active span (key, variation, model, provider)
+        - Token usage (prompt, completion, total)
+        - Wall-clock duration
+        - Success or error status
 
-        In the case the provided function throws, this function will record the
-        duration and an error.
+        All LD analytics events fire regardless of OTel configuration.
+        If no OTel span is active and ``LDAIObserveConfig.create_span_if_none``
+        is True (the default), an internal ``ld.ai.completion`` span is
+        created and exported automatically.
 
-        A failed operation will not have any token usage data.
-
-        :param func: Function to track.
-        :return: Result of the tracked function.
+        :param func: Zero-argument callable that performs the LLM call.
+        :return: The ``ChatCompletion`` result returned by ``func``.
         """
+        if not self._observe_config.annotate_spans:
+            return self._run_tracked(func)
+
+        with _span_scope(create_if_none=self._observe_config.create_span_if_none):
+            annotate_span_with_ai_config_metadata(
+                self._config_key,
+                self._variation_key,
+                self._model_name,
+                self._provider_name,
+                version=self._version,
+                context_key=self._context.key,
+                enabled=self._enabled,
+            )
+            return self._run_tracked(func)
+
+    def _run_tracked(self, func):
+        """Execute func() while tracking duration, success/error, and tokens."""
         start_time = time.time()
         try:
             result = func()
-            end_time = time.time()
-            duration = int((end_time - start_time) * 1000)
-            self.track_duration(duration)
-            self.track_success()
-            if hasattr(result, "usage") and hasattr(result.usage, "to_dict"):
-                self.track_tokens(_openai_to_token_usage(result.usage.to_dict()))
         except Exception:
-            end_time = time.time()
-            duration = int((end_time - start_time) * 1000)
-            self.track_duration(duration)
+            self.track_duration(int((time.time() - start_time) * 1000))
             self.track_error()
             raise
-
+        self.track_duration(int((time.time() - start_time) * 1000))
+        self.track_success()
+        self._track_tokens_from_usage(getattr(result, "usage", None))
         return result
+
+    def _track_tokens_from_usage(self, usage) -> None:
+        """Extract token counts from an OpenAI usage object and track them."""
+        if usage is None:
+            return
+        data: Optional[Dict] = None
+        if hasattr(usage, "to_dict"):
+            data = usage.to_dict()
+        elif hasattr(usage, "model_dump"):
+            data = usage.model_dump()
+        if data:
+            self.track_tokens(_openai_to_token_usage(data))
 
     def track_bedrock_converse_metrics(self, res: dict) -> dict:
         """
@@ -350,6 +407,8 @@ class LDAIConfigTracker:
         :param tokens: Token usage data from either custom, OpenAI, or Bedrock sources.
         """
         self._summary._usage = tokens
+        if self._observe_config.annotate_spans:
+            annotate_span_with_tokens(tokens.total, tokens.input, tokens.output)
         if tokens.total > 0:
             self._ld_client.track(
                 "$ld:ai:tokens:total",

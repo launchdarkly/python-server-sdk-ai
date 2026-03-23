@@ -1,10 +1,12 @@
-from typing import Any, Dict, List, Optional, Tuple
+from contextlib import contextmanager
+from typing import Any, Dict, Generator, List, Optional, Tuple
 
 import chevron
 from ldclient import Context
 from ldclient.client import LDClient
 
 from ldai import log
+from ldai.observe import LDAIObserveConfig, detach_ai_config_baggage, set_ai_config_baggage
 from ldai.agent_graph import AgentGraphDefinition
 from ldai.chat import Chat
 from ldai.judge import Judge
@@ -32,8 +34,9 @@ _INIT_TRACK_CONTEXT = Context.builder('ld-internal-tracking').kind('ld_ai').anon
 class LDAIClient:
     """The LaunchDarkly AI SDK client object."""
 
-    def __init__(self, client: LDClient):
+    def __init__(self, client: LDClient, observe: Optional[LDAIObserveConfig] = None):
         self._client = client
+        self._observe_config = observe if observe is not None else LDAIObserveConfig()
         self._client.track(
             _TRACK_SDK_INFO,
             _INIT_TRACK_CONTEXT,
@@ -90,6 +93,60 @@ class LDAIClient:
         return self._completion_config(
             key, context, default or AICompletionConfigDefault.disabled(), variables
         )
+
+    @contextmanager
+    def config_scope(
+        self,
+        key: str,
+        context: Context,
+        default: Optional[AICompletionConfigDefault] = None,
+        variables: Optional[Dict[str, Any]] = None,
+    ) -> Generator[AICompletionConfig, None, None]:
+        """
+        Context manager that evaluates an AI Config and scopes its metadata to
+        the OTel context for the duration of the block.
+
+        While inside the block, any OTel span that is started (including spans
+        created automatically by OpenLLMetry or other auto-instrumentation) will
+        have the AI Config key, variation key, model, and provider stamped on it
+        as span attributes by LDAIBaggageSpanProcessor, if that processor is
+        registered.
+
+        This solves the context propagation problem: when completion_config() is
+        called at one point in the code and the LLM call happens later, deep in
+        the call stack, the baggage propagates automatically so the two can be
+        correlated in LaunchDarkly.
+
+        Example::
+
+            with aiclient.config_scope("my-ai-config", context) as config:
+                if config.enabled:
+                    # LLM call can be anywhere inside this block, even in a
+                    # helper function several layers down. OpenLLMetry's
+                    # auto-instrumented span will carry ld.ai_config.key.
+                    response = openai_client.chat.completions.create(
+                        model=config.model.name,
+                        messages=build_messages(config.messages, history),
+                    )
+                    config.tracker.track_openai_metrics(lambda: response)
+
+        :param key: The key of the completion configuration.
+        :param context: The context to evaluate the completion configuration in.
+        :param default: The default value of the completion configuration.
+        :param variables: Additional variables for the completion configuration.
+        :return: Generator yielding the evaluated AICompletionConfig.
+        """
+        config = self.completion_config(key, context, default, variables)
+
+        model_name = config.model.name if config.model else ""
+        provider_name = config.provider.name if config.provider else ""
+        variation_key = config.tracker._variation_key if config.tracker else ""
+
+        _, token = set_ai_config_baggage(key, variation_key, model_name, provider_name)
+        try:
+            yield config
+        finally:
+            detach_ai_config_baggage(token)
 
     def config(
         self,
@@ -661,17 +718,20 @@ class LDAIClient:
                 custom=custom
             )
 
+        ld_meta = variation.get('_ldMeta', {})
+        enabled = ld_meta.get('enabled', False)
+
         tracker = LDAIConfigTracker(
             self._client,
-            variation.get('_ldMeta', {}).get('variationKey', ''),
+            ld_meta.get('variationKey', ''),
             key,
-            int(variation.get('_ldMeta', {}).get('version', 1)),
+            int(ld_meta.get('version', 1)),
             model.name if model else '',
             provider_config.name if provider_config else '',
             context,
+            observe_config=self._observe_config,
+            enabled=bool(enabled),
         )
-
-        enabled = variation.get('_ldMeta', {}).get('enabled', False)
 
         judge_configuration = None
         if 'judgeConfiguration' in variation and isinstance(variation['judgeConfiguration'], dict):
