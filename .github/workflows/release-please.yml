@@ -47,7 +47,7 @@ jobs:
       package-server-ai-openai-released: ${{ steps.release.outputs['packages/ai-providers/server-ai-openai--release_created'] }}
       package-server-ai-openai-tag-name: ${{ steps.release.outputs['packages/ai-providers/server-ai-openai--tag_name'] }}
     steps:
-      - uses: googleapis/release-please-action@v4
+      - uses: googleapis/release-please-action@16a9c90856f42705d54a6fda1823352bdc62cf38 # v4
         id: release
 
   release-server-ai:
@@ -68,7 +68,7 @@ jobs:
           python-version: '3.11'
 
       - name: Install poetry
-        uses: abatilo/actions-poetry@7b6d33e44b4f08d7021a1dee3c044e9c253d6439
+        uses: abatilo/actions-poetry@7b6d33e44b4f08d7021a1dee3c044e9c253d6439 # 7b6d33e44b4f08d7021a1dee3c044e9c253d6439
 
       - uses: ./.github/actions/ci
         with:
@@ -109,7 +109,7 @@ jobs:
           python-version: '3.11'
 
       - name: Install poetry
-        uses: abatilo/actions-poetry@7b6d33e44b4f08d7021a1dee3c044e9c253d6439
+        uses: abatilo/actions-poetry@7b6d33e44b4f08d7021a1dee3c044e9c253d6439 # 7b6d33e44b4f08d7021a1dee3c044e9c253d6439
 
       - uses: ./.github/actions/ci
         with:
@@ -146,7 +146,7 @@ jobs:
           python-version: '3.11'
 
       - name: Install poetry
-        uses: abatilo/actions-poetry@7b6d33e44b4f08d7021a1dee3c044e9c253d6439
+        uses: abatilo/actions-poetry@7b6d33e44b4f08d7021a1dee3c044e9c253d6439 # 7b6d33e44b4f08d7021a1dee3c044e9c253d6439
 
       - uses: ./.github/actions/ci
         with:
@@ -191,7 +191,7 @@ jobs:
       actions: read # Needed for detecting the GitHub Actions environment.
       id-token: write # Needed for provenance signing.
       contents: write # Needed for uploading assets to the release.
-    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v2.0.0
+    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@5a775b367a56d5bd118a224a811bba288150a563 # v2.0.0
     with:
       base64-subjects: "${{ needs.release-server-ai-langchain.outputs.package-hashes }}"
       upload-assets: true
@@ -215,7 +215,7 @@ jobs:
           python-version: '3.11'
 
       - name: Install poetry
-        uses: abatilo/actions-poetry@7b6d33e44b4f08d7021a1dee3c044e9c253d6439
+        uses: abatilo/actions-poetry@7b6d33e44b4f08d7021a1dee3c044e9c253d6439 # 7b6d33e44b4f08d7021a1dee3c044e9c253d6439
 
       - uses: ./.github/actions/ci
         with:
