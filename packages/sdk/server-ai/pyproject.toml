@@ -27,6 +27,14 @@ packages = [{ include = "ldai", from = "src" }]
 python = ">=3.9,<4"
 launchdarkly-server-sdk = ">=9.4.0"
 chevron = "=0.14.0"
+opentelemetry-api = {version = ">=1.0.0", optional = true}
+
+[tool.poetry.extras]
+# Install with: pip install launchdarkly-server-sdk-ai[otel]
+# Enables span annotation in LDAIConfigTracker and the config_scope() context
+# manager on LDAIClient. LDAIBaggageSpanProcessor additionally requires
+# opentelemetry-sdk to be installed by the application.
+otel = ["opentelemetry-api"]
 
 
 [tool.poetry.group.dev.dependencies]
@@ -37,6 +45,8 @@ pytest-asyncio = ">=0.21.0"
 mypy = "==1.18.2"
 pycodestyle = "^2.12.1"
 isort = ">=5.13.2,<7.0.0"
+opentelemetry-api = "^1.40.0"
+opentelemetry-sdk = "^1.40.0"
 
 
 [tool.poetry.group.docs]
