@@ -1,30 +1,24 @@
-"""Abstract base class for AI providers."""
-
-from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional, Union
+from abc import ABC
+from typing import Any, Dict, List, Optional
 
 from ldai import log
-from ldai.models import AIConfigKind, LDMessage
+from ldai.models import LDMessage
 from ldai.providers.types import ChatResponse, StructuredResponse
 
 
 class AIProvider(ABC):
     """
-    Abstract base class for AI providers that implement chat model functionality.
+    Abstract base class for AI providers.
 
-    This class provides the contract that all provider implementations must follow
-    to integrate with LaunchDarkly's tracking and configuration capabilities.
-
-    Following the AICHAT spec recommendation to use base classes with non-abstract methods
-    for better extensibility and backwards compatibility.
+    An AIProvider is a per-provider factory: it is instantiated once per provider
+    (with no arguments — credentials are read from environment variables) and is
+    responsible for constructing focused runtime capability objects via
+    create_model(), create_agent(), and create_agent_graph().
     """
 
     async def invoke_model(self, messages: List[LDMessage]) -> ChatResponse:
         """
         Invoke the chat model with an array of messages.
-
-        This method should convert messages to provider format, invoke the model,
-        and return a ChatResponse with the result and metrics.
 
         Default implementation takes no action and returns a placeholder response.
         Provider implementations should override this method.
@@ -32,7 +26,7 @@ class AIProvider(ABC):
         :param messages: Array of LDMessage objects representing the conversation
         :return: ChatResponse containing the model's response
         """
-        log.warn('invokeModel not implemented by this provider')
+        log.warning('invoke_model not implemented by this provider')
 
         from ldai.models import LDMessage
         from ldai.providers.types import LDAIMetrics
@@ -50,9 +44,6 @@ class AIProvider(ABC):
         """
         Invoke the chat model with structured output support.
 
-        This method should convert messages to provider format, invoke the model with
-        structured output configuration, and return a structured response.
-
         Default implementation takes no action and returns a placeholder response.
         Provider implementations should override this method.
 
@@ -60,7 +51,7 @@ class AIProvider(ABC):
         :param response_structure: Dictionary of output configurations keyed by output name
         :return: StructuredResponse containing the structured data
         """
-        log.warn('invokeStructuredModel not implemented by this provider')
+        log.warning('invoke_structured_model not implemented by this provider')
 
         from ldai.providers.types import LDAIMetrics
 
@@ -70,16 +61,40 @@ class AIProvider(ABC):
             metrics=LDAIMetrics(success=False, usage=None),
         )
 
-    @staticmethod
-    @abstractmethod
-    async def create(ai_config: AIConfigKind) -> 'AIProvider':
+    def create_model(self, config: Any) -> Optional['AIProvider']:
         """
-        Static method that constructs an instance of the provider.
+        Create a configured model executor for the given AI config.
 
-        Each provider implementation must provide their own static create method
-        that accepts an AIConfigKind and returns a configured instance.
+        Default implementation warns. Provider implementations should override this method.
 
-        :param ai_config: The LaunchDarkly AI configuration
-        :return: Configured provider instance
+        :param config: The LaunchDarkly AI configuration
+        :return: Configured AIProvider instance, or None if unsupported
         """
-        raise NotImplementedError('Provider implementations must override the static create method')
+        log.warning('create_model not implemented by this provider')
+        return None
+
+    def create_agent(self, config: Any, tools: Any) -> Optional[Any]:
+        """
+        Create a configured agent executor for the given AI config and tool registry.
+
+        Default implementation warns. Provider implementations should override this method.
+
+        :param config: The LaunchDarkly AI agent configuration
+        :param tools: Tool registry mapping tool names to callables
+        :return: AgentExecutor instance, or None if unsupported
+        """
+        log.warning('create_agent not implemented by this provider')
+        return None
+
+    def create_agent_graph(self, graph_def: Any, tools: Any) -> Optional[Any]:
+        """
+        Create a configured agent graph executor for the given graph definition and tools.
+
+        Default implementation warns. Provider implementations should override this method.
+
+        :param graph_def: The agent graph definition
+        :param tools: Tool registry mapping tool names to callables
+        :return: AgentGraphExecutor instance, or None if unsupported
+        """
+        log.warning('create_agent_graph not implemented by this provider')
+        return None

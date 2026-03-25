@@ -1,5 +1,5 @@
-"""LaunchDarkly AI SDK OpenAI Provider."""
+from ldai_openai.openai_runner_factory import OpenAIRunnerFactory
 
-from ldai_openai.openai_provider import OpenAIProvider
-
-__all__ = ['OpenAIProvider']
+__all__ = [
+    'OpenAIRunnerFactory',
+]

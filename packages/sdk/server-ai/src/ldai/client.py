@@ -24,7 +24,7 @@ from ldai.models import (
     ModelConfig,
     ProviderConfig,
 )
-from ldai.providers.ai_provider_factory import AIProviderFactory
+from ldai.providers.runner_factory import RunnerFactory
 from ldai.sdk_info import AI_SDK_LANGUAGE, AI_SDK_NAME, AI_SDK_VERSION
 from ldai.tracker import AIGraphTracker, LDAIConfigTracker
 
@@ -245,7 +245,7 @@ class LDAIClient:
             if not judge_config.enabled or not judge_config.tracker:
                 return None
 
-            provider = await AIProviderFactory.create(judge_config, default_ai_provider)
+            provider = RunnerFactory.create_model(judge_config, default_ai_provider)
             if not provider:
                 return None
 
@@ -346,7 +346,7 @@ class LDAIClient:
         if not config.enabled or not config.tracker:
             return None
 
-        provider = await AIProviderFactory.create(config, default_ai_provider)
+        provider = RunnerFactory.create_model(config, default_ai_provider)
         if not provider:
             return None
 
