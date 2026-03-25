@@ -48,8 +48,6 @@ class OpenAIRunnerFactory(AIProvider):
         self._model_name = model_name
         self._parameters = parameters or {}
 
-    # --- AIProvider factory methods ---
-
     def create_model(self, config: AIConfigKind) -> 'OpenAIRunnerFactory':
         """
         Create a configured OpenAI model provider for the given AI config.
@@ -65,8 +63,6 @@ class OpenAIRunnerFactory(AIProvider):
         model_name = model_dict.get('name', '')
         parameters = model_dict.get('parameters') or {}
         return OpenAIRunnerFactory(self._client, model_name, parameters)
-
-    # --- Model invocation ---
 
     async def invoke_model(self, messages: List[LDMessage]) -> ChatResponse:
         """
@@ -183,8 +179,6 @@ class OpenAIRunnerFactory(AIProvider):
                 raw_response='',
                 metrics=LDAIMetrics(success=False, usage=None),
             )
-
-    # --- Convenience accessors ---
 
     def get_client(self) -> AsyncOpenAI:
         """

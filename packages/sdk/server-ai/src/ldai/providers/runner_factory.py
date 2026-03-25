@@ -111,8 +111,6 @@ class RunnerFactory:
 
         return providers
 
-    # --- Public API ---
-
     @staticmethod
     def create_model(
         config: AIConfigKind,

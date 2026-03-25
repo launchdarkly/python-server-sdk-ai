@@ -36,8 +36,6 @@ class LangChainRunnerFactory(AIProvider):
         """
         self._llm = llm
 
-    # --- AIProvider factory methods ---
-
     def create_model(self, config: AIConfigKind) -> 'LangChainRunnerFactory':
         """
         Create a configured LangChain model provider for the given AI config.
@@ -47,8 +45,6 @@ class LangChainRunnerFactory(AIProvider):
         """
         llm = LangChainRunnerFactory.create_langchain_model(config)
         return LangChainRunnerFactory(llm)
-
-    # --- Model invocation ---
 
     async def invoke_model(self, messages: List[LDMessage]) -> ChatResponse:
         """
@@ -131,8 +127,6 @@ class LangChainRunnerFactory(AIProvider):
         except Exception as error:
             log.warning(f'LangChain structured model invocation failed: {error}')
             return structured_response
-
-    # --- Convenience accessors ---
 
     def get_chat_model(self) -> Optional[BaseChatModel]:
         """
