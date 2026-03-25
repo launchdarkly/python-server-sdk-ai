@@ -8,8 +8,8 @@ import chevron
 from ldai import log
 from ldai.judge.evaluation_schema_builder import EvaluationSchemaBuilder
 from ldai.models import AIJudgeConfig, LDMessage
-from ldai.providers.ai_provider import AIProvider
-from ldai.providers.types import ChatResponse, EvalScore, JudgeResponse
+from ldai.providers.model_runner import ModelRunner
+from ldai.providers.types import EvalScore, JudgeResponse, ModelResponse
 from ldai.tracker import LDAIConfigTracker
 
 
@@ -25,18 +25,18 @@ class Judge:
         self,
         ai_config: AIJudgeConfig,
         ai_config_tracker: LDAIConfigTracker,
-        ai_provider: AIProvider,
+        model_runner: ModelRunner,
     ):
         """
         Initialize the Judge.
 
         :param ai_config: The judge AI configuration
         :param ai_config_tracker: The tracker for the judge configuration
-        :param ai_provider: The AI provider to use for evaluation
+        :param model_runner: The model runner to use for evaluation
         """
         self._ai_config = ai_config
         self._ai_config_tracker = ai_config_tracker
-        self._ai_provider = ai_provider
+        self._model_runner = model_runner
         self._evaluation_response_structure = EvaluationSchemaBuilder.build()
 
     async def evaluate(
@@ -72,7 +72,7 @@ class Judge:
             assert self._evaluation_response_structure is not None
 
             response = await self._ai_config_tracker.track_metrics_of(
-                lambda: self._ai_provider.invoke_structured_model(messages, self._evaluation_response_structure),
+                lambda: self._model_runner.invoke_structured_model(messages, self._evaluation_response_structure),
                 lambda result: result.metrics,
             )
 
@@ -99,7 +99,7 @@ class Judge:
     async def evaluate_messages(
         self,
         messages: list[LDMessage],
-        response: ChatResponse,
+        response: ModelResponse,
         sampling_ratio: float = 1.0,
     ) -> Optional[JudgeResponse]:
         """
@@ -131,13 +131,13 @@ class Judge:
         """
         return self._ai_config_tracker
 
-    def get_provider(self) -> AIProvider:
+    def get_model_runner(self) -> ModelRunner:
         """
-        Returns the AI provider used by this judge.
+        Returns the model runner used by this judge.
 
-        :return: The AI provider
+        :return: The model runner
         """
-        return self._ai_provider
+        return self._model_runner
 
     def _construct_evaluation_messages(self, input_text: str, output_text: str) -> list[LDMessage]:
         """

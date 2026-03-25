@@ -1,0 +1,106 @@
+"""Shared LangChain utilities for the LaunchDarkly AI SDK."""
+
+from typing import Any, Dict, List, Optional, Union
+
+from langchain_core.language_models.chat_models import BaseChatModel
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
+from ldai import LDMessage
+from ldai.models import AIConfigKind
+from ldai.providers.types import LDAIMetrics
+from ldai.tracker import TokenUsage
+
+
+class LangChainHelper:
+    """
+    Shared utilities for LangChain-based runners (model, agent, agent graph).
+
+    All methods are static — this class is a namespace, not meant to be instantiated.
+    """
+
+    @staticmethod
+    def map_provider(ld_provider_name: str) -> str:
+        """
+        Map a LaunchDarkly provider name to its LangChain equivalent.
+
+        :param ld_provider_name: LaunchDarkly provider name
+        :return: LangChain-compatible provider name
+        """
+        lowercased_name = ld_provider_name.lower()
+        # Bedrock is the only provider that uses "provider:model_family" (e.g. Bedrock:Anthropic).
+        if lowercased_name.startswith('bedrock:'):
+            return 'bedrock_converse'
+
+        mapping: Dict[str, str] = {
+            'gemini': 'google-genai',
+            'bedrock': 'bedrock_converse',
+        }
+        return mapping.get(lowercased_name, lowercased_name)
+
+    @staticmethod
+    def convert_messages(
+        messages: List[LDMessage],
+    ) -> List[Union[HumanMessage, SystemMessage, AIMessage]]:
+        """
+        Convert LaunchDarkly messages to LangChain message objects.
+
+        :param messages: List of LDMessage objects
+        :return: List of LangChain message objects
+        :raises ValueError: If an unsupported message role is encountered
+        """
+        result: List[Union[HumanMessage, SystemMessage, AIMessage]] = []
+        for msg in messages:
+            if msg.role == 'system':
+                result.append(SystemMessage(content=msg.content))
+            elif msg.role == 'user':
+                result.append(HumanMessage(content=msg.content))
+            elif msg.role == 'assistant':
+                result.append(AIMessage(content=msg.content))
+            else:
+                raise ValueError(f'Unsupported message role: {msg.role}')
+        return result
+
+    @staticmethod
+    def create_langchain_model(ai_config: AIConfigKind) -> BaseChatModel:
+        """
+        Create a LangChain BaseChatModel from a LaunchDarkly AI configuration.
+
+        :param ai_config: The LaunchDarkly AI configuration
+        :return: A configured LangChain BaseChatModel
+        """
+        from langchain.chat_models import init_chat_model
+
+        config_dict = ai_config.to_dict()
+        model_dict = config_dict.get('model') or {}
+        provider_dict = config_dict.get('provider') or {}
+
+        model_name = model_dict.get('name', '')
+        provider = provider_dict.get('name', '')
+        parameters = model_dict.get('parameters') or {}
+
+        return init_chat_model(
+            model_name,
+            model_provider=LangChainHelper.map_provider(provider),
+            **parameters,
+        )
+
+    @staticmethod
+    def get_ai_metrics_from_response(response: Any) -> LDAIMetrics:
+        """
+        Extract LaunchDarkly AI metrics from a LangChain response.
+
+        :param response: The response from a LangChain model (BaseMessage or similar)
+        :return: LDAIMetrics with success status and token usage
+        """
+        usage: Optional[TokenUsage] = None
+        if hasattr(response, 'response_metadata') and response.response_metadata:
+            token_usage = (
+                response.response_metadata.get('tokenUsage')
+                or response.response_metadata.get('token_usage')
+            )
+            if token_usage:
+                usage = TokenUsage(
+                    total=token_usage.get('totalTokens', 0) or token_usage.get('total_tokens', 0),
+                    input=token_usage.get('promptTokens', 0) or token_usage.get('prompt_tokens', 0),
+                    output=token_usage.get('completionTokens', 0) or token_usage.get('completion_tokens', 0),
+                )
+        return LDAIMetrics(success=True, usage=usage)
