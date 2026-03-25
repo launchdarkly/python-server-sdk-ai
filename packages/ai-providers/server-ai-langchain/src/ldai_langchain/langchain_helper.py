@@ -73,13 +73,46 @@ class LangChainHelper:
 
         model_name = model_dict.get('name', '')
         provider = provider_dict.get('name', '')
-        parameters = model_dict.get('parameters') or {}
+        parameters = dict(model_dict.get('parameters') or {})
+        mapped_provider = LangChainHelper.map_provider(provider)
+
+        # Bedrock requires the foundation provider (e.g. Bedrock:Anthropic) passed in
+        # parameters separately from model_provider, which is used for LangChain routing.
+        if mapped_provider == 'bedrock_converse' and 'provider' not in parameters:
+            parameters['provider'] = provider.removeprefix('bedrock:')
 
         return init_chat_model(
             model_name,
-            model_provider=LangChainHelper.map_provider(provider),
+            model_provider=mapped_provider,
             **parameters,
         )
+
+    @staticmethod
+    def get_ai_usage_from_response(response: Any) -> Optional[TokenUsage]:
+        """
+        Extract token usage from a LangChain response.
+
+        :param response: The response from a LangChain model (BaseMessage or similar)
+        :return: TokenUsage or None if unavailable
+        """
+        if hasattr(response, 'usage_metadata') and response.usage_metadata:
+            return TokenUsage(
+                total=response.usage_metadata.get('total_tokens', 0),
+                input=response.usage_metadata.get('input_tokens', 0),
+                output=response.usage_metadata.get('output_tokens', 0),
+            )
+        if hasattr(response, 'response_metadata') and response.response_metadata:
+            token_usage = (
+                response.response_metadata.get('tokenUsage')
+                or response.response_metadata.get('token_usage')
+            )
+            if token_usage:
+                return TokenUsage(
+                    total=token_usage.get('totalTokens', 0) or token_usage.get('total_tokens', 0),
+                    input=token_usage.get('promptTokens', 0) or token_usage.get('prompt_tokens', 0),
+                    output=token_usage.get('completionTokens', 0) or token_usage.get('completion_tokens', 0),
+                )
+        return None
 
     @staticmethod
     def get_ai_metrics_from_response(response: Any) -> LDAIMetrics:
@@ -89,16 +122,4 @@ class LangChainHelper:
         :param response: The response from a LangChain model (BaseMessage or similar)
         :return: LDAIMetrics with success status and token usage
         """
-        usage: Optional[TokenUsage] = None
-        if hasattr(response, 'response_metadata') and response.response_metadata:
-            token_usage = (
-                response.response_metadata.get('tokenUsage')
-                or response.response_metadata.get('token_usage')
-            )
-            if token_usage:
-                usage = TokenUsage(
-                    total=token_usage.get('totalTokens', 0) or token_usage.get('total_tokens', 0),
-                    input=token_usage.get('promptTokens', 0) or token_usage.get('prompt_tokens', 0),
-                    output=token_usage.get('completionTokens', 0) or token_usage.get('completion_tokens', 0),
-                )
-        return LDAIMetrics(success=True, usage=usage)
+        return LDAIMetrics(success=True, usage=LangChainHelper.get_ai_usage_from_response(response))
