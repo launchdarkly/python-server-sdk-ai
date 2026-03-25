@@ -1,5 +1,3 @@
-"""Shared OpenAI utilities for the LaunchDarkly AI SDK."""
-
 from typing import Any, Iterable, List, Optional, cast
 
 from ldai import LDMessage

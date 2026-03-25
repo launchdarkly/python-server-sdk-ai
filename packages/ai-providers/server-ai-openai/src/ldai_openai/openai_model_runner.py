@@ -1,5 +1,3 @@
-"""OpenAI model runner for LaunchDarkly AI SDK."""
-
 import json
 from typing import Any, Dict, List
 

@@ -1,5 +1,3 @@
-"""Abstract base class for model runners."""
-
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List
 

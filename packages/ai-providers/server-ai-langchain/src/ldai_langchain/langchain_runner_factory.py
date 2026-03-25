@@ -1,5 +1,3 @@
-"""LangChain connector for LaunchDarkly AI SDK."""
-
 from ldai.models import AIConfigKind
 from ldai.providers import AIProvider
 from ldai_langchain.langchain_helper import LangChainHelper

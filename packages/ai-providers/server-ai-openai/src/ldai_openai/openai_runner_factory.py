@@ -1,5 +1,3 @@
-"""OpenAI connector for LaunchDarkly AI SDK."""
-
 import os
 from typing import Optional
 

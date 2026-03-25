@@ -1,5 +1,3 @@
-"""Shared LangChain utilities for the LaunchDarkly AI SDK."""
-
 from typing import Any, Dict, List, Optional, Union
 
 from langchain_core.language_models.chat_models import BaseChatModel

@@ -371,7 +371,7 @@ class LDAIClient:
         Creates and returns a ManagedModel for AI conversations.
         This method is a deprecated alias for :meth:`create_model`.
         """
-        log.warn('create_chat() is deprecated, use create_model() instead')
+        log.warning('create_chat() is deprecated, use create_model() instead')
         return await self.create_model(key, context, default, variables, default_ai_provider)
 
     def agent_config(

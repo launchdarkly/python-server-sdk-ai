@@ -1,5 +1,3 @@
-"""LangChain model runner for LaunchDarkly AI SDK."""
-
 from typing import Any, Dict, List
 
 from langchain_core.language_models.chat_models import BaseChatModel

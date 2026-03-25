@@ -1,5 +1,3 @@
-"""ManagedModel — LaunchDarkly managed wrapper for model invocations."""
-
 import asyncio
 from typing import Any, Dict, List, Optional
 
@@ -75,7 +73,7 @@ class ManagedModel:
         async def evaluate_judge(judge_config: Any) -> Optional[JudgeResponse]:
             judge = self._judges.get(judge_config.key)
             if not judge:
-                log.warn(f'Judge configuration is not enabled: {judge_config.key}')
+                log.warning(f'Judge configuration is not enabled: {judge_config.key}')
                 return None
             eval_result = await judge.evaluate_messages(messages, response, judge_config.sampling_rate)
             if eval_result and eval_result.success:

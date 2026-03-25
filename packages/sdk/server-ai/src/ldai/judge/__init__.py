@@ -55,13 +55,13 @@ class Judge:
         """
         try:
             if not self._ai_config.evaluation_metric_key:
-                log.warn(
+                log.warning(
                     'Judge configuration is missing required evaluationMetricKey'
                 )
                 return None
 
             if not self._ai_config.messages:
-                log.warn('Judge configuration must include messages')
+                log.warning('Judge configuration must include messages')
                 return None
 
             if random.random() > sampling_rate:
@@ -80,7 +80,7 @@ class Judge:
             evals = self._parse_evaluation_response(response.data)
 
             if not evals:
-                log.warn('Judge evaluation did not return the expected evaluation')
+                log.warning('Judge evaluation did not return the expected evaluation')
                 success = False
 
             return JudgeResponse(
@@ -179,20 +179,20 @@ class Judge:
         results: Dict[str, EvalScore] = {}
         metric_key = self._ai_config.evaluation_metric_key
         if not metric_key:
-            log.warn('Evaluation metric key is missing')
+            log.warning('Evaluation metric key is missing')
             return results
 
         if not isinstance(data, dict):
-            log.warn('Invalid response: missing or invalid evaluation')
+            log.warning('Invalid response: missing or invalid evaluation')
             return results
 
         score = data.get('score')
         reasoning = data.get('reasoning')
         if not isinstance(score, (int, float)) or score < 0 or score > 1:
-            log.warn(f'Invalid score: {score}. Score must be a number between 0 and 1 inclusive')
+            log.warning(f'Invalid score: {score}. Score must be a number between 0 and 1 inclusive')
             return results
         if not isinstance(reasoning, str):
-            log.warn('Invalid reasoning: must be a string')
+            log.warning('Invalid reasoning: must be a string')
             return results
 
         results[metric_key] = EvalScore(score=float(score), reasoning=reasoning)
