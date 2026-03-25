@@ -1,5 +1,3 @@
-"""OpenAI connector for LaunchDarkly AI SDK."""
-
 import json
 import os
 from typing import Any, Dict, Iterable, List, Optional, cast
@@ -15,10 +13,10 @@ from openai.types.chat import ChatCompletionMessageParam
 
 class OpenAIProvider(AIProvider):
     """
-    OpenAI connector for the LaunchDarkly AI SDK.
+    OpenAI provider for the LaunchDarkly AI SDK.
 
     Can be used in two ways:
-    - Transparently via ExecutorFactory (pass ``default_ai_provider='openai'`` to
+    - Transparently via RunnerFactory (pass ``default_ai_provider='openai'`` to
       ``create_model()`` / ``create_chat()``).
     - Directly for full control: instantiate with an ``AsyncOpenAI`` client,
       model name, and parameters, then call ``invoke_model()`` yourself.
@@ -31,13 +29,13 @@ class OpenAIProvider(AIProvider):
         parameters: Optional[Dict[str, Any]] = None,
     ):
         """
-        Initialize the OpenAI connector.
+        Initialize the OpenAI provider.
 
-        When called with no arguments the connector reads credentials from the
+        When called with no arguments the provider reads credentials from the
         environment (``OPENAI_API_KEY``) and acts as a per-provider factory —
         call ``create_model(config)`` to obtain a configured instance.
 
-        When called with explicit arguments the connector is ready to invoke
+        When called with explicit arguments the provider is ready to invoke
         the model immediately.
 
         :param client: An AsyncOpenAI client instance (created from env if omitted)
@@ -54,7 +52,7 @@ class OpenAIProvider(AIProvider):
 
     def create_model(self, config: AIConfigKind) -> 'OpenAIProvider':
         """
-        Create a configured OpenAI model connector for the given AI config.
+        Create a configured OpenAI model provider for the given AI config.
 
         Reuses the underlying AsyncOpenAI client so that connection pooling is
         preserved across calls.
@@ -220,4 +218,3 @@ class OpenAIProvider(AIProvider):
             )
 
         return LDAIMetrics(success=True, usage=usage)
-

@@ -1,5 +1,3 @@
-"""Factory for creating AIProvider instances and capability runners."""
-
 from importlib import util
 from typing import Any, Callable, List, Optional, TypeVar
 
@@ -25,11 +23,11 @@ class RunnerFactory:
     """
 
     @staticmethod
-    def _get_ai_adapter(provider_type: str) -> Optional[AIProvider]:
+    def _get_provider_factory(provider_type: str) -> Optional[AIProvider]:
         """
         Import and instantiate the AIProvider for the given provider type.
 
-        This is the only place in the SDK that knows about connector package names.
+        This is the only place in the SDK that knows about provider package names.
 
         :param provider_type: Provider identifier, e.g. 'openai' or 'langchain'
         :return: AIProvider instance, or None if the package is not installed
@@ -45,13 +43,13 @@ class RunnerFactory:
                 from ldai_openai import OpenAIProvider
                 return OpenAIProvider()
 
-            log.warn(
+            log.warning(
                 f"Provider '{provider_type}' is not supported. "
                 f"Supported providers: {SUPPORTED_AI_PROVIDERS}"
             )
             return None
         except ImportError as error:
-            log.warn(
+            log.warning(
                 f"Could not load provider '{provider_type}': {error}. "
                 f"Make sure the corresponding package is installed."
             )
@@ -73,17 +71,17 @@ class RunnerFactory:
         """
         for provider_type in providers:
             try:
-                connector = RunnerFactory._get_ai_adapter(provider_type)
-                if connector is None:
+                provider_factory = RunnerFactory._get_provider_factory(provider_type)
+                if provider_factory is None:
                     continue
-                result = fn(connector)
+                result = fn(provider_factory)
                 if result is not None:
                     log.debug(f"Successfully created capability using provider '{provider_type}'")
                     return result
             except Exception as exc:
-                log.warn(f"Provider '{provider_type}' failed: {exc}")
+                log.warning(f"Provider '{provider_type}' failed: {exc}")
 
-        log.warn("All providers failed or are unavailable")
+        log.warning("All providers failed or are unavailable")
         return None
 
     @staticmethod
@@ -178,4 +176,3 @@ class RunnerFactory:
         """
         if util.find_spec(package_name) is None:
             raise ImportError(f"Package '{package_name}' not found")
-

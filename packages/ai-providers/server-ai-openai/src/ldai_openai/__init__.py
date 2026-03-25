@@ -1,5 +1,3 @@
-"""LaunchDarkly AI SDK OpenAI Connector."""
-
 from ldai_openai.openai_runner_factory import OpenAIProvider
 
 __all__ = [

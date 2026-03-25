@@ -1,5 +1,3 @@
-"""LangChain connector for LaunchDarkly AI SDK."""
-
 from typing import Any, Dict, List, Optional, Union
 
 from langchain_core.language_models.chat_models import BaseChatModel
@@ -13,10 +11,10 @@ from ldai.tracker import TokenUsage
 
 class LangChainRunnerFactory(AIProvider):
     """
-    LangChain connector for the LaunchDarkly AI SDK.
+    LangChain provider for the LaunchDarkly AI SDK.
 
     Can be used in two ways:
-    - Transparently via ExecutorFactory (pass ``default_ai_provider='langchain'`` to
+    - Transparently via RunnerFactory (pass ``default_ai_provider='langchain'`` to
       ``create_model()`` / ``create_chat()``).
     - Directly for full control: instantiate with a ``BaseChatModel``, then call
       ``invoke_model()`` yourself and use the static convenience methods
@@ -26,12 +24,12 @@ class LangChainRunnerFactory(AIProvider):
 
     def __init__(self, llm: Optional[BaseChatModel] = None):
         """
-        Initialize the LangChain connector.
+        Initialize the LangChain provider.
 
-        When called with no arguments the connector acts as a per-provider factory
+        When called with no arguments the provider acts as a per-provider factory
         — call ``create_model(config)`` to obtain a configured instance.
 
-        When called with an explicit ``llm`` the connector is ready to invoke
+        When called with an explicit ``llm`` the provider is ready to invoke
         the model immediately.
 
         :param llm: A LangChain BaseChatModel instance (optional)
@@ -42,7 +40,7 @@ class LangChainRunnerFactory(AIProvider):
 
     def create_model(self, config: AIConfigKind) -> 'LangChainRunnerFactory':
         """
-        Create a configured LangChain model connector for the given AI config.
+        Create a configured LangChain model provider for the given AI config.
 
         :param config: The LaunchDarkly AI configuration
         :return: Configured LangChainRunnerFactory ready to invoke the model
@@ -60,6 +58,7 @@ class LangChainRunnerFactory(AIProvider):
         :return: ChatResponse containing the model's response and metrics
         """
         try:
+            assert self._llm is not None
             langchain_messages = LangChainRunnerFactory.convert_messages_to_langchain(messages)
             response: BaseMessage = await self._llm.ainvoke(langchain_messages)
             metrics = LangChainRunnerFactory.get_ai_metrics_from_response(response)
@@ -104,6 +103,7 @@ class LangChainRunnerFactory(AIProvider):
             metrics=LDAIMetrics(success=False, usage=None),
         )
         try:
+            assert self._llm is not None
             langchain_messages = LangChainRunnerFactory.convert_messages_to_langchain(messages)
             structured_llm = self._llm.with_structured_output(response_structure, include_raw=True)
             response = await structured_llm.ainvoke(langchain_messages)
@@ -260,4 +260,3 @@ class LangChainRunnerFactory(AIProvider):
             model_provider=mapped_provider,
             **parameters,
         )
-

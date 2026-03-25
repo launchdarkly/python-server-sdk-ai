@@ -1,5 +1,3 @@
-"""AI Connector interfaces and factory for LaunchDarkly AI SDK."""
-
 from ldai.providers.ai_provider import AIProvider
 from ldai.providers.runner_factory import RunnerFactory
 

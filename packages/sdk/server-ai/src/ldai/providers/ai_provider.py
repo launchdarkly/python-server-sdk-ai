@@ -1,5 +1,3 @@
-"""Abstract base class for AI connectors."""
-
 from abc import ABC
 from typing import Any, Dict, List, Optional
 
@@ -10,7 +8,7 @@ from ldai.providers.types import ChatResponse, StructuredResponse
 
 class AIProvider(ABC):
     """
-    Abstract base class for AI provider connectors.
+    Abstract base class for AI providers.
 
     An AIProvider is a per-provider factory: it is instantiated once per provider
     (with no arguments — credentials are read from environment variables) and is
@@ -26,12 +24,12 @@ class AIProvider(ABC):
         Invoke the chat model with an array of messages.
 
         Default implementation takes no action and returns a placeholder response.
-        Connector implementations should override this method.
+        Provider implementations should override this method.
 
         :param messages: Array of LDMessage objects representing the conversation
         :return: ChatResponse containing the model's response
         """
-        log.warn('invoke_model not implemented by this connector')
+        log.warn('invoke_model not implemented by this provider')
 
         from ldai.models import LDMessage
         from ldai.providers.types import LDAIMetrics
@@ -50,13 +48,13 @@ class AIProvider(ABC):
         Invoke the chat model with structured output support.
 
         Default implementation takes no action and returns a placeholder response.
-        Connector implementations should override this method.
+        Provider implementations should override this method.
 
         :param messages: Array of LDMessage objects representing the conversation
         :param response_structure: Dictionary of output configurations keyed by output name
         :return: StructuredResponse containing the structured data
         """
-        log.warn('invoke_structured_model not implemented by this connector')
+        log.warn('invoke_structured_model not implemented by this provider')
 
         from ldai.providers.types import LDAIMetrics
 
@@ -70,37 +68,36 @@ class AIProvider(ABC):
         """
         Create a configured model executor for the given AI config.
 
-        Default implementation warns. Provider connectors should override this method.
+        Default implementation warns. Provider implementations should override this method.
 
         :param config: The LaunchDarkly AI configuration
         :return: Configured AIProvider instance, or None if unsupported
         """
-        log.warn('create_model not implemented by this connector')
+        log.warn('create_model not implemented by this provider')
         return None
 
     def create_agent(self, config: Any, tools: Any) -> Optional[Any]:
         """
         Create a configured agent executor for the given AI config and tool registry.
 
-        Default implementation warns. Provider connectors should override this method.
+        Default implementation warns. Provider implementations should override this method.
 
         :param config: The LaunchDarkly AI agent configuration
         :param tools: Tool registry mapping tool names to callables
         :return: AgentExecutor instance, or None if unsupported
         """
-        log.warn('create_agent not implemented by this connector')
+        log.warn('create_agent not implemented by this provider')
         return None
 
     def create_agent_graph(self, graph_def: Any, tools: Any) -> Optional[Any]:
         """
         Create a configured agent graph executor for the given graph definition and tools.
 
-        Default implementation warns. Provider connectors should override this method.
+        Default implementation warns. Provider implementations should override this method.
 
         :param graph_def: The agent graph definition
         :param tools: Tool registry mapping tool names to callables
         :return: AgentGraphExecutor instance, or None if unsupported
         """
-        log.warn('create_agent_graph not implemented by this connector')
+        log.warn('create_agent_graph not implemented by this provider')
         return None
-
