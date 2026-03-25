@@ -8,14 +8,16 @@
 #   - packages/sdk/server-ai         (launchdarkly-server-sdk-ai)
 #   - packages/ai-providers/server-ai-openai   (launchdarkly-server-sdk-ai-openai)
 #   - packages/ai-providers/server-ai-langchain (launchdarkly-server-sdk-ai-langchain)
-
+#   - packages/optimization          (launchdarkly-server-sdk-ai-optimization)
+#
+# For development, use the package-specific pyproject.toml files in each member.
 [tool.uv.workspace]
 members = [
     "packages/sdk/server-ai",
     "packages/ai-providers/server-ai-openai",
     "packages/ai-providers/server-ai-langchain",
+    "packages/optimization",
 ]
-
 # Resolve launchdarkly-server-sdk-ai from the local workspace member rather
 # than PyPI. This applies to all workspace members automatically.
 [tool.uv.sources]

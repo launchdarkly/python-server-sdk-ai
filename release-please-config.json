@@ -25,6 +25,14 @@
       "include-v-in-tag": false,
       "extra-files": ["src/ldai_openai/__init__.py"],
       "component": "launchdarkly-server-sdk-ai-openai"
+    },
+    "packages/optimization": {
+      "release-type": "python",
+      "versioning": "default",
+      "bump-minor-pre-major": true,
+      "include-v-in-tag": false,
+      "extra-files": ["src/ldai_optimization/__init__.py"],
+      "component": "launchdarkly-server-sdk-ai-optimization"
     }
   }
 }
