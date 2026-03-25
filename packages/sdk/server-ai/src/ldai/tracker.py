@@ -156,11 +156,11 @@ class LDAIConfigTracker:
         :param graph_key: When set, passed through to :meth:`track_duration`.
         :return: Result of the tracked function.
         """
-        start_ns = time.time_ns()
+        start_ns = time.perf_counter_ns()
         try:
             result = func()
         finally:
-            duration = (time.time_ns() - start_ns) // 1_000_000  # duration in milliseconds
+            duration = (time.perf_counter_ns() - start_ns) // 1_000_000  # duration in milliseconds
             self.track_duration(duration, graph_key=graph_key)
 
         return result
@@ -205,16 +205,16 @@ class LDAIConfigTracker:
         :param graph_key: When set, include ``graphKey`` on emitted config-level events.
         :return: The result of the operation
         """
-        start_ns = time.time_ns()
+        start_ns = time.perf_counter_ns()
         try:
             result = func()
         except Exception as err:
-            duration = (time.time_ns() - start_ns) // 1_000_000
+            duration = (time.perf_counter_ns() - start_ns) // 1_000_000
             self.track_duration(duration, graph_key=graph_key)
             self.track_error(graph_key=graph_key)
             raise err
 
-        duration = (time.time_ns() - start_ns) // 1_000_000
+        duration = (time.perf_counter_ns() - start_ns) // 1_000_000
         self.track_duration(duration, graph_key=graph_key)
         return self._track_from_metrics_extractor(result, metrics_extractor, graph_key=graph_key)
 
@@ -231,17 +231,17 @@ class LDAIConfigTracker:
         :param graph_key: When set, include ``graphKey`` on emitted config-level events.
         :return: The result of the operation
         """
-        start_ns = time.time_ns()
+        start_ns = time.perf_counter_ns()
         result = None
         try:
             result = await func()
         except Exception as err:
-            duration = (time.time_ns() - start_ns) // 1_000_000
+            duration = (time.perf_counter_ns() - start_ns) // 1_000_000
             self.track_duration(duration, graph_key=graph_key)
             self.track_error(graph_key=graph_key)
             raise err
 
-        duration = (time.time_ns() - start_ns) // 1_000_000
+        duration = (time.perf_counter_ns() - start_ns) // 1_000_000
         self.track_duration(duration, graph_key=graph_key)
         return self._track_from_metrics_extractor(result, metrics_extractor, graph_key=graph_key)
 
@@ -351,16 +351,16 @@ class LDAIConfigTracker:
         :param func: Function to track.
         :return: Result of the tracked function.
         """
-        start_ns = time.time_ns()
+        start_ns = time.perf_counter_ns()
         try:
             result = func()
-            duration = (time.time_ns() - start_ns) // 1_000_000
+            duration = (time.perf_counter_ns() - start_ns) // 1_000_000
             self.track_duration(duration)
             self.track_success()
             if hasattr(result, "usage") and hasattr(result.usage, "to_dict"):
                 self.track_tokens(_openai_to_token_usage(result.usage.to_dict()))
         except Exception:
-            duration = (time.time_ns() - start_ns) // 1_000_000
+            duration = (time.perf_counter_ns() - start_ns) // 1_000_000
             self.track_duration(duration)
             self.track_error()
             raise
