@@ -15,26 +15,26 @@ help: #! Show this help message
 
 .PHONY: install
 install: #! Install package dependencies
-	poetry install
+	uv sync --all-groups
 
 .PHONY: test
 test: #! Run unit tests
 test: install
-	poetry run pytest $(PYTEST_FLAGS)
+	uv run pytest $(PYTEST_FLAGS)
 
 .PHONY: lint
 lint: #! Run type analysis and linting checks
 lint: install
-	poetry run mypy src/ldai
-	poetry run isort --check --atomic src/ldai
-	poetry run pycodestyle src/ldai
+	uv run mypy src/ldai
+	uv run isort --check --atomic src/ldai
+	uv run pycodestyle src/ldai
 
 .PHONY: build
 build: #! Build distribution files
 build: install
-	poetry build
+	uv build --out-dir dist
 
 .PHONY: docs
 docs: #! Generate sphinx-based documentation
-	poetry install --with docs
-	poetry run $(SPHINXBUILD) -M html "$(DOCS_DIR)" "$(DOCS_BUILD_DIR)" $(SPHINXOPTS)
+	uv sync --group docs
+	uv run $(SPHINXBUILD) -M html "$(DOCS_DIR)" "$(DOCS_BUILD_DIR)" $(SPHINXOPTS)

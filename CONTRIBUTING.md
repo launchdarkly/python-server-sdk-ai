@@ -14,13 +14,29 @@ We encourage pull requests and other contributions from the community. Before su
 
 ### Setup
 
-This project is built using [poetry](https://python-poetry.org/). To learn more about the basics of working with this tool, read [Poetry's basic usage guide](https://python-poetry.org/docs/basic-usage/).
+This project is built using [uv](https://docs.astral.sh/uv/). The repo is structured as a uv workspace — a single shared virtual environment at the repo root contains all packages and their dependencies, and cross-package dependencies (e.g. the provider packages depending on `launchdarkly-server-sdk-ai`) are automatically resolved from the local workspace members.
 
-To begin development, ensure your dependencies are installed and (optionally) activate the virtualenv.
+To install uv, see the [uv installation guide](https://docs.astral.sh/uv/getting-started/installation/).
 
+To install all packages and dev dependencies into the shared workspace environment:
+
+```shell
+make install
+# or directly:
+uv sync --all-groups
 ```
-poetry install
-eval $(poetry env activate)
+
+To activate the shared virtual environment:
+
+```shell
+source .venv/bin/activate
+```
+
+Alternatively, prefix any command with `uv run` to use the workspace environment without activating it:
+
+```shell
+uv run pytest
+uv run mypy src/ldai
 ```
 
 ### Testing
@@ -29,6 +45,14 @@ To run all unit tests:
 
 ```shell
 make test
+```
+
+To run tests for a specific package:
+
+```shell
+make test-server-ai
+make test-openai
+make test-langchain
 ```
 
 It is preferable to run tests against all supported minor versions of Python (as described in `README.md` under Requirements), or at least the lowest and highest versions, prior to submitting a pull request. However, LaunchDarkly's CI tests will run automatically against all supported versions.

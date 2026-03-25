@@ -1,25 +1,24 @@
 # Root pyproject.toml for the LaunchDarkly Python AI SDK monorepo
 #
-# This monorepo contains:
-# - packages/sdk/server-ai: The main LaunchDarkly Server-Side AI SDK
-# - packages/ai-providers/server-ai-langchain: LangChain integration (placeholder)
-# - packages/optimization: optimization helpers (LaunchDarkly API tools)
+# This is a uv workspace root. Running `uv sync` here installs all packages
+# and their dependencies into a single shared virtual environment at the
+# repo root.
 #
-# For development, use the package-specific pyproject.toml files in:
-# - packages/sdk/server-ai/pyproject.toml
-# - packages/ai-providers/server-ai-langchain/pyproject.toml
-# - packages/optimization/pyproject.toml
-
-[tool.poetry]
-name = "launchdarkly-python-sdk-ai-monorepo"
-version = "0.0.0"
-description = "LaunchDarkly Python AI SDK Monorepo"
-authors = ["LaunchDarkly <dev@launchdarkly.com>"]
-license = "Apache-2.0"
-
-[tool.poetry.dependencies]
-python = ">=3.9,<4"
-
-[build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+# Workspace members:
+#   - packages/sdk/server-ai         (launchdarkly-server-sdk-ai)
+#   - packages/ai-providers/server-ai-openai   (launchdarkly-server-sdk-ai-openai)
+#   - packages/ai-providers/server-ai-langchain (launchdarkly-server-sdk-ai-langchain)
+#   - packages/optimization          (launchdarkly-server-sdk-ai-optimization)
+#
+# For development, use the package-specific pyproject.toml files in each member.
+[tool.uv.workspace]
+members = [
+    "packages/sdk/server-ai",
+    "packages/ai-providers/server-ai-openai",
+    "packages/ai-providers/server-ai-langchain",
+    "packages/optimization",
+]
+# Resolve launchdarkly-server-sdk-ai from the local workspace member rather
+# than PyPI. This applies to all workspace members automatically.
+[tool.uv.sources]
+launchdarkly-server-sdk-ai = {workspace = true}
