@@ -116,7 +116,7 @@ class RunnerFactory:
     # --- Public API ---
 
     @staticmethod
-    async def create_model(
+    def create_model(
         config: AIConfigKind,
         default_ai_provider: Optional[str] = None,
     ) -> Optional[AIProvider]:
@@ -132,7 +132,7 @@ class RunnerFactory:
         return RunnerFactory._with_fallback(providers, lambda p: p.create_model(config))
 
     @staticmethod
-    async def create_agent(
+    def create_agent(
         config: Any,
         tools: Any,
         default_ai_provider: Optional[str] = None,
@@ -150,7 +150,7 @@ class RunnerFactory:
         return RunnerFactory._with_fallback(providers, lambda p: p.create_agent(config, tools))
 
     @staticmethod
-    async def create_agent_graph(
+    def create_agent_graph(
         graph_def: Any,
         tools: Any,
         default_ai_provider: Optional[str] = None,

@@ -245,7 +245,7 @@ class LDAIClient:
             if not judge_config.enabled or not judge_config.tracker:
                 return None
 
-            provider = await RunnerFactory.create_model(judge_config, default_ai_provider)
+            provider = RunnerFactory.create_model(judge_config, default_ai_provider)
             if not provider:
                 return None
 
@@ -346,7 +346,7 @@ class LDAIClient:
         if not config.enabled or not config.tracker:
             return None
 
-        provider = await RunnerFactory.create_model(config, default_ai_provider)
+        provider = RunnerFactory.create_model(config, default_ai_provider)
         if not provider:
             return None
 
