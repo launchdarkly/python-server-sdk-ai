@@ -10,28 +10,10 @@ from ldai.tracker import TokenUsage
 
 
 class LangChainRunnerFactory(AIProvider):
-    """
-    LangChain provider for the LaunchDarkly AI SDK.
-
-    Can be used in two ways:
-    - Transparently via RunnerFactory (pass ``default_ai_provider='langchain'`` to
-      ``create_model()`` / ``create_chat()``).
-    - Directly for full control: instantiate with a ``BaseChatModel``, then call
-      ``invoke_model()`` yourself and use the static convenience methods
-      (``get_ai_metrics_from_response``, ``convert_messages_to_langchain``,
-      ``map_provider``, ``create_langchain_model``).
-    """
+    """LangChain provider for the LaunchDarkly AI SDK."""
 
     def __init__(self, llm: Optional[BaseChatModel] = None):
         """
-        Initialize the LangChain provider.
-
-        When called with no arguments the provider acts as a per-provider factory
-        — call ``create_model(config)`` to obtain a configured instance.
-
-        When called with an explicit ``llm`` the provider is ready to invoke
-        the model immediately.
-
         :param llm: A LangChain BaseChatModel instance (optional)
         """
         self._llm = llm

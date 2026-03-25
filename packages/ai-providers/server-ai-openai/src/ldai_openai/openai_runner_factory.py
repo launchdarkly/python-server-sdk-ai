@@ -12,15 +12,7 @@ from openai.types.chat import ChatCompletionMessageParam
 
 
 class OpenAIRunnerFactory(AIProvider):
-    """
-    OpenAI provider for the LaunchDarkly AI SDK.
-
-    Can be used in two ways:
-    - Transparently via RunnerFactory (pass ``default_ai_provider='openai'`` to
-      ``create_model()`` / ``create_chat()``).
-    - Directly for full control: instantiate with an ``AsyncOpenAI`` client,
-      model name, and parameters, then call ``invoke_model()`` yourself.
-    """
+    """OpenAI provider for the LaunchDarkly AI SDK."""
 
     def __init__(
         self,
@@ -29,15 +21,6 @@ class OpenAIRunnerFactory(AIProvider):
         parameters: Optional[Dict[str, Any]] = None,
     ):
         """
-        Initialize the OpenAI provider.
-
-        When called with no arguments the provider reads credentials from the
-        environment (``OPENAI_API_KEY``) and acts as a per-provider factory —
-        call ``create_model(config)`` to obtain a configured instance.
-
-        When called with explicit arguments the provider is ready to invoke
-        the model immediately.
-
         :param client: An AsyncOpenAI client instance (created from env if omitted)
         :param model_name: The name of the model to use
         :param parameters: Additional model parameters
