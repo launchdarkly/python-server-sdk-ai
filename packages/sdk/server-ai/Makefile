@@ -15,7 +15,7 @@ help: #! Show this help message
 
 .PHONY: install
 install: #! Install package dependencies
-	uv sync --group dev
+	uv sync --all-groups
 
 .PHONY: test
 test: #! Run unit tests
