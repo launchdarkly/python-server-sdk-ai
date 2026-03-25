@@ -96,6 +96,8 @@ async def test_langgraph_runner_run_success():
 
     mock_message = MagicMock()
     mock_message.content = "langgraph answer"
+    mock_message.usage_metadata = None
+    mock_message.response_metadata = None
 
     mock_compiled = MagicMock()
     mock_compiled.ainvoke = AsyncMock(return_value={'messages': [mock_message]})
@@ -115,8 +117,17 @@ async def test_langgraph_runner_run_success():
     mock_lc_core_messages.HumanMessage = MagicMock(return_value=mock_human_message)
     mock_lc_core_messages.AnyMessage = MagicMock()
 
+    mock_model_response = MagicMock()
+    mock_model_response.content = 'langgraph answer'
+    mock_model_response.usage_metadata = None
+    mock_model_response.response_metadata = None
+    mock_model_response.tool_calls = None
+
+    mock_llm = MagicMock()
+    mock_llm.invoke = MagicMock(return_value=mock_model_response)
+
     mock_init_model = MagicMock()
-    mock_init_model.return_value = MagicMock()
+    mock_init_model.return_value = mock_llm
     mock_langchain_chat = MagicMock()
     mock_langchain_chat.init_chat_model = mock_init_model
 
@@ -135,5 +146,6 @@ async def test_langgraph_runner_run_success():
     assert isinstance(result, AgentGraphResult)
     assert result.output == "langgraph answer"
     assert result.metrics.success is True
+    tracker.track_path.assert_called_once_with([])
     tracker.track_invocation_success.assert_called_once()
     tracker.track_latency.assert_called_once()

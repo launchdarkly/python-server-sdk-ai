@@ -3,6 +3,7 @@
 import time
 from typing import Any, List, Optional
 
+from ldai import log
 from ldai.agent_graph import AgentGraphDefinition, AgentGraphNode
 from ldai.providers.types import LDAIMetrics
 from ldai.runners.agent_graph_runner import AgentGraphRunner
@@ -15,14 +16,46 @@ def _to_openai_name(name: str) -> str:
     return name.replace('-', '_')
 
 
+def _log_run_result_shape(result: Any) -> None:
+    """Print RunResult attributes (excluding final_output) for debugging."""
+    attrs = [a for a in dir(result) if not a.startswith('_')]
+    print("RunResult public attributes:", attrs)
+    for name in attrs:
+        if name == 'final_output':
+            continue
+        try:
+            val = getattr(result, name)
+            if callable(val):
+                print(f"  {name}: callable")
+            else:
+                print(f"  {name}: {repr(val)}")
+        except Exception as e:
+            print(f"  {name}: (error reading: {e})")
+
+
+def _build_native_tool_map() -> dict:
+    try:
+        from agents import CodeInterpreterTool, FileSearchTool, ImageGenerationTool, WebSearchTool
+        return {
+            'web_search_tool': lambda _: WebSearchTool(),
+            'file_search_tool': lambda _: FileSearchTool(),
+            'code_interpreter': lambda _: CodeInterpreterTool(),
+            'image_generation': lambda _: ImageGenerationTool(),
+        }
+    except ImportError:
+        return {}
+
+
+_NATIVE_OPENAI_TOOLS = _build_native_tool_map()
+
+
 class OpenAIAgentGraphRunner(AgentGraphRunner):
     """
     AgentGraphRunner implementation for the OpenAI Agents SDK.
 
-    Builds agents from an AgentGraphDefinition and a ToolRegistry via
-    reverse_traverse, executes them with Runner.run(), and auto-tracks
-    path, tool calls, handoffs, latency, and invocation success/failure
-    via the graph's AIGraphTracker.
+    Runs the agent graph with the OpenAI Agents SDK and automatically records
+    graph- and node-level AI metric data to the LaunchDarkly trackers on the
+    graph definition and each node.
 
     Requires ``openai-agents`` to be installed.
     """
@@ -54,32 +87,41 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
         if root_node:
             path.append(root_node.get_key())
 
-        start_time = time.time()
+        start_ns = time.perf_counter_ns()
         try:
-            try:
-                from agents import Runner
-            except ImportError as exc:
-                raise ImportError(
-                    "openai-agents is required for OpenAIAgentGraphRunner. "
-                    "Install it with: pip install openai-agents"
-                ) from exc
-
+            from agents import Runner
             root_agent = self._build_agents(path)
             result = await Runner.run(root_agent, str(input))
-            duration = int((time.time() - start_time) * 1000)
+            # _log_run_result_shape(result)
+            duration = (time.perf_counter_ns() - start_ns) // 1_000_000
 
             if tracker:
                 tracker.track_path(path)
                 tracker.track_latency(duration)
                 tracker.track_invocation_success()
+                usage = result.context_wrapper.usage
+                tracker.track_total_tokens(
+                    TokenUsage(
+                        total=usage.total_tokens,
+                        input=usage.input_tokens,
+                        output=usage.output_tokens,
+                    )
+                )
 
             return AgentGraphResult(
                 output=str(result.final_output),
                 raw=result,
                 metrics=LDAIMetrics(success=True),
             )
-        except Exception:
-            duration = int((time.time() - start_time) * 1000)
+        except Exception as exc:
+            if isinstance(exc, ImportError):
+                log.warning(
+                    "openai-agents is required for OpenAIAgentGraphRunner. "
+                    "Install it with: pip install openai-agents"
+                )
+            else:
+                log.warning(f'OpenAIAgentGraphRunner run failed: {exc}')
+            duration = (time.perf_counter_ns() - start_ns) // 1_000_000
             if tracker:
                 tracker.track_latency(duration)
                 tracker.track_invocation_failure()
@@ -88,6 +130,54 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
                 raw=None,
                 metrics=LDAIMetrics(success=False),
             )
+
+    def _handle_handoff(
+        self,
+        run_ctx: Any,
+        src: str,
+        tgt: str,
+        path: List[str],
+        tracker: Any,
+        config_tracker: Any,
+    ) -> None:
+        path.append(tgt)
+        if tracker:
+            tracker.track_handoff_success(src, tgt)
+
+        usage: Optional[TokenUsage] = None
+        duration_ms: Optional[int] = None
+        try:
+            usage_entry = run_ctx.usage.request_usage_entries[-1]
+            usage = TokenUsage(
+                total=usage_entry.total_tokens,
+                input=usage_entry.input_tokens,
+                output=usage_entry.output_tokens,
+            )
+            duration_ms = getattr(usage_entry, 'duration_ms', None)
+            if duration_ms is None:
+                duration_ms = getattr(usage_entry, 'latency_ms', None)
+        except Exception:
+            pass
+
+        gk = tracker.graph_key if tracker is not None else None
+        if config_tracker is not None:
+            if usage is not None:
+                config_tracker.track_tokens(usage, graph_key=gk)
+            if duration_ms is not None:
+                config_tracker.track_duration(int(duration_ms), graph_key=gk)
+            config_tracker.track_success(graph_key=gk)
+
+    def _make_on_handoff(
+        self,
+        src: str,
+        tgt: str,
+        path: List[str],
+        tracker: Any,
+        config_tracker: Any,
+    ):
+        def on_handoff(run_ctx: Any) -> None:
+            self._handle_handoff(run_ctx, src, tgt, path, tracker, config_tracker)
+        return on_handoff
 
     def _build_agents(self, path: List[str]) -> Any:
         """
@@ -125,32 +215,16 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
             agent_handoffs: List[Handoff] = []
             for edge in node.get_edges():
                 target_key = edge.target_config
-
-                def _make_on_handoff(src: str, tgt: str):
-                    def on_handoff(run_ctx: RunContextWrapper) -> None:
-                        path.append(tgt)
-                        if tracker:
-                            tracker.track_handoff_success(src, tgt)
-                            tracker.track_node_invocation(src)
-                        if config_tracker:
-                            try:
-                                usage_entry = run_ctx.usage.request_usage_entries[-1]
-                                config_tracker.track_tokens(
-                                    TokenUsage(
-                                        total=usage_entry.total_tokens,
-                                        input=usage_entry.input_tokens,
-                                        output=usage_entry.output_tokens,
-                                    )
-                                )
-                            except Exception:
-                                pass
-                            config_tracker.track_success()
-                    return on_handoff
-
                 agent_handoffs.append(
                     handoff(
                         agent=ctx[target_key],
-                        on_handoff=_make_on_handoff(node_config.key, target_key),
+                        on_handoff=self._make_on_handoff(
+                            node_config.key,
+                            target_key,
+                            path,
+                            tracker,
+                            config_tracker,
+                        ),
                     )
                 )
 
@@ -159,6 +233,12 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
             for tool_def in tool_defs:
                 tool_name_raw = tool_def.get('name', '')
                 tool_name = _to_openai_name(tool_name_raw)
+
+                # Check native OpenAI tools first, then fall back to ToolRegistry
+                if tool_name in _NATIVE_OPENAI_TOOLS:
+                    agent_tools.append(_NATIVE_OPENAI_TOOLS[tool_name](tool_def))
+                    continue
+
                 tool_fn = self._tools.get(tool_name) or self._tools.get(tool_name_raw)
                 if not tool_fn:
                     continue
@@ -169,7 +249,6 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
                     fn: Any,
                     description: str,
                     params_schema: dict,
-                    cfg_key: str,
                 ) -> FunctionTool:
                     def wrapped(tool_ctx: ToolContext, tool_args: str) -> Any:
                         import json
@@ -178,8 +257,11 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
                         except Exception:
                             args = {}
                         path.append(raw_name)
-                        if tracker:
-                            tracker.track_tool_call(config_key=cfg_key, tool_key=name)
+                        if config_tracker is not None:
+                            config_tracker.track_tool_call(
+                                name,
+                                graph_key=tracker.graph_key if tracker is not None else None,
+                            )
                         return fn(**args)
 
                     return FunctionTool(
@@ -196,13 +278,12 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
                         tool_fn,
                         tool_def.get('description', ''),
                         tool_def.get('parameters', {}),
-                        node_config.key,
                     )
                 )
 
             return Agent(
                 name=_to_openai_name(node_config.key),
-                instructions=f'[RECOMMENDED_PROMPT_PREFIX] {node_config.instructions or ""}',
+                instructions=f'{RECOMMENDED_PROMPT_PREFIX} {node_config.instructions or ""}',
                 handoffs=list(agent_handoffs),
                 tools=list(agent_tools),
             )

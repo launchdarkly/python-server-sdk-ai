@@ -99,6 +99,9 @@ async def test_openai_agent_graph_runner_run_success():
 
     mock_result = MagicMock()
     mock_result.final_output = "agent answer"
+    mock_result.context_wrapper.usage.total_tokens = 0
+    mock_result.context_wrapper.usage.input_tokens = 0
+    mock_result.context_wrapper.usage.output_tokens = 0
 
     mock_runner_module = MagicMock()
     mock_runner_module.run = AsyncMock(return_value=mock_result)

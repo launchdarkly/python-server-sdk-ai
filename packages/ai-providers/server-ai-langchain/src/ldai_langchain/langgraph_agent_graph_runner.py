@@ -4,20 +4,22 @@ import operator
 import time
 from typing import Annotated, Any, List
 
+from ldai import log
 from ldai.agent_graph import AgentGraphDefinition, AgentGraphNode
 from ldai.providers.types import LDAIMetrics
 from ldai.runners.agent_graph_runner import AgentGraphRunner
 from ldai.runners.types import AgentGraphResult, ToolRegistry
+
+from ldai_langchain.langchain_helper import LangChainHelper
 
 
 class LangGraphAgentGraphRunner(AgentGraphRunner):
     """
     AgentGraphRunner implementation for LangGraph.
 
-    Builds a LangGraph StateGraph from an AgentGraphDefinition and
-    ToolRegistry via traverse(), compiles it, and executes it with
-    ainvoke(). Auto-tracks latency and invocation success/failure via
-    the graph's AIGraphTracker.
+    Compiles and runs the agent graph with LangGraph and automatically records
+    graph- and node-level AI metric data to the LaunchDarkly trackers on the
+    graph definition and each node.
 
     Requires ``langgraph`` to be installed.
     """
@@ -43,18 +45,12 @@ class LangGraphAgentGraphRunner(AgentGraphRunner):
         :return: AgentGraphResult with the final output and metrics
         """
         tracker = self._graph.get_tracker()
-        start_time = time.time()
+        start_ns = time.perf_counter_ns()
         try:
-            try:
-                from langchain.chat_models import init_chat_model
-                from langchain_core.messages import AnyMessage, HumanMessage
-                from langgraph.graph import END, START, StateGraph
-                from typing_extensions import TypedDict
-            except ImportError as exc:
-                raise ImportError(
-                    "langgraph is required for LangGraphAgentGraphRunner. "
-                    "Install it with: pip install langgraph"
-                ) from exc
+            from langchain.chat_models import init_chat_model
+            from langchain_core.messages import AnyMessage, HumanMessage
+            from langgraph.graph import END, START, StateGraph
+            from typing_extensions import TypedDict
 
             class WorkflowState(TypedDict):
                 messages: Annotated[List[AnyMessage], operator.add]
@@ -63,10 +59,12 @@ class LangGraphAgentGraphRunner(AgentGraphRunner):
             root_node = self._graph.root()
             root_key = root_node.get_key() if root_node else None
             tools_ref = self._tools
+            exec_path: List[str] = []
 
             def handle_traversal(node: AgentGraphNode, ctx: dict) -> None:
                 node_config = node.get_config()
                 node_key = node.get_key()
+                node_tracker = node_config.tracker
 
                 model = None
                 if node_config.model:
@@ -82,10 +80,24 @@ class LangGraphAgentGraphRunner(AgentGraphRunner):
                     model = lc_model
 
                 def invoke(state: WorkflowState) -> WorkflowState:
-                    if model:
+                    exec_path.append(node_key)
+                    if not model:
+                        return state
+                    gk = tracker.graph_key if tracker is not None else None
+                    if node_tracker:
+                        response = node_tracker.track_metrics_of(
+                            lambda: model.invoke(state['messages']),
+                            LangChainHelper.get_ai_metrics_from_response,
+                            graph_key=gk,
+                        )
+                        node_tracker.track_tool_calls(
+                            LangChainHelper.get_tool_calls_from_response(response),
+                            graph_key=tracker.graph_key if tracker is not None else None,
+                        )
+                    else:
                         response = model.invoke(state['messages'])
-                        return {'messages': [response]}
-                    return state
+
+                    return {'messages': [response]}
 
                 invoke.__name__ = node_key
 
@@ -108,7 +120,7 @@ class LangGraphAgentGraphRunner(AgentGraphRunner):
             result = await compiled.ainvoke(
                 {'messages': [HumanMessage(content=str(input))]}
             )
-            duration = int((time.time() - start_time) * 1000)
+            duration = (time.perf_counter_ns() - start_ns) // 1_000_000
 
             output = ''
             messages = result.get('messages', [])
@@ -118,16 +130,27 @@ class LangGraphAgentGraphRunner(AgentGraphRunner):
                     output = str(last.content)
 
             if tracker:
+                tracker.track_path(exec_path)
                 tracker.track_latency(duration)
                 tracker.track_invocation_success()
+                tracker.track_total_tokens(
+                    LangChainHelper.sum_token_usage_from_messages(messages)
+                )
 
             return AgentGraphResult(
                 output=output,
                 raw=result,
                 metrics=LDAIMetrics(success=True),
             )
-        except Exception:
-            duration = int((time.time() - start_time) * 1000)
+        except Exception as exc:
+            if isinstance(exc, ImportError):
+                log.warning(
+                    "langgraph is required for LangGraphAgentGraphRunner. "
+                    "Install it with: pip install langgraph"
+                )
+            else:
+                log.warning(f'LangGraphAgentGraphRunner run failed: {exc}')
+            duration = (time.perf_counter_ns() - start_ns) // 1_000_000
             if tracker:
                 tracker.track_latency(duration)
                 tracker.track_invocation_failure()
