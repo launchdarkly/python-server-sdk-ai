@@ -49,6 +49,9 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
+      - name: Install dependencies
+        run: make -C packages/sdk/server-ai install
+
       - name: Run tests
         run: make -C packages/sdk/server-ai test
 
@@ -88,6 +91,9 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
+      - name: Install dependencies
+        run: make -C packages/ai-providers/server-ai-langchain install
+
       - name: Run tests
         run: make -C packages/ai-providers/server-ai-langchain test
 
@@ -126,6 +132,9 @@ jobs:
         uses: astral-sh/setup-uv@6ee6290f1cbc4156c0bdd66691b2c144ef8df19a # v7.4
         with:
           python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: make -C packages/ai-providers/server-ai-openai install
 
       - name: Run tests
         run: make -C packages/ai-providers/server-ai-openai test

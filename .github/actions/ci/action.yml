@@ -19,7 +19,7 @@ runs:
 
     - name: Install Dependencies
       shell: bash
-      run: uv sync --all-groups
+      run: make -C ${{ inputs.workspace_path }} install
 
     - name: Lint
       shell: bash
