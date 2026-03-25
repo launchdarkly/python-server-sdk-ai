@@ -3,8 +3,9 @@ from typing import Optional
 
 from ldai.models import AIConfigKind
 from ldai.providers import AIProvider
-from ldai_openai.openai_model_runner import OpenAIModelRunner
 from openai import AsyncOpenAI
+
+from ldai_openai.openai_model_runner import OpenAIModelRunner
 
 
 class OpenAIRunnerFactory(AIProvider):

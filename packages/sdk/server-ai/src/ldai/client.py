@@ -6,8 +6,8 @@ from ldclient.client import LDClient
 
 from ldai import log
 from ldai.agent_graph import AgentGraphDefinition
-from ldai.managed_model import ManagedModel
 from ldai.judge import Judge
+from ldai.managed_model import ManagedModel
 from ldai.models import (
     AIAgentConfig,
     AIAgentConfigDefault,

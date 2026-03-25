@@ -5,6 +5,7 @@ from langchain_core.messages import BaseMessage
 from ldai import LDMessage, log
 from ldai.providers.model_runner import ModelRunner
 from ldai.providers.types import LDAIMetrics, ModelResponse, StructuredResponse
+
 from ldai_langchain.langchain_helper import LangChainHelper
 
 
@@ -72,6 +73,11 @@ class LangChainModelRunner(ModelRunner):
         :param response_structure: Dictionary defining the output structure
         :return: StructuredResponse containing the structured data
         """
+        structured_response = StructuredResponse(
+            data={},
+            raw_response='',
+            metrics=LDAIMetrics(success=False, usage=None),
+        )
         try:
             langchain_messages = LangChainHelper.convert_messages(messages)
             structured_llm = self._llm.with_structured_output(response_structure, include_raw=True)
@@ -79,34 +85,21 @@ class LangChainModelRunner(ModelRunner):
 
             if not isinstance(response, dict):
                 log.warning(f'Structured output did not return a dict. Got: {type(response)}')
-                return StructuredResponse(
-                    data={},
-                    raw_response='',
-                    metrics=LDAIMetrics(success=False, usage=None),
-                )
+                return structured_response
 
             raw_response = response.get('raw')
-            usage = LangChainHelper.get_ai_usage_from_response(raw_response) if raw_response is not None else None
-            raw_content = raw_response.content if hasattr(raw_response, 'content') else ''
+            if raw_response is not None:
+                if hasattr(raw_response, 'content'):
+                    structured_response.raw_response = raw_response.content
+                structured_response.metrics.usage = LangChainHelper.get_ai_usage_from_response(raw_response)
 
             if response.get('parsing_error'):
                 log.warning('LangChain structured model invocation had a parsing error')
-                return StructuredResponse(
-                    data={},
-                    raw_response=raw_content,
-                    metrics=LDAIMetrics(success=False, usage=usage),
-                )
+                return structured_response
 
-            return StructuredResponse(
-                data=response.get('parsed') or {},
-                raw_response=raw_content,
-                metrics=LDAIMetrics(success=True, usage=usage),
-            )
+            structured_response.metrics.success = True
+            structured_response.data = response.get('parsed') or {}
+            return structured_response
         except Exception as error:
             log.warning(f'LangChain structured model invocation failed: {error}')
-            return StructuredResponse(
-                data={},
-                raw_response='',
-                metrics=LDAIMetrics(success=False, usage=None),
-            )
-
+            return structured_response
