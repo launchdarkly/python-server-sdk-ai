@@ -4,7 +4,6 @@ from typing import Any, Dict, List
 from ldai import LDMessage, log
 from ldai.providers.model_runner import ModelRunner
 from ldai.providers.types import LDAIMetrics, ModelResponse, StructuredResponse
-from ldai.tracker import TokenUsage
 from openai import AsyncOpenAI
 
 from ldai_openai.openai_helper import OpenAIHelper
@@ -38,7 +37,7 @@ class OpenAIModelRunner(ModelRunner):
         try:
             response = await self._client.chat.completions.create(
                 model=self._model_name,
-                messages=OpenAIHelper.convert_messages(messages),
+                messages=OpenAIHelper.convert_messages_to_openai(messages),
                 **self._parameters,
             )
 
@@ -80,7 +79,7 @@ class OpenAIModelRunner(ModelRunner):
         try:
             response = await self._client.chat.completions.create(
                 model=self._model_name,
-                messages=OpenAIHelper.convert_messages(messages),
+                messages=OpenAIHelper.convert_messages_to_openai(messages),
                 response_format={  # type: ignore[arg-type]
                     'type': 'json_schema',
                     'json_schema': {

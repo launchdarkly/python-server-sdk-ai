@@ -35,7 +35,7 @@ class LangChainHelper:
         return mapping.get(lowercased_name, lowercased_name)
 
     @staticmethod
-    def convert_messages(
+    def convert_messages_to_langchain(
         messages: List[LDMessage],
     ) -> List[Union[HumanMessage, SystemMessage, AIMessage]]:
         """

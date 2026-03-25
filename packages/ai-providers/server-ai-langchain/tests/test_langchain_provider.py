@@ -11,12 +11,12 @@ from ldai_langchain import LangChainHelper, LangChainModelRunner, LangChainRunne
 
 
 class TestConvertMessages:
-    """Tests for LangChainHelper.convert_messages."""
+    """Tests for LangChainHelper.convert_messages_to_langchain."""
 
     def test_converts_system_messages_to_system_message(self):
         """Should convert system messages to SystemMessage."""
         messages = [LDMessage(role='system', content='You are a helpful assistant.')]
-        result = LangChainHelper.convert_messages(messages)
+        result = LangChainHelper.convert_messages_to_langchain(messages)
 
         assert len(result) == 1
         assert isinstance(result[0], SystemMessage)
@@ -25,7 +25,7 @@ class TestConvertMessages:
     def test_converts_user_messages_to_human_message(self):
         """Should convert user messages to HumanMessage."""
         messages = [LDMessage(role='user', content='Hello, how are you?')]
-        result = LangChainHelper.convert_messages(messages)
+        result = LangChainHelper.convert_messages_to_langchain(messages)
 
         assert len(result) == 1
         assert isinstance(result[0], HumanMessage)
@@ -34,7 +34,7 @@ class TestConvertMessages:
     def test_converts_assistant_messages_to_ai_message(self):
         """Should convert assistant messages to AIMessage."""
         messages = [LDMessage(role='assistant', content='I am doing well, thank you!')]
-        result = LangChainHelper.convert_messages(messages)
+        result = LangChainHelper.convert_messages_to_langchain(messages)
 
         assert len(result) == 1
         assert isinstance(result[0], AIMessage)
@@ -47,7 +47,7 @@ class TestConvertMessages:
             LDMessage(role='user', content='What is the weather like?'),
             LDMessage(role='assistant', content='I cannot check the weather.'),
         ]
-        result = LangChainHelper.convert_messages(messages)
+        result = LangChainHelper.convert_messages_to_langchain(messages)
 
         assert len(result) == 3
         assert isinstance(result[0], SystemMessage)
@@ -61,11 +61,11 @@ class TestConvertMessages:
             content = 'Test message'
 
         with pytest.raises(ValueError, match='Unsupported message role: unknown'):
-            LangChainHelper.convert_messages([MockMessage()])  # type: ignore
+            LangChainHelper.convert_messages_to_langchain([MockMessage()])  # type: ignore
 
     def test_handles_empty_message_array(self):
         """Should handle empty message array."""
-        result = LangChainHelper.convert_messages([])
+        result = LangChainHelper.convert_messages_to_langchain([])
         assert len(result) == 0
 
 

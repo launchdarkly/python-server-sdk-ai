@@ -14,7 +14,7 @@ class OpenAIHelper:
     """
 
     @staticmethod
-    def convert_messages(messages: List[LDMessage]) -> Iterable[ChatCompletionMessageParam]:
+    def convert_messages_to_openai(messages: List[LDMessage]) -> Iterable[ChatCompletionMessageParam]:
         """
         Convert LaunchDarkly messages to OpenAI chat completion message format.
 

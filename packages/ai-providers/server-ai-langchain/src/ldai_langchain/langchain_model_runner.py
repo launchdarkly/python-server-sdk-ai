@@ -36,7 +36,7 @@ class LangChainModelRunner(ModelRunner):
         :return: ModelResponse containing the model's response and metrics
         """
         try:
-            langchain_messages = LangChainHelper.convert_messages(messages)
+            langchain_messages = LangChainHelper.convert_messages_to_langchain(messages)
             response: BaseMessage = await self._llm.ainvoke(langchain_messages)
             metrics = LangChainHelper.get_ai_metrics_from_response(response)
 
@@ -79,7 +79,7 @@ class LangChainModelRunner(ModelRunner):
             metrics=LDAIMetrics(success=False, usage=None),
         )
         try:
-            langchain_messages = LangChainHelper.convert_messages(messages)
+            langchain_messages = LangChainHelper.convert_messages_to_langchain(messages)
             structured_llm = self._llm.with_structured_output(response_structure, include_raw=True)
             response = await structured_llm.ainvoke(langchain_messages)
 
