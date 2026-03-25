@@ -1,12 +1,11 @@
-[tool.poetry]
+[project]
 name = "launchdarkly-server-sdk-ai-optimization"
-version = "0.0.0"
+version = "0.0.0"  # x-release-please-version
 description = "LaunchDarkly AI SDK optimization helpers"
-authors = ["LaunchDarkly <dev@launchdarkly.com>"]
-license = "Apache-2.0"
+authors = [{name = "LaunchDarkly", email = "dev@launchdarkly.com"}]
+license = {text = "Apache-2.0"}
 readme = "README.md"
-homepage = "https://docs.launchdarkly.com/sdk/ai/python"
-repository = "https://github.com/launchdarkly/python-server-sdk-ai"
+requires-python = ">=3.9,<4"
 classifiers = [
     "Intended Audience :: Developers",
     "License :: OSI Approved :: Apache Software License",
@@ -20,19 +19,30 @@ classifiers = [
     "Topic :: Software Development",
     "Topic :: Software Development :: Libraries",
 ]
-packages = [{ include = "ldai_optimization", from = "src" }]
+dependencies = [
+    "launchdarkly-server-sdk-ai>=0.16.0",
+]
 
-[tool.poetry.dependencies]
-python = ">=3.9,<4"
-launchdarkly-server-sdk-ai = ">=0.16.0"
+[project.urls]
+Homepage = "https://docs.launchdarkly.com/sdk/ai/python"
+Repository = "https://github.com/launchdarkly/python-server-sdk-ai"
 
-[tool.poetry.group.dev.dependencies]
-pytest = ">=2.8"
-pytest-cov = ">=2.4.0"
-pytest-asyncio = ">=0.21.0,<1.0.0"
-mypy = "==1.18.2"
-pycodestyle = ">=2.11.0"
-isort = ">=5.12.0"
+[dependency-groups]
+dev = [
+    "pytest>=2.8",
+    "pytest-cov>=2.4.0",
+    "pytest-asyncio>=0.21.0,<1.0.0",
+    "mypy==1.18.2",
+    "pycodestyle>=2.11.0",
+    "isort>=5.12.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ldai_optimization"]
 
 [tool.mypy]
 python_version = "3.9"
@@ -45,13 +55,7 @@ profile = "black"
 known_third_party = ["ldai"]
 sections = ["FUTURE", "STDLIB", "THIRDPARTY", "FIRSTPARTY", "LOCALFOLDER"]
 
-
 [tool.pytest.ini_options]
 addopts = ["-ra"]
 testpaths = ["tests"]
 asyncio_mode = "auto"
-
-
-[build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
