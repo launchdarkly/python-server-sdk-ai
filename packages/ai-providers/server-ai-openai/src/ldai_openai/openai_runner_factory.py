@@ -11,7 +11,7 @@ from openai import AsyncOpenAI
 from openai.types.chat import ChatCompletionMessageParam
 
 
-class OpenAIProvider(AIProvider):
+class OpenAIRunnerFactory(AIProvider):
     """
     OpenAI provider for the LaunchDarkly AI SDK.
 
@@ -50,7 +50,7 @@ class OpenAIProvider(AIProvider):
 
     # --- AIProvider factory methods ---
 
-    def create_model(self, config: AIConfigKind) -> 'OpenAIProvider':
+    def create_model(self, config: AIConfigKind) -> 'OpenAIRunnerFactory':
         """
         Create a configured OpenAI model provider for the given AI config.
 
@@ -58,13 +58,13 @@ class OpenAIProvider(AIProvider):
         preserved across calls.
 
         :param config: The LaunchDarkly AI configuration
-        :return: Configured OpenAIProvider ready to invoke the model
+        :return: Configured OpenAIRunnerFactory ready to invoke the model
         """
         config_dict = config.to_dict()
         model_dict = config_dict.get('model') or {}
         model_name = model_dict.get('name', '')
         parameters = model_dict.get('parameters') or {}
-        return OpenAIProvider(self._client, model_name, parameters)
+        return OpenAIRunnerFactory(self._client, model_name, parameters)
 
     # --- Model invocation ---
 
@@ -87,7 +87,7 @@ class OpenAIProvider(AIProvider):
                 **self._parameters,
             )
 
-            metrics = OpenAIProvider.get_ai_metrics_from_response(response)
+            metrics = OpenAIRunnerFactory.get_ai_metrics_from_response(response)
 
             content = ''
             if response.choices and len(response.choices) > 0:
@@ -143,7 +143,7 @@ class OpenAIProvider(AIProvider):
                 **self._parameters,
             )
 
-            metrics = OpenAIProvider.get_ai_metrics_from_response(response)
+            metrics = OpenAIRunnerFactory.get_ai_metrics_from_response(response)
 
             content = ''
             if response.choices and len(response.choices) > 0:
@@ -206,7 +206,7 @@ class OpenAIProvider(AIProvider):
 
             response = await tracker.track_metrics_of(
                 lambda: client.chat.completions.create(config),
-                OpenAIProvider.get_ai_metrics_from_response
+                OpenAIRunnerFactory.get_ai_metrics_from_response
             )
         """
         usage: Optional[TokenUsage] = None
