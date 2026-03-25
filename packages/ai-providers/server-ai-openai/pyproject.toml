@@ -1,6 +1,6 @@
 [project]
 name = "launchdarkly-server-sdk-ai-openai"
-version = "0.2.0"
+version = "0.2.1"
 description = "LaunchDarkly AI SDK OpenAI Provider"
 authors = [{name = "LaunchDarkly", email = "dev@launchdarkly.com"}]
 license = {text = "Apache-2.0"}

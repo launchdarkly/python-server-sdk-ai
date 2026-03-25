@@ -1,4 +1,4 @@
-__version__ = "0.16.0"  # x-release-please-version
+__version__ = "0.16.1"  # x-release-please-version
 
 from ldclient import log
 

@@ -83,9 +83,14 @@ class LangChainProvider(AIProvider):
         :param response_structure: Dictionary defining the output structure
         :return: StructuredResponse containing the structured data
         """
+        structured_response = StructuredResponse(
+            data={},
+            raw_response='',
+            metrics=LDAIMetrics(success=False, usage=None),
+        )
         try:
             langchain_messages = LangChainProvider.convert_messages_to_langchain(messages)
-            structured_llm = self._llm.with_structured_output(response_structure)
+            structured_llm = self._llm.with_structured_output(response_structure, include_raw=True)
             response = await structured_llm.ainvoke(langchain_messages)
 
             if not isinstance(response, dict):
@@ -93,34 +98,24 @@ class LangChainProvider(AIProvider):
                     f'Structured output did not return a dict. '
                     f'Got: {type(response)}'
                 )
-                return StructuredResponse(
-                    data={},
-                    raw_response='',
-                    metrics=LDAIMetrics(
-                        success=False,
-                        usage=TokenUsage(total=0, input=0, output=0),
-                    ),
-                )
+                return structured_response
 
-            return StructuredResponse(
-                data=response,
-                raw_response=str(response),
-                metrics=LDAIMetrics(
-                    success=True,
-                    usage=TokenUsage(total=0, input=0, output=0),
-                ),
-            )
+            raw_response = response.get('raw')
+            if raw_response is not None:
+                if hasattr(raw_response, 'content'):
+                    structured_response.raw_response = raw_response.content
+                structured_response.metrics.usage = LangChainProvider.get_ai_usage_from_response(raw_response)
+
+            if response.get('parsing_error'):
+                log.warning(f'LangChain structured model invocation had a parsing error')
+                return structured_response
+
+            structured_response.metrics.success = True
+            structured_response.data = response.get('parsed') or {}
+            return structured_response
         except Exception as error:
             log.warning(f'LangChain structured model invocation failed: {error}')
-
-            return StructuredResponse(
-                data={},
-                raw_response='',
-                metrics=LDAIMetrics(
-                    success=False,
-                    usage=TokenUsage(total=0, input=0, output=0),
-                ),
-            )
+            return structured_response
 
     def get_chat_model(self) -> BaseChatModel:
         """
@@ -135,19 +130,46 @@ class LangChainProvider(AIProvider):
         """
         Map LaunchDarkly provider names to LangChain provider names.
 
-        This method enables seamless integration between LaunchDarkly's standardized
-        provider naming and LangChain's naming conventions.
-
         :param ld_provider_name: LaunchDarkly provider name
         :return: LangChain-compatible provider name
         """
         lowercased_name = ld_provider_name.lower()
+        # Bedrock is the only provider that uses "provider:model_family" (e.g. Bedrock:Anthropic).
+        if lowercased_name.startswith('bedrock:'):
+            return 'bedrock_converse'
 
         mapping: Dict[str, str] = {
             'gemini': 'google-genai',
+            'bedrock': 'bedrock_converse',
         }
-
         return mapping.get(lowercased_name, lowercased_name)
+
+    @staticmethod
+    def get_ai_usage_from_response(response: BaseMessage) -> TokenUsage:
+        """
+        Get token usage from a LangChain provider response.
+
+        :param response: The response from the LangChain model
+        :return: TokenUsage with success status and token usage
+        """
+        # Extract token usage if available
+        usage: Optional[TokenUsage] = None
+        if hasattr(response, 'usage_metadata') and response.usage_metadata:
+            usage = TokenUsage(
+                total=response.usage_metadata.get('total_tokens', 0),
+                input=response.usage_metadata.get('input_tokens', 0),
+                output=response.usage_metadata.get('output_tokens', 0),
+            )
+        if not usage and hasattr(response, 'response_metadata') and response.response_metadata:
+            token_usage = response.response_metadata.get('tokenUsage') or response.response_metadata.get('token_usage')
+            if token_usage:
+                usage = TokenUsage(
+                    total=token_usage.get('totalTokens', 0) or token_usage.get('total_tokens', 0),
+                    input=token_usage.get('promptTokens', 0) or token_usage.get('prompt_tokens', 0),
+                    output=token_usage.get('completionTokens', 0) or token_usage.get('completion_tokens', 0),
+                )
+
+        return usage
 
     @staticmethod
     def get_ai_metrics_from_response(response: BaseMessage) -> LDAIMetrics:
@@ -168,15 +190,7 @@ class LangChainProvider(AIProvider):
             )
         """
         # Extract token usage if available
-        usage: Optional[TokenUsage] = None
-        if hasattr(response, 'response_metadata') and response.response_metadata:
-            token_usage = response.response_metadata.get('tokenUsage') or response.response_metadata.get('token_usage')
-            if token_usage:
-                usage = TokenUsage(
-                    total=token_usage.get('totalTokens', 0) or token_usage.get('total_tokens', 0),
-                    input=token_usage.get('promptTokens', 0) or token_usage.get('prompt_tokens', 0),
-                    output=token_usage.get('completionTokens', 0) or token_usage.get('completion_tokens', 0),
-                )
+        usage = LangChainProvider.get_ai_usage_from_response(response)
 
         return LDAIMetrics(success=True, usage=usage)
 
@@ -227,10 +241,15 @@ class LangChainProvider(AIProvider):
 
         model_name = model_dict.get('name', '')
         provider = provider_dict.get('name', '')
-        parameters = model_dict.get('parameters') or {}
+        parameters = dict(model_dict.get('parameters') or {})
+        mapped_provider = LangChainProvider.map_provider(provider)
 
+        # Bedrock requires the foundation provider (e.g. Bedrock:Anthropic) passed in
+        # parameters separately from model_provider, which is used for LangChain routing.
+        if mapped_provider == 'bedrock_converse' and 'provider' not in parameters:
+            parameters['provider'] = provider.removeprefix('bedrock:')
         return init_chat_model(
             model_name,
-            model_provider=LangChainProvider.map_provider(provider),
+            model_provider=mapped_provider,
             **parameters,
         )

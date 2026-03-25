@@ -37,7 +37,7 @@ class Judge:
         self._ai_config = ai_config
         self._ai_config_tracker = ai_config_tracker
         self._ai_provider = ai_provider
-        self._evaluation_response_structure = EvaluationSchemaBuilder.build(ai_config.evaluation_metric_key)
+        self._evaluation_response_structure = EvaluationSchemaBuilder.build()
 
     async def evaluate(
         self,
@@ -77,10 +77,9 @@ class Judge:
             )
 
             success = response.metrics.success
-
             evals = self._parse_evaluation_response(response.data)
 
-            if self._ai_config.evaluation_metric_key not in evals:
+            if not evals:
                 log.warn('Judge evaluation did not return the expected evaluation')
                 success = False
 
@@ -175,47 +174,26 @@ class Judge:
 
     def _parse_evaluation_response(self, data: Dict[str, Any]) -> Dict[str, EvalScore]:
         """
-        Parses the structured evaluation response from the AI provider.
-
-        :param data: The structured response data
-        :return: Dictionary of evaluation scores keyed by metric key
+        Parses the structured evaluation response. Expects {"score": n, "reasoning": "..."}.
         """
         results: Dict[str, EvalScore] = {}
-
-        if not data.get('evaluations') or not isinstance(data['evaluations'], dict):
-            log.warn('Invalid response: missing or invalid evaluations object')
-            return results
-
-        evaluations = data['evaluations']
-
         metric_key = self._ai_config.evaluation_metric_key
         if not metric_key:
             log.warn('Evaluation metric key is missing')
             return results
 
-        evaluation = evaluations.get(metric_key)
-
-        if not evaluation or not isinstance(evaluation, dict):
-            log.warn(f'Missing evaluation for metric key: {metric_key}')
+        if not isinstance(data, dict):
+            log.warn('Invalid response: missing or invalid evaluation')
             return results
 
-        score = evaluation.get('score')
-        reasoning = evaluation.get('reasoning')
-
+        score = data.get('score')
+        reasoning = data.get('reasoning')
         if not isinstance(score, (int, float)) or score < 0 or score > 1:
-            log.warn(
-                f'Invalid score evaluated for {metric_key}: {score}. '
-                'Score must be a number between 0 and 1 inclusive'
-            )
+            log.warn(f'Invalid score: {score}. Score must be a number between 0 and 1 inclusive')
             return results
-
         if not isinstance(reasoning, str):
-            log.warn(
-                f'Invalid reasoning evaluated for {metric_key}: {reasoning}. '
-                'Reasoning must be a string'
-            )
+            log.warn('Invalid reasoning: must be a string')
             return results
 
         results[metric_key] = EvalScore(score=float(score), reasoning=reasoning)
-
         return results
