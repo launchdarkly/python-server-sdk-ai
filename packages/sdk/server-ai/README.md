@@ -150,8 +150,8 @@ async def main():
     # Create LangChain model from configuration
     llm = await LangChainProvider.create_langchain_model(ai_config)
     
-    # Use with tracking
-    response = await ai_config.tracker.track_metrics_of(
+    # Use with tracking (sync invoke)
+    response = ai_config.tracker.track_metrics_of(
         lambda: llm.invoke(messages),
         lambda result: LangChainProvider.get_ai_metrics_from_response(result)
     )
@@ -190,7 +190,7 @@ async def main():
             temperature=ai_config.model.get_parameter('temperature') if ai_config.model else 0.5,
         )
     
-    result = await ai_config.tracker.track_metrics_of(
+    result = await ai_config.tracker.track_metrics_of_async(
         call_custom_provider,
         map_custom_provider_metrics
     )

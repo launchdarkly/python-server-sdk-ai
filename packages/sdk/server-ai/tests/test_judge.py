@@ -156,7 +156,7 @@ class TestJudgeEvaluate:
         )
         
         mock_runner.invoke_structured_model.return_value = mock_response
-        tracker.track_metrics_of = AsyncMock(return_value=mock_response)
+        tracker.track_metrics_of_async = AsyncMock(return_value=mock_response)
         
         judge = Judge(judge_config_with_key, tracker, mock_runner)
         
@@ -183,7 +183,7 @@ class TestJudgeEvaluate:
             metrics=LDAIMetrics(success=True),
         )
         mock_runner.invoke_structured_model.return_value = mock_response
-        tracker.track_metrics_of = AsyncMock(return_value=mock_response)
+        tracker.track_metrics_of_async = AsyncMock(return_value=mock_response)
 
         judge = Judge(judge_config_with_key, tracker, mock_runner)
         result = await judge.evaluate("What is feature flagging?", "Feature flagging is...")
@@ -206,7 +206,7 @@ class TestJudgeEvaluate:
         )
         
         mock_runner.invoke_structured_model.return_value = mock_response
-        tracker.track_metrics_of = AsyncMock(return_value=mock_response)
+        tracker.track_metrics_of_async = AsyncMock(return_value=mock_response)
         
         judge = Judge(judge_config_with_key, tracker, mock_runner)
         
@@ -231,7 +231,7 @@ class TestJudgeEvaluate:
         )
         
         mock_runner.invoke_structured_model.return_value = mock_response
-        tracker.track_metrics_of = AsyncMock(return_value=mock_response)
+        tracker.track_metrics_of_async = AsyncMock(return_value=mock_response)
         
         judge = Judge(judge_config_with_key, tracker, mock_runner)
         
@@ -253,7 +253,7 @@ class TestJudgeEvaluate:
         )
         
         mock_runner.invoke_structured_model.return_value = mock_response
-        tracker.track_metrics_of = AsyncMock(return_value=mock_response)
+        tracker.track_metrics_of_async = AsyncMock(return_value=mock_response)
         
         judge = Judge(judge_config_with_key, tracker, mock_runner)
         
@@ -269,7 +269,7 @@ class TestJudgeEvaluate:
     ):
         """Evaluate should handle exceptions gracefully."""
         mock_runner.invoke_structured_model.side_effect = Exception("Provider error")
-        tracker.track_metrics_of = AsyncMock(side_effect=Exception("Provider error"))
+        tracker.track_metrics_of_async = AsyncMock(side_effect=Exception("Provider error"))
         
         judge = Judge(judge_config_with_key, tracker, mock_runner)
         
@@ -311,7 +311,7 @@ class TestJudgeEvaluateMessages:
         )
         
         mock_runner.invoke_structured_model.return_value = mock_response
-        tracker.track_metrics_of = AsyncMock(return_value=mock_response)
+        tracker.track_metrics_of_async = AsyncMock(return_value=mock_response)
         
         judge = Judge(judge_config_with_key, tracker, mock_runner)
         
@@ -328,7 +328,7 @@ class TestJudgeEvaluateMessages:
         
         assert result is not None
         assert result.success is True
-        assert tracker.track_metrics_of.called
+        assert tracker.track_metrics_of_async.called
 
 
 class TestEvaluationSchemaBuilder:

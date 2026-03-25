@@ -48,7 +48,7 @@ class ManagedModel:
         config_messages = self._ai_config.messages or []
         all_messages = config_messages + self._messages
 
-        response = await self._tracker.track_metrics_of(
+        response = await self._tracker.track_metrics_of_async(
             lambda: self._model_runner.invoke_model(all_messages),
             lambda result: result.metrics,
         )

@@ -5,7 +5,8 @@ import pytest
 from ldclient import Config, Context, LDClient
 from ldclient.integrations.test_data import TestData
 
-from ldai.tracker import FeedbackKind, LDAIConfigTracker, TokenUsage
+from ldai.providers.types import LDAIMetrics
+from ldai.tracker import AIGraphTracker, FeedbackKind, LDAIConfigTracker, TokenUsage
 
 
 @pytest.fixture
@@ -440,3 +441,153 @@ def test_error_overwrites_success(client: LDClient):
     client.track.assert_has_calls(calls)  # type: ignore
 
     assert tracker.get_summary().success is False
+
+
+def _base_td() -> dict:
+    return {
+        "variationKey": "variation-key",
+        "configKey": "config-key",
+        "version": 3,
+        "modelName": "fakeModel",
+        "providerName": "fakeProvider",
+    }
+
+
+def test_config_tracker_includes_graph_key_when_provided(client: LDClient):
+    context = Context.create("user-key")
+    tracker = LDAIConfigTracker(
+        client, "variation-key", "config-key", 3, "fakeModel", "fakeProvider", context
+    )
+    expected = {**_base_td(), "graphKey": "my-graph"}
+    tracker.track_success(graph_key="my-graph")
+    client.track.assert_called_with("$ld:ai:generation:success", context, expected, 1)  # type: ignore
+
+
+def test_config_tracker_track_tokens_with_graph_key(client: LDClient):
+    context = Context.create("user-key")
+    tracker = LDAIConfigTracker(
+        client, "variation-key", "config-key", 3, "fakeModel", "fakeProvider", context
+    )
+    tokens = TokenUsage(10, 4, 6)
+    expected = {**_base_td(), "graphKey": "g1"}
+    tracker.track_tokens(tokens, graph_key="g1")
+    client.track.assert_any_call("$ld:ai:tokens:total", context, expected, 10)  # type: ignore
+
+
+def test_config_tracker_track_feedback_with_graph_key(client: LDClient):
+    context = Context.create("user-key")
+    tracker = LDAIConfigTracker(
+        client, "variation-key", "config-key", 3, "fakeModel", "fakeProvider", context
+    )
+    expected = {**_base_td(), "graphKey": "gx"}
+    tracker.track_feedback({"kind": FeedbackKind.Positive}, graph_key="gx")
+    client.track.assert_called_with(
+        "$ld:ai:feedback:user:positive", context, expected, 1
+    )  # type: ignore
+
+
+def test_config_tracker_track_tool_call(client: LDClient):
+    context = Context.create("user-key")
+    tracker = LDAIConfigTracker(
+        client, "variation-key", "config-key", 3, "fakeModel", "fakeProvider", context
+    )
+    expected = {**_base_td(), "toolKey": "search"}
+    tracker.track_tool_call("search")
+    client.track.assert_called_with("$ld:ai:tool_call", context, expected, 1)  # type: ignore
+
+
+def test_config_tracker_track_tool_call_with_graph_key(client: LDClient):
+    context = Context.create("user-key")
+    tracker = LDAIConfigTracker(
+        client, "variation-key", "config-key", 3, "fakeModel", "fakeProvider", context
+    )
+    expected = {**_base_td(), "graphKey": "my-graph", "toolKey": "calc"}
+    tracker.track_tool_call("calc", graph_key="my-graph")
+    client.track.assert_called_with("$ld:ai:tool_call", context, expected, 1)  # type: ignore
+
+
+def test_config_tracker_track_tool_calls(client: LDClient):
+    context = Context.create("user-key")
+    tracker = LDAIConfigTracker(
+        client, "variation-key", "config-key", 3, "fakeModel", "fakeProvider", context
+    )
+    tracker.track_tool_calls(["a", "b"], graph_key="g")
+    assert client.track.call_count == 2  # type: ignore
+    client.track.assert_any_call(
+        "$ld:ai:tool_call",
+        context,
+        {**_base_td(), "graphKey": "g", "toolKey": "a"},
+        1,
+    )  # type: ignore
+    client.track.assert_any_call(
+        "$ld:ai:tool_call",
+        context,
+        {**_base_td(), "graphKey": "g", "toolKey": "b"},
+        1,
+    )  # type: ignore
+
+
+def test_config_tracker_track_metrics_of(client: LDClient):
+    context = Context.create("user-key")
+    tracker = LDAIConfigTracker(
+        client, "variation-key", "config-key", 3, "fakeModel", "fakeProvider", context
+    )
+
+    def fn():
+        return "done"
+
+    def extract(r):
+        return LDAIMetrics(success=True, usage=TokenUsage(5, 2, 3))
+
+    out = tracker.track_metrics_of(fn, extract)
+    assert out == "done"
+    calls = client.track.mock_calls  # type: ignore
+    assert any(c.args[0] == "$ld:ai:generation:success" for c in calls)
+    assert any(c.args[0] == "$ld:ai:tokens:total" and c.args[3] == 5 for c in calls)
+
+
+@pytest.mark.asyncio
+async def test_config_tracker_track_metrics_of_async_passes_graph_key(client: LDClient):
+    context = Context.create("user-key")
+    tracker = LDAIConfigTracker(
+        client, "variation-key", "config-key", 3, "fakeModel", "fakeProvider", context
+    )
+
+    async def fn():
+        return "ok"
+
+    def extract(r):
+        return LDAIMetrics(success=True, usage=TokenUsage(5, 2, 3))
+
+    await tracker.track_metrics_of_async(fn, extract, graph_key="gg")
+    gk_td = {**_base_td(), "graphKey": "gg"}
+    calls = client.track.mock_calls  # type: ignore
+    assert any(
+        c.args[0] == "$ld:ai:generation:success" and c.args[2] == gk_td for c in calls
+    )
+
+
+def test_ai_graph_tracker_graph_key_property(client: LDClient):
+    context = Context.create("user-key")
+    g = AIGraphTracker(client, "variation-key", "graph-key", 2, context)
+    assert g.graph_key == "graph-key"
+
+
+def test_ai_graph_tracker_track_total_tokens_skips_none_and_nonpositive(client: LDClient):
+    context = Context.create("user-key")
+    g = AIGraphTracker(client, "variation-key", "graph-key", 2, context)
+    g.track_total_tokens(None)
+    g.track_total_tokens(TokenUsage(0, 0, 0))
+    client.track.assert_not_called()  # type: ignore
+
+
+def test_ai_graph_tracker_track_total_tokens_tracks_when_positive(client: LDClient):
+    context = Context.create("user-key")
+    g = AIGraphTracker(client, "variation-key", "graph-key", 2, context)
+    g.track_total_tokens(TokenUsage(42, 30, 12))
+    client.track.assert_called_with(  # type: ignore
+        "$ld:ai:graph:total_tokens",
+        context,
+        {"variationKey": "variation-key", "graphKey": "graph-key", "version": 2},
+        42,
+    )
