@@ -8,15 +8,7 @@ from openai import AsyncOpenAI
 
 
 class OpenAIRunnerFactory(AIProvider):
-    """
-    OpenAI connector for the LaunchDarkly AI SDK.
-
-    Acts as a per-provider factory. Instantiate with no arguments to read
-    credentials from the environment (``OPENAI_API_KEY``), then call
-    ``create_model(config)`` to obtain a configured ``OpenAIModelRunner``.
-
-    For advanced use, pass an explicit ``AsyncOpenAI`` client.
-    """
+    """OpenAI ``AIProvider`` implementation for the LaunchDarkly AI SDK."""
 
     def __init__(self, client: Optional[AsyncOpenAI] = None):
         """

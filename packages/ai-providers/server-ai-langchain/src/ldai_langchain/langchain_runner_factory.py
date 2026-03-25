@@ -5,12 +5,7 @@ from ldai_langchain.langchain_model_runner import LangChainModelRunner
 
 
 class LangChainRunnerFactory(AIProvider):
-    """
-    LangChain connector for the LaunchDarkly AI SDK.
-
-    Acts as a per-provider factory. Instantiate with no arguments, then call
-    ``create_model(config)`` to obtain a configured ``LangChainModelRunner``.
-    """
+    """LangChain ``AIProvider`` implementation for the LaunchDarkly AI SDK."""
 
     def create_model(self, config: AIConfigKind) -> LangChainModelRunner:
         """
