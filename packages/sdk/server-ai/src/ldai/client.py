@@ -6,8 +6,8 @@ from ldclient.client import LDClient
 
 from ldai import log
 from ldai.agent_graph import AgentGraphDefinition
-from ldai.chat import Chat
 from ldai.judge import Judge
+from ldai.managed_model import ManagedModel
 from ldai.models import (
     AIAgentConfig,
     AIAgentConfigDefault,
@@ -30,7 +30,7 @@ from ldai.tracker import AIGraphTracker, LDAIConfigTracker
 
 _TRACK_SDK_INFO = '$ld:ai:sdk:info'
 _TRACK_USAGE_COMPLETION_CONFIG = '$ld:ai:usage:completion-config'
-_TRACK_USAGE_CREATE_CHAT = '$ld:ai:usage:create-chat'
+_TRACK_USAGE_CREATE_MODEL = '$ld:ai:usage:create-model'
 _TRACK_USAGE_JUDGE_CONFIG = '$ld:ai:usage:judge-config'
 _TRACK_USAGE_CREATE_JUDGE = '$ld:ai:usage:create-judge'
 _TRACK_USAGE_AGENT_CONFIG = '$ld:ai:usage:agent-config'
@@ -298,16 +298,16 @@ class LDAIClient:
 
         return judges
 
-    async def create_chat(
+    async def create_model(
         self,
         key: str,
         context: Context,
         default: Optional[AICompletionConfigDefault] = None,
         variables: Optional[Dict[str, Any]] = None,
         default_ai_provider: Optional[str] = None,
-    ) -> Optional[Chat]:
+    ) -> Optional[ManagedModel]:
         """
-        Creates and returns a new Chat instance for AI conversations.
+        Creates and returns a new ManagedModel for AI conversations.
 
         :param key: The key identifying the AI completion configuration to use
         :param context: Standard Context used when evaluating flags
@@ -315,11 +315,11 @@ class LDAIClient:
             a disabled config is used as the fallback.
         :param variables: Dictionary of values for instruction interpolation
         :param default_ai_provider: Optional default AI provider to use
-        :return: Chat instance or None if disabled/unsupported
+        :return: ManagedModel instance or None if disabled/unsupported
 
         Example::
 
-            chat = await client.create_chat(
+            model = await client.create_model(
                 "customer-support-chat",
                 context,
                 AICompletionConfigDefault(
@@ -331,23 +331,19 @@ class LDAIClient:
                 variables={'customerName': 'John'}
             )
 
-            if chat:
-                response = await chat.invoke("I need help with my order")
+            if model:
+                response = await model.invoke("I need help with my order")
                 print(response.message.content)
-
-                # Access conversation history
-                messages = chat.get_messages()
-                print(f"Conversation has {len(messages)} messages")
         """
-        self._client.track(_TRACK_USAGE_CREATE_CHAT, context, key, 1)
-        log.debug(f"Creating chat for key: {key}")
+        self._client.track(_TRACK_USAGE_CREATE_MODEL, context, key, 1)
+        log.debug(f"Creating managed model for key: {key}")
         config = self._completion_config(key, context, default or AICompletionConfigDefault.disabled(), variables)
 
         if not config.enabled or not config.tracker:
             return None
 
-        provider = RunnerFactory.create_model(config, default_ai_provider)
-        if not provider:
+        runner = RunnerFactory.create_model(config, default_ai_provider)
+        if not runner:
             return None
 
         judges = {}
@@ -359,7 +355,24 @@ class LDAIClient:
                 default_ai_provider,
             )
 
-        return Chat(config, config.tracker, provider, judges)
+        return ManagedModel(config, config.tracker, runner, judges)
+
+    async def create_chat(
+        self,
+        key: str,
+        context: Context,
+        default: Optional[AICompletionConfigDefault] = None,
+        variables: Optional[Dict[str, Any]] = None,
+        default_ai_provider: Optional[str] = None,
+    ) -> Optional[ManagedModel]:
+        """
+        .. deprecated:: Use :meth:`create_model` instead.
+
+        Creates and returns a ManagedModel for AI conversations.
+        This method is a deprecated alias for :meth:`create_model`.
+        """
+        log.warning('create_chat() is deprecated, use create_model() instead')
+        return await self.create_model(key, context, default, variables, default_ai_provider)
 
     def agent_config(
         self,

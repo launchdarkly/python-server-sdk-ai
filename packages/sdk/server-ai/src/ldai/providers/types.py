@@ -34,13 +34,13 @@ class LDAIMetrics:
 
 
 @dataclass
-class ChatResponse:
+class ModelResponse:
     """
-    Chat response structure.
+    Response from a model invocation.
     """
     message: LDMessage
     metrics: LDAIMetrics
-    evaluations: Optional[List[JudgeResponse]] = None  # List of JudgeResponse, will be populated later
+    evaluations: Optional[List[JudgeResponse]] = None
 
 
 @dataclass

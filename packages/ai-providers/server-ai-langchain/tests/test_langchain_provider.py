@@ -7,16 +7,16 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
 from ldai import LDMessage
 
-from ldai_langchain import LangChainRunnerFactory
+from ldai_langchain import LangChainModelRunner, LangChainRunnerFactory, convert_messages_to_langchain, get_ai_metrics_from_response, map_provider
 
 
-class TestConvertMessagesToLangchain:
-    """Tests for convert_messages_to_langchain static method."""
+class TestConvertMessages:
+    """Tests for convert_messages_to_langchain."""
 
     def test_converts_system_messages_to_system_message(self):
         """Should convert system messages to SystemMessage."""
         messages = [LDMessage(role='system', content='You are a helpful assistant.')]
-        result = LangChainRunnerFactory.convert_messages_to_langchain(messages)
+        result = convert_messages_to_langchain(messages)
 
         assert len(result) == 1
         assert isinstance(result[0], SystemMessage)
@@ -25,7 +25,7 @@ class TestConvertMessagesToLangchain:
     def test_converts_user_messages_to_human_message(self):
         """Should convert user messages to HumanMessage."""
         messages = [LDMessage(role='user', content='Hello, how are you?')]
-        result = LangChainRunnerFactory.convert_messages_to_langchain(messages)
+        result = convert_messages_to_langchain(messages)
 
         assert len(result) == 1
         assert isinstance(result[0], HumanMessage)
@@ -34,7 +34,7 @@ class TestConvertMessagesToLangchain:
     def test_converts_assistant_messages_to_ai_message(self):
         """Should convert assistant messages to AIMessage."""
         messages = [LDMessage(role='assistant', content='I am doing well, thank you!')]
-        result = LangChainRunnerFactory.convert_messages_to_langchain(messages)
+        result = convert_messages_to_langchain(messages)
 
         assert len(result) == 1
         assert isinstance(result[0], AIMessage)
@@ -47,7 +47,7 @@ class TestConvertMessagesToLangchain:
             LDMessage(role='user', content='What is the weather like?'),
             LDMessage(role='assistant', content='I cannot check the weather.'),
         ]
-        result = LangChainRunnerFactory.convert_messages_to_langchain(messages)
+        result = convert_messages_to_langchain(messages)
 
         assert len(result) == 3
         assert isinstance(result[0], SystemMessage)
@@ -56,22 +56,21 @@ class TestConvertMessagesToLangchain:
 
     def test_throws_error_for_unsupported_message_role(self):
         """Should throw error for unsupported message role."""
-        # Create a mock message with unsupported role
         class MockMessage:
             role = 'unknown'
             content = 'Test message'
-        
+
         with pytest.raises(ValueError, match='Unsupported message role: unknown'):
-            LangChainRunnerFactory.convert_messages_to_langchain([MockMessage()])  # type: ignore
+            convert_messages_to_langchain([MockMessage()])  # type: ignore
 
     def test_handles_empty_message_array(self):
         """Should handle empty message array."""
-        result = LangChainRunnerFactory.convert_messages_to_langchain([])
+        result = convert_messages_to_langchain([])
         assert len(result) == 0
 
 
 class TestGetAIMetricsFromResponse:
-    """Tests for get_ai_metrics_from_response static method."""
+    """Tests for get_ai_metrics_from_response."""
 
     def test_creates_metrics_with_success_true_and_token_usage(self):
         """Should create metrics with success=True and token usage."""
@@ -84,7 +83,7 @@ class TestGetAIMetricsFromResponse:
             },
         }
 
-        result = LangChainRunnerFactory.get_ai_metrics_from_response(mock_response)
+        result = get_ai_metrics_from_response(mock_response)
 
         assert result.success is True
         assert result.usage is not None
@@ -103,7 +102,7 @@ class TestGetAIMetricsFromResponse:
             },
         }
 
-        result = LangChainRunnerFactory.get_ai_metrics_from_response(mock_response)
+        result = get_ai_metrics_from_response(mock_response)
 
         assert result.success is True
         assert result.usage is not None
@@ -115,34 +114,34 @@ class TestGetAIMetricsFromResponse:
         """Should create metrics with success=True and no usage when metadata is missing."""
         mock_response = AIMessage(content='Test response')
 
-        result = LangChainRunnerFactory.get_ai_metrics_from_response(mock_response)
+        result = get_ai_metrics_from_response(mock_response)
 
         assert result.success is True
         assert result.usage is None
 
 
 class TestMapProvider:
-    """Tests for map_provider static method."""
+    """Tests for map_provider."""
 
     def test_maps_gemini_to_google_genai(self):
         """Should map gemini to google-genai."""
-        assert LangChainRunnerFactory.map_provider('gemini') == 'google-genai'
-        assert LangChainRunnerFactory.map_provider('Gemini') == 'google-genai'
-        assert LangChainRunnerFactory.map_provider('GEMINI') == 'google-genai'
+        assert map_provider('gemini') == 'google-genai'
+        assert map_provider('Gemini') == 'google-genai'
+        assert map_provider('GEMINI') == 'google-genai'
 
     def test_maps_bedrock_and_model_families_to_bedrock_converse(self):
         """Should map bedrock and bedrock:model_family to bedrock_converse."""
-        assert LangChainRunnerFactory.map_provider('bedrock') == 'bedrock_converse'
-        assert LangChainRunnerFactory.map_provider('Bedrock:Anthropic') == 'bedrock_converse'
-        assert LangChainRunnerFactory.map_provider('bedrock:anthropic') == 'bedrock_converse'
-        assert LangChainRunnerFactory.map_provider('bedrock:amazon') == 'bedrock_converse'
-        assert LangChainRunnerFactory.map_provider('bedrock:cohere') == 'bedrock_converse'
+        assert map_provider('bedrock') == 'bedrock_converse'
+        assert map_provider('Bedrock:Anthropic') == 'bedrock_converse'
+        assert map_provider('bedrock:anthropic') == 'bedrock_converse'
+        assert map_provider('bedrock:amazon') == 'bedrock_converse'
+        assert map_provider('bedrock:cohere') == 'bedrock_converse'
 
     def test_returns_provider_name_unchanged_for_unmapped_providers(self):
         """Should return provider name unchanged for unmapped providers."""
-        assert LangChainRunnerFactory.map_provider('openai') == 'openai'
-        assert LangChainRunnerFactory.map_provider('anthropic') == 'anthropic'
-        assert LangChainRunnerFactory.map_provider('unknown') == 'unknown'
+        assert map_provider('openai') == 'openai'
+        assert map_provider('anthropic') == 'anthropic'
+        assert map_provider('unknown') == 'unknown'
 
 
 class TestInvokeModel:
@@ -158,7 +157,7 @@ class TestInvokeModel:
         """Should return success=True for string content."""
         mock_response = AIMessage(content='Test response')
         mock_llm.ainvoke = AsyncMock(return_value=mock_response)
-        provider = LangChainRunnerFactory(mock_llm)
+        provider = LangChainModelRunner(mock_llm)
 
         messages = [LDMessage(role='user', content='Hello')]
         result = await provider.invoke_model(messages)
@@ -171,7 +170,7 @@ class TestInvokeModel:
         """Should return success=False for non-string content and log warning."""
         mock_response = AIMessage(content=[{'type': 'image', 'data': 'base64data'}])
         mock_llm.ainvoke = AsyncMock(return_value=mock_response)
-        provider = LangChainRunnerFactory(mock_llm)
+        provider = LangChainModelRunner(mock_llm)
 
         messages = [LDMessage(role='user', content='Hello')]
         result = await provider.invoke_model(messages)
@@ -184,7 +183,7 @@ class TestInvokeModel:
         """Should return success=False when model invocation throws an error."""
         error = Exception('Model invocation failed')
         mock_llm.ainvoke = AsyncMock(side_effect=error)
-        provider = LangChainRunnerFactory(mock_llm)
+        provider = LangChainModelRunner(mock_llm)
 
         messages = [LDMessage(role='user', content='Hello')]
         result = await provider.invoke_model(messages)
@@ -210,7 +209,7 @@ class TestInvokeStructuredModel:
         mock_structured_llm = MagicMock()
         mock_structured_llm.ainvoke = AsyncMock(return_value=mock_response)
         mock_llm.with_structured_output = MagicMock(return_value=mock_structured_llm)
-        provider = LangChainRunnerFactory(mock_llm)
+        provider = LangChainModelRunner(mock_llm)
 
         messages = [LDMessage(role='user', content='Hello')]
         response_structure = {'type': 'object', 'properties': {}}
@@ -226,7 +225,7 @@ class TestInvokeStructuredModel:
         mock_structured_llm = MagicMock()
         mock_structured_llm.ainvoke = AsyncMock(side_effect=error)
         mock_llm.with_structured_output = MagicMock(return_value=mock_structured_llm)
-        provider = LangChainRunnerFactory(mock_llm)
+        provider = LangChainModelRunner(mock_llm)
 
         messages = [LDMessage(role='user', content='Hello')]
         response_structure = {'type': 'object', 'properties': {}}
@@ -238,14 +237,12 @@ class TestInvokeStructuredModel:
         assert result.metrics.usage is None
 
 
-class TestGetChatModel:
-    """Tests for get_chat_model instance method."""
+class TestGetLlm:
+    """Tests for LangChainModelRunner.get_llm."""
 
     def test_returns_underlying_llm(self):
         """Should return the underlying LLM."""
         mock_llm = MagicMock()
-        provider = LangChainRunnerFactory(mock_llm)
+        runner = LangChainModelRunner(mock_llm)
 
-        assert provider.get_chat_model() is mock_llm
-
-
+        assert runner.get_llm() is mock_llm

@@ -5,11 +5,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from ldai import LDMessage
 
-from ldai_openai import OpenAIRunnerFactory
+from ldai_openai import OpenAIModelRunner, OpenAIRunnerFactory, get_ai_metrics_from_response
 
 
 class TestGetAIMetricsFromResponse:
-    """Tests for get_ai_metrics_from_response static method."""
+    """Tests for get_ai_metrics_from_response."""
 
     def test_creates_metrics_with_success_true_and_token_usage(self):
         """Should create metrics with success=True and token usage."""
@@ -19,7 +19,7 @@ class TestGetAIMetricsFromResponse:
         mock_response.usage.completion_tokens = 50
         mock_response.usage.total_tokens = 100
 
-        result = OpenAIRunnerFactory.get_ai_metrics_from_response(mock_response)
+        result = get_ai_metrics_from_response(mock_response)
 
         assert result.success is True
         assert result.usage is not None
@@ -32,7 +32,7 @@ class TestGetAIMetricsFromResponse:
         mock_response = MagicMock()
         mock_response.usage = None
 
-        result = OpenAIRunnerFactory.get_ai_metrics_from_response(mock_response)
+        result = get_ai_metrics_from_response(mock_response)
 
         assert result.success is True
         assert result.usage is None
@@ -45,7 +45,7 @@ class TestGetAIMetricsFromResponse:
         mock_response.usage.completion_tokens = None
         mock_response.usage.total_tokens = None
 
-        result = OpenAIRunnerFactory.get_ai_metrics_from_response(mock_response)
+        result = get_ai_metrics_from_response(mock_response)
 
         assert result.success is True
         assert result.usage is not None
@@ -78,7 +78,7 @@ class TestInvokeModel:
         mock_client.chat.completions = MagicMock()
         mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
 
-        provider = OpenAIRunnerFactory(mock_client, 'gpt-3.5-turbo', {})
+        provider = OpenAIModelRunner(mock_client, 'gpt-3.5-turbo', {})
         messages = [LDMessage(role='user', content='Hello!')]
         result = await provider.invoke_model(messages)
 
@@ -108,7 +108,7 @@ class TestInvokeModel:
         mock_client.chat.completions = MagicMock()
         mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
 
-        provider = OpenAIRunnerFactory(mock_client, 'gpt-3.5-turbo', {})
+        provider = OpenAIModelRunner(mock_client, 'gpt-3.5-turbo', {})
         messages = [LDMessage(role='user', content='Hello!')]
         result = await provider.invoke_model(messages)
 
@@ -127,7 +127,7 @@ class TestInvokeModel:
         mock_client.chat.completions = MagicMock()
         mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
 
-        provider = OpenAIRunnerFactory(mock_client, 'gpt-3.5-turbo', {})
+        provider = OpenAIModelRunner(mock_client, 'gpt-3.5-turbo', {})
         messages = [LDMessage(role='user', content='Hello!')]
         result = await provider.invoke_model(messages)
 
@@ -142,7 +142,7 @@ class TestInvokeModel:
         mock_client.chat.completions = MagicMock()
         mock_client.chat.completions.create = AsyncMock(side_effect=Exception('API Error'))
 
-        provider = OpenAIRunnerFactory(mock_client, 'gpt-3.5-turbo', {})
+        provider = OpenAIModelRunner(mock_client, 'gpt-3.5-turbo', {})
         messages = [LDMessage(role='user', content='Hello!')]
         result = await provider.invoke_model(messages)
 
@@ -175,7 +175,7 @@ class TestInvokeStructuredModel:
         mock_client.chat.completions = MagicMock()
         mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
 
-        provider = OpenAIRunnerFactory(mock_client, 'gpt-3.5-turbo', {})
+        provider = OpenAIModelRunner(mock_client, 'gpt-3.5-turbo', {})
         messages = [LDMessage(role='user', content='Tell me about a person')]
         response_structure = {
             'type': 'object',
@@ -210,7 +210,7 @@ class TestInvokeStructuredModel:
         mock_client.chat.completions = MagicMock()
         mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
 
-        provider = OpenAIRunnerFactory(mock_client, 'gpt-3.5-turbo', {})
+        provider = OpenAIModelRunner(mock_client, 'gpt-3.5-turbo', {})
         messages = [LDMessage(role='user', content='Tell me about a person')]
         response_structure = {'type': 'object'}
 
@@ -236,7 +236,7 @@ class TestInvokeStructuredModel:
         mock_client.chat.completions = MagicMock()
         mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
 
-        provider = OpenAIRunnerFactory(mock_client, 'gpt-3.5-turbo', {})
+        provider = OpenAIModelRunner(mock_client, 'gpt-3.5-turbo', {})
         messages = [LDMessage(role='user', content='Tell me about a person')]
         response_structure = {'type': 'object'}
 
@@ -255,7 +255,7 @@ class TestInvokeStructuredModel:
         mock_client.chat.completions = MagicMock()
         mock_client.chat.completions.create = AsyncMock(side_effect=Exception('API Error'))
 
-        provider = OpenAIRunnerFactory(mock_client, 'gpt-3.5-turbo', {})
+        provider = OpenAIModelRunner(mock_client, 'gpt-3.5-turbo', {})
         messages = [LDMessage(role='user', content='Tell me about a person')]
         response_structure = {'type': 'object'}
 
@@ -272,7 +272,7 @@ class TestGetClient:
     def test_returns_underlying_client(self):
         """Should return the underlying OpenAI client."""
         mock_client = MagicMock()
-        provider = OpenAIRunnerFactory(mock_client, 'gpt-3.5-turbo', {})
+        provider = OpenAIRunnerFactory(mock_client)
 
         assert provider.get_client() is mock_client
 
@@ -300,7 +300,7 @@ class TestCreateModel:
 
             result = OpenAIRunnerFactory().create_model(mock_ai_config)
 
-            assert isinstance(result, OpenAIRunnerFactory)
+            assert isinstance(result, OpenAIModelRunner)
             assert result._model_name == 'gpt-4'
             assert result._parameters == {'temperature': 0.7, 'max_tokens': 1000}
 
@@ -315,7 +315,6 @@ class TestCreateModel:
 
             result = OpenAIRunnerFactory().create_model(mock_ai_config)
 
-            assert isinstance(result, OpenAIRunnerFactory)
+            assert isinstance(result, OpenAIModelRunner)
             assert result._model_name == ''
             assert result._parameters == {}
-
