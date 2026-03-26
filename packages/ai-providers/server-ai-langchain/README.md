@@ -138,7 +138,7 @@ provider = await LangChainProvider.create(config)
 async def invoke():
     return await provider.invoke_model(messages)
 
-response = await config.tracker.track_metrics_of(
+response = await config.tracker.track_metrics_of_async(
     invoke,
     lambda r: r.metrics
 )
