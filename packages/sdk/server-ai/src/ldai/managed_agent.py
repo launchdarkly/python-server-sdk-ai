@@ -1,8 +1,7 @@
 """ManagedAgent — LaunchDarkly managed wrapper for agent invocations."""
 
 from ldai.models import AIAgentConfig
-from ldai.runners.agent_runner import AgentRunner
-from ldai.runners.types import AgentResult
+from ldai.providers import AgentResult, AgentRunner
 from ldai.tracker import LDAIConfigTracker
 
 

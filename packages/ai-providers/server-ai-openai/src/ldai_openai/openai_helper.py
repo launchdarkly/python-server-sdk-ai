@@ -28,11 +28,11 @@ def get_ai_usage_from_response(response: Any) -> Optional[TokenUsage]:
     """
     if hasattr(response, 'usage') and response.usage:
         u = response.usage
-        return TokenUsage(
-            total=getattr(u, 'total_tokens', None) or 0,
-            input=getattr(u, 'prompt_tokens', None) or 0,
-            output=getattr(u, 'completion_tokens', None) or 0,
-        )
+        total = getattr(u, 'total_tokens', None) or 0
+        inp = getattr(u, 'prompt_tokens', None) or 0
+        out = getattr(u, 'completion_tokens', None) or 0
+        if total or inp or out:
+            return TokenUsage(total=total, input=inp, output=out)
     return None
 
 

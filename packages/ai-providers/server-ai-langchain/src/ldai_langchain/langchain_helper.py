@@ -88,11 +88,11 @@ def get_ai_usage_from_response(response: Any) -> Optional[TokenUsage]:
     :return: TokenUsage or None if unavailable
     """
     if hasattr(response, 'usage_metadata') and response.usage_metadata:
-        return TokenUsage(
-            total=response.usage_metadata.get('total_tokens', 0),
-            input=response.usage_metadata.get('input_tokens', 0),
-            output=response.usage_metadata.get('output_tokens', 0),
-        )
+        total = response.usage_metadata.get('total_tokens', 0)
+        inp = response.usage_metadata.get('input_tokens', 0)
+        out = response.usage_metadata.get('output_tokens', 0)
+        if total or inp or out:
+            return TokenUsage(total=total, input=inp, output=out)
     if hasattr(response, 'response_metadata') and response.response_metadata:
         token_usage = (
             response.response_metadata.get('tokenUsage')

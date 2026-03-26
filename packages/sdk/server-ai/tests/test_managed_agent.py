@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 from ldai import LDAIClient, ManagedAgent
 from ldai.managed_agent import ManagedAgent
 from ldai.models import AIAgentConfig, AIAgentConfigDefault, ModelConfig, ProviderConfig
-from ldai.runners.types import AgentResult
+from ldai.providers import AgentResult
 from ldai.providers.types import LDAIMetrics
 
 from ldclient import Config, Context, LDClient
@@ -56,7 +56,7 @@ class TestManagedAgentRun:
         """Should delegate run() to the underlying AgentRunner."""
         mock_config = MagicMock(spec=AIAgentConfig)
         mock_tracker = MagicMock()
-        mock_tracker.track_metrics_of = AsyncMock(
+        mock_tracker.track_metrics_of_async = AsyncMock(
             return_value=AgentResult(
                 output="Test response",
                 raw=None,
@@ -77,7 +77,7 @@ class TestManagedAgentRun:
 
         assert result.output == "Test response"
         assert result.metrics.success is True
-        mock_tracker.track_metrics_of.assert_called_once()
+        mock_tracker.track_metrics_of_async.assert_called_once()
 
     def test_get_agent_runner_returns_runner(self):
         """Should return the underlying AgentRunner."""
@@ -119,7 +119,7 @@ class TestLDAIClientCreateAgent:
         context = Context.create('user-key')
 
         original = rf.RunnerFactory.create_agent
-        rf.RunnerFactory.create_agent = AsyncMock(return_value=None)
+        rf.RunnerFactory.create_agent = MagicMock(return_value=None)
         try:
             result = await ldai_client.create_agent('customer-support-agent', context)
             assert result is None
@@ -138,7 +138,7 @@ class TestLDAIClientCreateAgent:
         )
 
         original = rf.RunnerFactory.create_agent
-        rf.RunnerFactory.create_agent = AsyncMock(return_value=mock_runner)
+        rf.RunnerFactory.create_agent = MagicMock(return_value=mock_runner)
         try:
             result = await ldai_client.create_agent('customer-support-agent', context)
             assert isinstance(result, ManagedAgent)

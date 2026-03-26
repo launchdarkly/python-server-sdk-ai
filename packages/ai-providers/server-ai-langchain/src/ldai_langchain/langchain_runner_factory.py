@@ -1,7 +1,10 @@
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from ldai.models import AIConfigKind
 from ldai.providers import AIProvider, ToolRegistry
+
+if TYPE_CHECKING:
+    from ldai_langchain.langchain_agent_runner import LangChainAgentRunner
 
 from ldai_langchain.langchain_helper import create_langchain_model
 from ldai_langchain.langchain_model_runner import LangChainModelRunner
@@ -49,5 +52,5 @@ class LangChainRunnerFactory(AIProvider):
         tool_definitions = parameters.pop('tools', []) or []
         instructions = config.instructions or '' if hasattr(config, 'instructions') else ''
 
-        llm = LangChainHelper.create_langchain_model(config)
+        llm = create_langchain_model(config)
         return LangChainAgentRunner(llm, instructions, tool_definitions, tools or {})

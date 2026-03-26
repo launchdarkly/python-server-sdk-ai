@@ -425,7 +425,7 @@ class LDAIClient:
         if not config.enabled or not config.tracker:
             return None
 
-        runner = await RunnerFactory.create_agent(config, tools or {}, default_ai_provider)
+        runner = RunnerFactory.create_agent(config, tools or {}, default_ai_provider)
         if not runner:
             return None
 

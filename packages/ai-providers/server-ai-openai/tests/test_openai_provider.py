@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from ldai import LDMessage
 
-from ldai_openai import OpenAIModelRunner, OpenAIRunnerFactory, get_ai_metrics_from_response
+from ldai_openai import OpenAIModelRunner, OpenAIRunnerFactory, get_ai_metrics_from_response, get_ai_usage_from_response
 
 
 class TestGetAIUsageFromResponse:
@@ -17,7 +17,7 @@ class TestGetAIUsageFromResponse:
         mock_response.usage.prompt_tokens = 50
         mock_response.usage.completion_tokens = 50
         mock_response.usage.total_tokens = 100
-        u = OpenAIHelper.get_ai_usage_from_response(mock_response)
+        u = get_ai_usage_from_response(mock_response)
         assert u is not None
         assert u.total == 100
         assert u.input == 50
@@ -26,7 +26,7 @@ class TestGetAIUsageFromResponse:
     def test_returns_none_when_usage_missing(self):
         mock_response = MagicMock()
         mock_response.usage = None
-        assert OpenAIHelper.get_ai_usage_from_response(mock_response) is None
+        assert get_ai_usage_from_response(mock_response) is None
 
     def test_returns_none_when_all_counts_zero(self):
         mock_response = MagicMock()
@@ -34,7 +34,7 @@ class TestGetAIUsageFromResponse:
         mock_response.usage.total_tokens = 0
         mock_response.usage.prompt_tokens = 0
         mock_response.usage.completion_tokens = 0
-        assert OpenAIHelper.get_ai_usage_from_response(mock_response) is None
+        assert get_ai_usage_from_response(mock_response) is None
 
 
 class TestGetAIMetricsFromResponse:

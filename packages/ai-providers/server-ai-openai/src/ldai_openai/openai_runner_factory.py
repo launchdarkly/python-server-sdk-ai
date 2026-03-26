@@ -1,11 +1,14 @@
 import os
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 from ldai.models import AIConfigKind
 from ldai.providers import AIProvider, ToolRegistry
 from openai import AsyncOpenAI
 
 from ldai_openai.openai_model_runner import OpenAIModelRunner
+
+if TYPE_CHECKING:
+    from ldai_openai.openai_agent_runner import OpenAIAgentRunner
 
 
 class OpenAIRunnerFactory(AIProvider):

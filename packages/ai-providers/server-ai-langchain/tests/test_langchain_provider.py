@@ -12,6 +12,7 @@ from ldai_langchain import (
     LangChainRunnerFactory,
     convert_messages_to_langchain,
     get_ai_metrics_from_response,
+    get_ai_usage_from_response,
     get_tool_calls_from_response,
     map_provider,
     sum_token_usage_from_messages,
@@ -142,7 +143,7 @@ class TestGetAIMetricsFromResponse:
                 'completionTokens': 499,
             },
         }
-        usage = LangChainHelper.get_ai_usage_from_response(mock_response)
+        usage = get_ai_usage_from_response(mock_response)
         assert usage is not None
         assert usage.total == 10
         assert usage.input == 4
@@ -154,12 +155,12 @@ class TestGetAIUsageFromResponse:
 
     def test_returns_none_when_no_usage(self):
         msg = AIMessage(content='hi')
-        assert LangChainHelper.get_ai_usage_from_response(msg) is None
+        assert get_ai_usage_from_response(msg) is None
 
     def test_returns_none_when_all_zeros_in_metadata(self):
         msg = AIMessage(content='hi')
         msg.usage_metadata = {'total_tokens': 0, 'input_tokens': 0, 'output_tokens': 0}
-        assert LangChainHelper.get_ai_usage_from_response(msg) is None
+        assert get_ai_usage_from_response(msg) is None
 
 
 class TestGetToolCallsFromResponse:
@@ -167,12 +168,12 @@ class TestGetToolCallsFromResponse:
 
     def test_returns_empty_when_no_tool_calls(self):
         msg = AIMessage(content='hi')
-        assert LangChainHelper.get_tool_calls_from_response(msg) == []
+        assert get_tool_calls_from_response(msg) == []
 
     def test_returns_empty_when_tool_calls_not_a_sequence(self):
         msg = AIMessage(content='hi')
         msg.tool_calls = None  # type: ignore
-        assert LangChainHelper.get_tool_calls_from_response(msg) == []
+        assert get_tool_calls_from_response(msg) == []
 
     def test_extracts_names_from_dict_tool_calls(self):
         msg = AIMessage(content='')
@@ -180,17 +181,17 @@ class TestGetToolCallsFromResponse:
             {'name': 'search', 'args': {}, 'id': '1'},
             {'name': 'calc', 'args': {}, 'id': '2'},
         ]
-        assert LangChainHelper.get_tool_calls_from_response(msg) == ['search', 'calc']
+        assert get_tool_calls_from_response(msg) == ['search', 'calc']
 
     def test_returns_empty_when_tool_calls_is_not_a_list(self):
         msg = AIMessage(content='hi')
         msg.tool_calls = ()  # type: ignore
-        assert LangChainHelper.get_tool_calls_from_response(msg) == []
+        assert get_tool_calls_from_response(msg) == []
 
     def test_skips_entries_without_name(self):
         msg = AIMessage(content='')
         msg.tool_calls = [{'name': 'a', 'id': '1'}, {}, {'name': 'b', 'id': '2'}]  # type: ignore
-        assert LangChainHelper.get_tool_calls_from_response(msg) == ['a', 'b']
+        assert get_tool_calls_from_response(msg) == ['a', 'b']
 
 
 class TestMapProvider:
@@ -419,7 +420,7 @@ class TestCreateAgent:
             'provider': {'name': 'openai'},
         }
 
-        with patch.object(LangChainHelper, 'create_langchain_model') as mock_create:
+        with patch('ldai_langchain.langchain_runner_factory.create_langchain_model') as mock_create:
             mock_llm = MagicMock()
             mock_create.return_value = mock_llm
 
@@ -442,7 +443,7 @@ class TestCreateAgent:
             'provider': {'name': 'openai'},
         }
 
-        with patch.object(LangChainHelper, 'create_langchain_model') as mock_create:
+        with patch('ldai_langchain.langchain_runner_factory.create_langchain_model') as mock_create:
             mock_create.return_value = MagicMock()
 
             factory = LangChainRunnerFactory()
