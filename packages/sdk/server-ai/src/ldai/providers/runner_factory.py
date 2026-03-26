@@ -77,7 +77,7 @@ class RunnerFactory:
                     continue
                 result = fn(provider_factory)
                 if result is not None:
-                    log.debug(f"Successfully created capability using provider '{provider_type}'")
+                    log.debug(f"Successfully invoked create function with provider '{provider_type}'")
                     return result
             except Exception as exc:
                 log.warning(f"Provider '{provider_type}' failed: {exc}")

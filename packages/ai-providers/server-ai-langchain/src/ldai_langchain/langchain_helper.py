@@ -115,3 +115,41 @@ def get_ai_metrics_from_response(response: Any) -> LDAIMetrics:
     :return: LDAIMetrics with success status and token usage
     """
     return LDAIMetrics(success=True, usage=get_ai_usage_from_response(response))
+
+
+def get_tool_calls_from_response(response: Any) -> List[str]:
+    """
+    Get tool call names from a LangChain provider response.
+
+    :param response: The response from the LangChain model
+    :return: List of tool names in order, or empty list if none
+    """
+    names: List[str] = []
+    if hasattr(response, 'tool_calls') and isinstance(response.tool_calls, list):
+        for tc in response.tool_calls:
+            n = tc.get('name')
+            if n:
+                names.append(str(n))
+    return names
+
+
+def sum_token_usage_from_messages(messages: List[Any]) -> Optional[TokenUsage]:
+    """
+    Sum token usage across LangChain messages using get_ai_usage_from_response per message.
+
+    :param messages: List of message objects (e.g. from a graph state)
+    :return: Aggregated TokenUsage, or None if no usage on any message
+    """
+    in_sum = 0
+    out_sum = 0
+    total_sum = 0
+    for m in messages:
+        u = get_ai_usage_from_response(m)
+        if u is None:
+            continue
+        in_sum += u.input
+        out_sum += u.output
+        total_sum += u.total
+    if in_sum == 0 and out_sum == 0 and total_sum == 0:
+        return None
+    return TokenUsage(total=total_sum, input=in_sum, output=out_sum)

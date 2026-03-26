@@ -71,7 +71,7 @@ class Judge:
             messages = self._construct_evaluation_messages(input_text, output_text)
             assert self._evaluation_response_structure is not None
 
-            response = await self._ai_config_tracker.track_metrics_of(
+            response = await self._ai_config_tracker.track_metrics_of_async(
                 lambda: self._model_runner.invoke_structured_model(messages, self._evaluation_response_structure),
                 lambda result: result.metrics,
             )

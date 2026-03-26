@@ -7,7 +7,15 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
 from ldai import LDMessage
 
-from ldai_langchain import LangChainModelRunner, LangChainRunnerFactory, convert_messages_to_langchain, get_ai_metrics_from_response, map_provider
+from ldai_langchain import (
+    LangChainModelRunner,
+    LangChainRunnerFactory,
+    convert_messages_to_langchain,
+    get_ai_metrics_from_response,
+    get_tool_calls_from_response,
+    map_provider,
+    sum_token_usage_from_messages,
+)
 
 
 class TestConvertMessages:
@@ -235,6 +243,82 @@ class TestInvokeStructuredModel:
         assert result.data == {}
         assert result.raw_response == ''
         assert result.metrics.usage is None
+
+
+class TestGetToolCallsFromResponse:
+    """Tests for get_tool_calls_from_response."""
+
+    def test_returns_tool_call_names_in_order(self):
+        """Should return tool call names from response.tool_calls."""
+        mock_response = MagicMock()
+        mock_response.tool_calls = [
+            {'name': 'search', 'args': {}},
+            {'name': 'calculator', 'args': {}},
+        ]
+        assert get_tool_calls_from_response(mock_response) == ['search', 'calculator']
+
+    def test_returns_empty_list_when_tool_calls_is_empty(self):
+        """Should return empty list when tool_calls is an empty list."""
+        mock_response = MagicMock()
+        mock_response.tool_calls = []
+        assert get_tool_calls_from_response(mock_response) == []
+
+    def test_returns_empty_list_when_no_tool_calls_attribute(self):
+        """Should return empty list when response has no tool_calls attribute."""
+        mock_response = MagicMock(spec=[])
+        assert get_tool_calls_from_response(mock_response) == []
+
+    def test_returns_empty_list_when_tool_calls_is_not_a_list(self):
+        """Should return empty list when tool_calls is not a list."""
+        mock_response = MagicMock()
+        mock_response.tool_calls = 'not-a-list'
+        assert get_tool_calls_from_response(mock_response) == []
+
+    def test_skips_tool_calls_without_name(self):
+        """Should skip tool calls that have no name."""
+        mock_response = MagicMock()
+        mock_response.tool_calls = [{'args': {}}, {'name': 'search', 'args': {}}]
+        assert get_tool_calls_from_response(mock_response) == ['search']
+
+
+class TestSumTokenUsageFromMessages:
+    """Tests for sum_token_usage_from_messages."""
+
+    def test_sums_usage_across_messages(self):
+        """Should sum token usage from all messages."""
+        msg1 = AIMessage(content='a')
+        msg1.usage_metadata = {'total_tokens': 10, 'input_tokens': 6, 'output_tokens': 4}
+        msg2 = AIMessage(content='b')
+        msg2.usage_metadata = {'total_tokens': 20, 'input_tokens': 12, 'output_tokens': 8}
+
+        result = sum_token_usage_from_messages([msg1, msg2])
+
+        assert result is not None
+        assert result.total == 30
+        assert result.input == 18
+        assert result.output == 12
+
+    def test_returns_none_when_no_usage_on_any_message(self):
+        """Should return None when no message has usage metadata."""
+        msg = AIMessage(content='hello')
+        assert sum_token_usage_from_messages([msg]) is None
+
+    def test_returns_none_for_empty_list(self):
+        """Should return None for an empty message list."""
+        assert sum_token_usage_from_messages([]) is None
+
+    def test_skips_messages_without_usage(self):
+        """Should skip messages that have no usage and sum the rest."""
+        msg1 = AIMessage(content='a')
+        msg2 = AIMessage(content='b')
+        msg2.usage_metadata = {'total_tokens': 5, 'input_tokens': 3, 'output_tokens': 2}
+
+        result = sum_token_usage_from_messages([msg1, msg2])
+
+        assert result is not None
+        assert result.total == 5
+        assert result.input == 3
+        assert result.output == 2
 
 
 class TestGetLlm:

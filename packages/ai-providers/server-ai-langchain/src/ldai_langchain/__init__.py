@@ -3,7 +3,9 @@ from ldai_langchain.langchain_helper import (
     create_langchain_model,
     get_ai_metrics_from_response,
     get_ai_usage_from_response,
+    get_tool_calls_from_response,
     map_provider,
+    sum_token_usage_from_messages,
 )
 from ldai_langchain.langchain_model_runner import LangChainModelRunner
 from ldai_langchain.langchain_runner_factory import LangChainRunnerFactory
@@ -18,5 +20,7 @@ __all__ = [
     'create_langchain_model',
     'get_ai_metrics_from_response',
     'get_ai_usage_from_response',
+    'get_tool_calls_from_response',
     'map_provider',
+    'sum_token_usage_from_messages',
 ]
