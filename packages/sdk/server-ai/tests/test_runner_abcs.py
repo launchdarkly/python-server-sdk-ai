@@ -1,14 +1,12 @@
 import pytest
 
+from ldai.providers import AgentGraphResult, AgentGraphRunner, AgentResult, AgentRunner, ToolRegistry
 from ldai.providers.types import LDAIMetrics
-from ldai.runners.agent_graph_runner import AgentGraphRunner
-from ldai.runners.agent_runner import AgentRunner
-from ldai.runners.types import AgentGraphResult, AgentResult, ToolRegistry
 
 
 # --- Concrete test doubles ---
 
-class ConcreteAgentRunner(AgentRunner):
+class ConcreteAgentRunner:
     async def run(self, input):
         return AgentResult(
             output=f"agent response to: {input}",
@@ -17,7 +15,7 @@ class ConcreteAgentRunner(AgentRunner):
         )
 
 
-class ConcreteAgentGraphRunner(AgentGraphRunner):
+class ConcreteAgentGraphRunner:
     async def run(self, input):
         return AgentGraphResult(
             output=f"graph response to: {input}",
@@ -26,11 +24,18 @@ class ConcreteAgentGraphRunner(AgentGraphRunner):
         )
 
 
+class MissingRunMethod:
+    pass
+
+
 # --- AgentRunner ---
 
-def test_agent_runner_is_abstract():
-    with pytest.raises(TypeError):
-        AgentRunner()  # type: ignore[abstract]
+def test_agent_runner_structural_check_passes():
+    assert isinstance(ConcreteAgentRunner(), AgentRunner)
+
+
+def test_agent_runner_structural_check_fails_when_run_missing():
+    assert not isinstance(MissingRunMethod(), AgentRunner)
 
 
 @pytest.mark.asyncio
@@ -54,9 +59,12 @@ async def test_agent_result_fields():
 
 # --- AgentGraphRunner ---
 
-def test_agent_graph_runner_is_abstract():
-    with pytest.raises(TypeError):
-        AgentGraphRunner()  # type: ignore[abstract]
+def test_agent_graph_runner_structural_check_passes():
+    assert isinstance(ConcreteAgentGraphRunner(), AgentGraphRunner)
+
+
+def test_agent_graph_runner_structural_check_fails_when_run_missing():
+    assert not isinstance(MissingRunMethod(), AgentGraphRunner)
 
 
 @pytest.mark.asyncio

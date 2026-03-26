@@ -1,20 +1,19 @@
-from abc import ABC, abstractmethod
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Protocol, runtime_checkable
 
 from ldai.models import LDMessage
 from ldai.providers.types import ModelResponse, StructuredResponse
 
 
-class ModelRunner(ABC):
+@runtime_checkable
+class ModelRunner(Protocol):
     """
     Runtime capability interface for model invocation.
 
     A ModelRunner is a focused, configured object returned by
-    AIConnector.create_model(). It knows exactly which model to call
+    AIProvider.create_model(). It knows exactly which model to call
     and with what parameters — the caller just passes messages.
     """
 
-    @abstractmethod
     async def invoke_model(self, messages: List[LDMessage]) -> ModelResponse:
         """
         Invoke the model with an array of messages.
@@ -22,8 +21,8 @@ class ModelRunner(ABC):
         :param messages: Array of LDMessage objects representing the conversation
         :return: ModelResponse containing the model's response and metrics
         """
+        ...
 
-    @abstractmethod
     async def invoke_structured_model(
         self,
         messages: List[LDMessage],
@@ -36,3 +35,4 @@ class ModelRunner(ABC):
         :param response_structure: Dictionary defining the JSON schema for output structure
         :return: StructuredResponse containing the structured data
         """
+        ...
