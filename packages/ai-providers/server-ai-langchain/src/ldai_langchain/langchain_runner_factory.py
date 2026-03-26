@@ -18,7 +18,9 @@ class LangChainRunnerFactory(AIProvider):
         :param tools: Registry mapping tool names to callables (langchain-compatible)
         :return: LangGraphAgentGraphRunner ready to execute the graph
         """
-        from ldai_langchain.langgraph_agent_graph_runner import LangGraphAgentGraphRunner
+        from ldai_langchain.langgraph_agent_graph_runner import (
+            LangGraphAgentGraphRunner,
+        )
         return LangGraphAgentGraphRunner(graph_def, tools)
 
     def create_model(self, config: AIConfigKind) -> LangChainModelRunner:

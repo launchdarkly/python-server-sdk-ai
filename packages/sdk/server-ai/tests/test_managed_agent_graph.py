@@ -7,8 +7,7 @@ from ldclient.integrations.test_data import TestData
 
 from ldai import LDAIClient, ManagedAgentGraph
 from ldai.providers.types import LDAIMetrics
-from ldai.runners.agent_graph_runner import AgentGraphRunner
-from ldai.runners.types import AgentGraphResult, ToolRegistry
+from ldai.providers import AgentGraphResult, AgentGraphRunner, ToolRegistry
 from ldai.tracker import AIGraphTracker
 
 
@@ -125,7 +124,7 @@ async def test_create_agent_graph_returns_managed_agent_graph(ldai_client: LDAIC
 
     with patch(
         'ldai.providers.runner_factory.RunnerFactory.create_agent_graph',
-        new=AsyncMock(return_value=stub_runner),
+        new=MagicMock(return_value=stub_runner),
     ):
         managed = await ldai_client.create_agent_graph('travel-graph', context)
 
@@ -147,7 +146,7 @@ async def test_create_agent_graph_returns_none_when_runner_factory_fails(ldai_cl
 
     with patch(
         'ldai.providers.runner_factory.RunnerFactory.create_agent_graph',
-        new=AsyncMock(return_value=None),
+        new=MagicMock(return_value=None),
     ):
         managed = await ldai_client.create_agent_graph('travel-graph', context)
 
@@ -160,7 +159,7 @@ async def test_create_agent_graph_passes_tools_to_factory(ldai_client: LDAIClien
     tools: ToolRegistry = {'search': lambda q: f'results for {q}'}
     captured = {}
 
-    async def fake_create_agent_graph(graph_def, tools_arg, default_ai_provider=None):
+    def fake_create_agent_graph(graph_def, tools_arg, default_ai_provider=None):
         captured['tools'] = tools_arg
         return StubAgentGraphRunner()
 
@@ -179,7 +178,7 @@ async def test_create_agent_graph_run_produces_result(ldai_client: LDAIClient):
 
     with patch(
         'ldai.providers.runner_factory.RunnerFactory.create_agent_graph',
-        new=AsyncMock(return_value=StubAgentGraphRunner("final answer")),
+        new=MagicMock(return_value=StubAgentGraphRunner("final answer")),
     ):
         managed = await ldai_client.create_agent_graph('travel-graph', context)
 

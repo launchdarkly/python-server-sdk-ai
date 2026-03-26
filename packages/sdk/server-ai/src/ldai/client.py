@@ -25,8 +25,8 @@ from ldai.models import (
     ModelConfig,
     ProviderConfig,
 )
+from ldai.providers import ToolRegistry
 from ldai.providers.runner_factory import RunnerFactory
-from ldai.runners.types import ToolRegistry
 from ldai.sdk_info import AI_SDK_LANGUAGE, AI_SDK_NAME, AI_SDK_VERSION
 from ldai.tracker import AIGraphTracker, LDAIConfigTracker
 
@@ -653,7 +653,7 @@ class LDAIClient:
         if not graph.enabled:
             return None
 
-        runner = await RunnerFactory.create_agent_graph(
+        runner = RunnerFactory.create_agent_graph(
             graph, tools or {}, default_ai_provider
         )
         if not runner:

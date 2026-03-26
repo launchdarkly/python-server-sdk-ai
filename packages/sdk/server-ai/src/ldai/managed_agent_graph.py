@@ -2,8 +2,7 @@
 
 from typing import Any, Optional
 
-from ldai.runners.agent_graph_runner import AgentGraphRunner
-from ldai.runners.types import AgentGraphResult
+from ldai.providers import AgentGraphResult, AgentGraphRunner
 from ldai.tracker import AIGraphTracker
 
 

@@ -6,11 +6,15 @@ from typing import Annotated, Any, List
 
 from ldai import log
 from ldai.agent_graph import AgentGraphDefinition, AgentGraphNode
+from ldai.providers import AgentGraphResult, AgentGraphRunner, ToolRegistry
 from ldai.providers.types import LDAIMetrics
-from ldai.runners.agent_graph_runner import AgentGraphRunner
-from ldai.runners.types import AgentGraphResult, ToolRegistry
 
-from ldai_langchain.langchain_helper import LangChainHelper
+from ldai_langchain.langchain_helper import (
+    get_ai_metrics_from_response,
+    get_ai_usage_from_response,
+    get_tool_calls_from_response,
+    sum_token_usage_from_messages,
+)
 
 
 class LangGraphAgentGraphRunner(AgentGraphRunner):
@@ -53,7 +57,7 @@ class LangGraphAgentGraphRunner(AgentGraphRunner):
             from typing_extensions import TypedDict
 
             class WorkflowState(TypedDict):
-                messages: Annotated[List[AnyMessage], operator.add]
+                messages: Annotated[List[Any], operator.add]
 
             agent_builder: StateGraph = StateGraph(WorkflowState)
             root_node = self._graph.root()
@@ -87,11 +91,11 @@ class LangGraphAgentGraphRunner(AgentGraphRunner):
                     if node_tracker:
                         response = node_tracker.track_metrics_of(
                             lambda: model.invoke(state['messages']),
-                            LangChainHelper.get_ai_metrics_from_response,
+                            get_ai_metrics_from_response,
                             graph_key=gk,
                         )
                         node_tracker.track_tool_calls(
-                            LangChainHelper.get_tool_calls_from_response(response),
+                            get_tool_calls_from_response(response),
                             graph_key=tracker.graph_key if tracker is not None else None,
                         )
                     else:
@@ -101,7 +105,7 @@ class LangGraphAgentGraphRunner(AgentGraphRunner):
 
                 invoke.__name__ = node_key
 
-                agent_builder.add_node(name=node_key, node=invoke)
+                agent_builder.add_node(node_key, invoke)
 
                 if node_key == root_key:
                     agent_builder.add_edge(START, node_key)
@@ -134,7 +138,7 @@ class LangGraphAgentGraphRunner(AgentGraphRunner):
                 tracker.track_latency(duration)
                 tracker.track_invocation_success()
                 tracker.track_total_tokens(
-                    LangChainHelper.sum_token_usage_from_messages(messages)
+                    sum_token_usage_from_messages(messages)
                 )
 
             return AgentGraphResult(

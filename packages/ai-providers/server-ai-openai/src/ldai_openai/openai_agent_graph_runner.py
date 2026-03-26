@@ -5,9 +5,8 @@ from typing import Any, List, Optional
 
 from ldai import log
 from ldai.agent_graph import AgentGraphDefinition, AgentGraphNode
+from ldai.providers import AgentGraphResult, AgentGraphRunner, ToolRegistry
 from ldai.providers.types import LDAIMetrics
-from ldai.runners.agent_graph_runner import AgentGraphRunner
-from ldai.runners.types import AgentGraphResult, ToolRegistry
 from ldai.tracker import TokenUsage
 
 
@@ -35,7 +34,12 @@ def _log_run_result_shape(result: Any) -> None:
 
 def _build_native_tool_map() -> dict:
     try:
-        from agents import CodeInterpreterTool, FileSearchTool, ImageGenerationTool, WebSearchTool
+        from agents import (
+            CodeInterpreterTool,
+            FileSearchTool,
+            ImageGenerationTool,
+            WebSearchTool,
+        )
         return {
             'web_search_tool': lambda _: WebSearchTool(),
             'file_search_tool': lambda _: FileSearchTool(),
@@ -190,7 +194,14 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
         :return: The root Agent instance
         """
         try:
-            from agents import Agent, FunctionTool, Handoff, RunContextWrapper, Tool, handoff
+            from agents import (
+                Agent,
+                FunctionTool,
+                Handoff,
+                RunContextWrapper,
+                Tool,
+                handoff,
+            )
             from agents.extensions.handoff_prompt import RECOMMENDED_PROMPT_PREFIX
             from agents.tool_context import ToolContext
         except ImportError as exc:

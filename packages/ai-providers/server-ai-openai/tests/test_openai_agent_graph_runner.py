@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, AsyncMock, patch
 
 from ldai.agent_graph import AgentGraphDefinition
 from ldai.models import AIAgentGraphConfig, AIAgentConfig, Edge, ModelConfig, ProviderConfig
-from ldai.runners.types import AgentGraphResult, ToolRegistry
+from ldai.providers import AgentGraphResult, ToolRegistry
 from ldai_openai.openai_agent_graph_runner import OpenAIAgentGraphRunner
 from ldai_openai.openai_runner_factory import OpenAIRunnerFactory
 

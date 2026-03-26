@@ -2,8 +2,7 @@ import os
 from typing import Any, Optional
 
 from ldai.models import AIConfigKind
-from ldai.providers import AIProvider
-from ldai.runners.types import ToolRegistry
+from ldai.providers import AIProvider, ToolRegistry
 from openai import AsyncOpenAI
 
 from ldai_openai.openai_model_runner import OpenAIModelRunner
