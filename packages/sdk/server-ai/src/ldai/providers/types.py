@@ -3,10 +3,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from ldai.models import LDMessage
 from ldai.tracker import TokenUsage
+
+# Type alias for a registry of tools available to an agent.
+# Keys are tool names; values are the callable implementations.
+ToolRegistry = Dict[str, Callable]
 
 
 @dataclass
@@ -94,3 +98,23 @@ class JudgeResponse:
         if self.error is not None:
             result['error'] = self.error
         return result
+
+
+@dataclass
+class AgentResult:
+    """
+    Result from a single-agent run.
+    """
+    output: str
+    raw: Any
+    metrics: LDAIMetrics
+
+
+@dataclass
+class AgentGraphResult:
+    """
+    Result from an agent graph run.
+    """
+    output: str
+    raw: Any
+    metrics: LDAIMetrics

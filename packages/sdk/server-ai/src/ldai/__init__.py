@@ -27,11 +27,23 @@ from ldai.models import (  # Deprecated aliases for backward compatibility
     ModelConfig,
     ProviderConfig,
 )
+from ldai.providers import (
+    AgentGraphResult,
+    AgentGraphRunner,
+    AgentResult,
+    AgentRunner,
+    ToolRegistry,
+)
 from ldai.providers.types import EvalScore, JudgeResponse
 from ldai.tracker import AIGraphTracker
 
 __all__ = [
     'LDAIClient',
+    'AgentRunner',
+    'AgentGraphRunner',
+    'AgentResult',
+    'AgentGraphResult',
+    'ToolRegistry',
     'AIAgentConfig',
     'AIAgentConfigDefault',
     'AIAgentConfigRequest',
