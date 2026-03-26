@@ -6,7 +6,7 @@ from ldai import LDMessage, log
 from ldai.providers.model_runner import ModelRunner
 from ldai.providers.types import LDAIMetrics, ModelResponse, StructuredResponse
 
-from ldai_langchain.langchain_helper import LangChainHelper
+from ldai_langchain.langchain_helper import convert_messages_to_langchain, get_ai_metrics_from_response, get_ai_usage_from_response
 
 
 class LangChainModelRunner(ModelRunner):
@@ -36,9 +36,9 @@ class LangChainModelRunner(ModelRunner):
         :return: ModelResponse containing the model's response and metrics
         """
         try:
-            langchain_messages = LangChainHelper.convert_messages_to_langchain(messages)
+            langchain_messages = convert_messages_to_langchain(messages)
             response: BaseMessage = await self._llm.ainvoke(langchain_messages)
-            metrics = LangChainHelper.get_ai_metrics_from_response(response)
+            metrics = get_ai_metrics_from_response(response)
 
             content: str = ''
             if isinstance(response.content, str):
@@ -79,7 +79,7 @@ class LangChainModelRunner(ModelRunner):
             metrics=LDAIMetrics(success=False, usage=None),
         )
         try:
-            langchain_messages = LangChainHelper.convert_messages_to_langchain(messages)
+            langchain_messages = convert_messages_to_langchain(messages)
             structured_llm = self._llm.with_structured_output(response_structure, include_raw=True)
             response = await structured_llm.ainvoke(langchain_messages)
 
@@ -91,7 +91,7 @@ class LangChainModelRunner(ModelRunner):
             if raw_response is not None:
                 if hasattr(raw_response, 'content'):
                     structured_response.raw_response = raw_response.content
-                structured_response.metrics.usage = LangChainHelper.get_ai_usage_from_response(raw_response)
+                structured_response.metrics.usage = get_ai_usage_from_response(raw_response)
 
             if response.get('parsing_error'):
                 log.warning('LangChain structured model invocation had a parsing error')

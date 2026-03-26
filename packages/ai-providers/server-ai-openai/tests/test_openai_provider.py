@@ -5,11 +5,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from ldai import LDMessage
 
-from ldai_openai import OpenAIHelper, OpenAIModelRunner, OpenAIRunnerFactory
+from ldai_openai import OpenAIModelRunner, OpenAIRunnerFactory, get_ai_metrics_from_response
 
 
 class TestGetAIMetricsFromResponse:
-    """Tests for OpenAIHelper.get_ai_metrics_from_response."""
+    """Tests for get_ai_metrics_from_response."""
 
     def test_creates_metrics_with_success_true_and_token_usage(self):
         """Should create metrics with success=True and token usage."""
@@ -19,7 +19,7 @@ class TestGetAIMetricsFromResponse:
         mock_response.usage.completion_tokens = 50
         mock_response.usage.total_tokens = 100
 
-        result = OpenAIHelper.get_ai_metrics_from_response(mock_response)
+        result = get_ai_metrics_from_response(mock_response)
 
         assert result.success is True
         assert result.usage is not None
@@ -32,7 +32,7 @@ class TestGetAIMetricsFromResponse:
         mock_response = MagicMock()
         mock_response.usage = None
 
-        result = OpenAIHelper.get_ai_metrics_from_response(mock_response)
+        result = get_ai_metrics_from_response(mock_response)
 
         assert result.success is True
         assert result.usage is None
@@ -45,7 +45,7 @@ class TestGetAIMetricsFromResponse:
         mock_response.usage.completion_tokens = None
         mock_response.usage.total_tokens = None
 
-        result = OpenAIHelper.get_ai_metrics_from_response(mock_response)
+        result = get_ai_metrics_from_response(mock_response)
 
         assert result.success is True
         assert result.usage is not None

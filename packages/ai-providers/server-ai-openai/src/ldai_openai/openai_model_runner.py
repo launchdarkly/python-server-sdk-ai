@@ -6,7 +6,7 @@ from ldai.providers.model_runner import ModelRunner
 from ldai.providers.types import LDAIMetrics, ModelResponse, StructuredResponse
 from openai import AsyncOpenAI
 
-from ldai_openai.openai_helper import OpenAIHelper
+from ldai_openai.openai_helper import convert_messages_to_openai, get_ai_metrics_from_response
 
 
 class OpenAIModelRunner(ModelRunner):
@@ -37,11 +37,11 @@ class OpenAIModelRunner(ModelRunner):
         try:
             response = await self._client.chat.completions.create(
                 model=self._model_name,
-                messages=OpenAIHelper.convert_messages_to_openai(messages),
+                messages=convert_messages_to_openai(messages),
                 **self._parameters,
             )
 
-            metrics = OpenAIHelper.get_ai_metrics_from_response(response)
+            metrics = get_ai_metrics_from_response(response)
 
             content = ''
             if response.choices and len(response.choices) > 0:
@@ -79,7 +79,7 @@ class OpenAIModelRunner(ModelRunner):
         try:
             response = await self._client.chat.completions.create(
                 model=self._model_name,
-                messages=OpenAIHelper.convert_messages_to_openai(messages),
+                messages=convert_messages_to_openai(messages),
                 response_format={  # type: ignore[arg-type]
                     'type': 'json_schema',
                     'json_schema': {
@@ -91,7 +91,7 @@ class OpenAIModelRunner(ModelRunner):
                 **self._parameters,
             )
 
-            metrics = OpenAIHelper.get_ai_metrics_from_response(response)
+            metrics = get_ai_metrics_from_response(response)
 
             content = ''
             if response.choices and len(response.choices) > 0:
