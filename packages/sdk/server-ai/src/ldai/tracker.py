@@ -121,7 +121,8 @@ class LDAIConfigTracker:
         Manually track the duration of an AI operation.
 
         :param duration: Duration in milliseconds.
-        :param graph_key: When set, include ``graphKey`` in the event payload (e.g. config-level metrics inside a graph).
+        :param graph_key: When set, include ``graphKey`` in the event payload
+            (e.g. config-level metrics inside a graph).
         """
         self._summary._duration = duration
         self._ld_client.track(
