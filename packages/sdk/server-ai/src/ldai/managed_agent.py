@@ -31,7 +31,7 @@ class ManagedAgent:
         :param input: The user prompt or input to the agent
         :return: AgentResult containing the agent's output and metrics
         """
-        return await self._tracker.track_metrics_of(
+        return await self._tracker.track_metrics_of_async(
             lambda: self._agent_runner.run(input),
             lambda result: result.metrics,
         )

@@ -127,6 +127,71 @@ class TestGetAIMetricsFromResponse:
         assert result.success is True
         assert result.usage is None
 
+    def test_usage_metadata_preferred_over_response_metadata(self):
+        """usage_metadata should be used when it has non-zero counts."""
+        mock_response = AIMessage(content='Test')
+        mock_response.usage_metadata = {
+            'total_tokens': 10,
+            'input_tokens': 4,
+            'output_tokens': 6,
+        }
+        mock_response.response_metadata = {
+            'tokenUsage': {
+                'totalTokens': 999,
+                'promptTokens': 500,
+                'completionTokens': 499,
+            },
+        }
+        usage = LangChainHelper.get_ai_usage_from_response(mock_response)
+        assert usage is not None
+        assert usage.total == 10
+        assert usage.input == 4
+        assert usage.output == 6
+
+
+class TestGetAIUsageFromResponse:
+    """Tests for LangChainHelper.get_ai_usage_from_response."""
+
+    def test_returns_none_when_no_usage(self):
+        msg = AIMessage(content='hi')
+        assert LangChainHelper.get_ai_usage_from_response(msg) is None
+
+    def test_returns_none_when_all_zeros_in_metadata(self):
+        msg = AIMessage(content='hi')
+        msg.usage_metadata = {'total_tokens': 0, 'input_tokens': 0, 'output_tokens': 0}
+        assert LangChainHelper.get_ai_usage_from_response(msg) is None
+
+
+class TestGetToolCallsFromResponse:
+    """Tests for LangChainHelper.get_tool_calls_from_response."""
+
+    def test_returns_empty_when_no_tool_calls(self):
+        msg = AIMessage(content='hi')
+        assert LangChainHelper.get_tool_calls_from_response(msg) == []
+
+    def test_returns_empty_when_tool_calls_not_a_sequence(self):
+        msg = AIMessage(content='hi')
+        msg.tool_calls = None  # type: ignore
+        assert LangChainHelper.get_tool_calls_from_response(msg) == []
+
+    def test_extracts_names_from_dict_tool_calls(self):
+        msg = AIMessage(content='')
+        msg.tool_calls = [  # type: ignore
+            {'name': 'search', 'args': {}, 'id': '1'},
+            {'name': 'calc', 'args': {}, 'id': '2'},
+        ]
+        assert LangChainHelper.get_tool_calls_from_response(msg) == ['search', 'calc']
+
+    def test_returns_empty_when_tool_calls_is_not_a_list(self):
+        msg = AIMessage(content='hi')
+        msg.tool_calls = ()  # type: ignore
+        assert LangChainHelper.get_tool_calls_from_response(msg) == []
+
+    def test_skips_entries_without_name(self):
+        msg = AIMessage(content='')
+        msg.tool_calls = [{'name': 'a', 'id': '1'}, {}, {'name': 'b', 'id': '2'}]  # type: ignore
+        assert LangChainHelper.get_tool_calls_from_response(msg) == ['a', 'b']
+
 
 class TestMapProvider:
     """Tests for map_provider."""
