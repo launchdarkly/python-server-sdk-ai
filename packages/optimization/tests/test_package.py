@@ -2,7 +2,7 @@
 
 import pytest
 
-from ldai_optimization import ApiAgentOptimizationClient, __version__
+from ldai_optimization import OptimizationClient, __version__
 
 
 def test_version_is_string():
@@ -11,6 +11,6 @@ def test_version_is_string():
 
 
 def test_optimize_not_implemented():
-    client = ApiAgentOptimizationClient()
+    client = OptimizationClient()
     with pytest.raises(NotImplementedError):
         client.optimize("example", {})
