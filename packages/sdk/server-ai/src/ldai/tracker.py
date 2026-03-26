@@ -113,7 +113,7 @@ class LDAIConfigTracker:
             "providerName": self._provider_name,
         }
         if graph_key is not None:
-            return {**data, "graphKey": graph_key}
+            data['graphKey'] = graph_key
         return data
 
     def track_duration(self, duration: int, *, graph_key: Optional[str] = None) -> None:

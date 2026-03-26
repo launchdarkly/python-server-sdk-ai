@@ -125,7 +125,7 @@ def get_tool_calls_from_response(response: Any) -> List[str]:
     :return: List of tool names in order, or empty list if none
     """
     names: List[str] = []
-    if hasattr(response, 'tool_calls') and response.tool_calls:
+    if hasattr(response, 'tool_calls') and isinstance(response.tool_calls, list):
         for tc in response.tool_calls:
             n = tc.get('name')
             if n:
