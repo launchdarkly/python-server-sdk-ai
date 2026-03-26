@@ -6,7 +6,10 @@ from ldai.providers.model_runner import ModelRunner
 from ldai.providers.types import LDAIMetrics, ModelResponse, StructuredResponse
 from openai import AsyncOpenAI
 
-from ldai_openai.openai_helper import convert_messages_to_openai, get_ai_metrics_from_response
+from ldai_openai.openai_helper import (
+    convert_messages_to_openai,
+    get_ai_metrics_from_response,
+)
 
 
 class OpenAIModelRunner(ModelRunner):

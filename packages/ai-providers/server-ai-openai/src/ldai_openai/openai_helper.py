@@ -19,6 +19,23 @@ def convert_messages_to_openai(messages: List[LDMessage]) -> Iterable[ChatComple
     )
 
 
+def get_ai_usage_from_response(response: Any) -> Optional[TokenUsage]:
+    """
+    Extract token usage from an OpenAI response.
+
+    :param response: The response from the OpenAI chat completions API
+    :return: TokenUsage or None if unavailable
+    """
+    if hasattr(response, 'usage') and response.usage:
+        u = response.usage
+        return TokenUsage(
+            total=getattr(u, 'total_tokens', None) or 0,
+            input=getattr(u, 'prompt_tokens', None) or 0,
+            output=getattr(u, 'completion_tokens', None) or 0,
+        )
+    return None
+
+
 def get_ai_metrics_from_response(response: Any) -> LDAIMetrics:
     """
     Extract LaunchDarkly AI metrics from an OpenAI response.
@@ -26,11 +43,4 @@ def get_ai_metrics_from_response(response: Any) -> LDAIMetrics:
     :param response: The response from the OpenAI chat completions API
     :return: LDAIMetrics with success status and token usage
     """
-    usage: Optional[TokenUsage] = None
-    if hasattr(response, 'usage') and response.usage:
-        usage = TokenUsage(
-            total=response.usage.total_tokens or 0,
-            input=response.usage.prompt_tokens or 0,
-            output=response.usage.completion_tokens or 0,
-        )
-    return LDAIMetrics(success=True, usage=usage)
+    return LDAIMetrics(success=True, usage=get_ai_usage_from_response(response))

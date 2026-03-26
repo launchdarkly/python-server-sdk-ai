@@ -6,7 +6,11 @@ from ldai import LDMessage, log
 from ldai.providers.model_runner import ModelRunner
 from ldai.providers.types import LDAIMetrics, ModelResponse, StructuredResponse
 
-from ldai_langchain.langchain_helper import convert_messages_to_langchain, get_ai_metrics_from_response, get_ai_usage_from_response
+from ldai_langchain.langchain_helper import (
+    convert_messages_to_langchain,
+    get_ai_metrics_from_response,
+    get_ai_usage_from_response,
+)
 
 
 class LangChainModelRunner(ModelRunner):
