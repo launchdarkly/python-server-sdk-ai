@@ -92,11 +92,15 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
             path.append(root_node.get_key())
 
         start_ns = time.perf_counter_ns()
+        # Mutable cell so handoff callbacks can update time-between-handoffs without globals.
+        last_handoff_ns: List[int] = [start_ns]
         try:
             from agents import Runner
-            root_agent = self._build_agents(path)
+            root_agent = self._build_agents(path, last_handoff_ns)
             result = await Runner.run(root_agent, str(input))
             # _log_run_result_shape(result)
+            self._flush_final_segment(path, last_handoff_ns, tracker, result)
+
             duration = (time.perf_counter_ns() - start_ns) // 1_000_000
 
             if tracker:
@@ -135,6 +139,44 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
                 metrics=LDAIMetrics(success=False),
             )
 
+    def _flush_final_segment(
+        self,
+        path: List[str],
+        last_handoff_ns: List[int],
+        tracker: Any,
+        result: Any,
+    ) -> None:
+        """Record duration/tokens for the last active agent (no handoff after it)."""
+        if not path:
+            return
+        last_key = path[-1]
+        node = self._graph.get_node(last_key)
+        if node is None:
+            return
+        config_tracker = node.get_config().tracker
+        if config_tracker is None:
+            return
+
+        now_ns = time.perf_counter_ns()
+        duration_ms = (now_ns - last_handoff_ns[0]) // 1_000_000
+
+        usage: Optional[TokenUsage] = None
+        try:
+            usage_entry = result.context_wrapper.usage.request_usage_entries[-1]
+            usage = TokenUsage(
+                total=usage_entry.total_tokens,
+                input=usage_entry.input_tokens,
+                output=usage_entry.output_tokens,
+            )
+        except Exception:
+            pass
+
+        gk = tracker.graph_key if tracker is not None else None
+        if usage is not None:
+            config_tracker.track_tokens(usage, graph_key=gk)
+        config_tracker.track_duration(int(duration_ms), graph_key=gk)
+        config_tracker.track_success(graph_key=gk)
+
     def _handle_handoff(
         self,
         run_ctx: Any,
@@ -143,13 +185,16 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
         path: List[str],
         tracker: Any,
         config_tracker: Any,
+        last_handoff_ns: List[int],
     ) -> None:
         path.append(tgt)
         if tracker:
             tracker.track_handoff_success(src, tgt)
 
         usage: Optional[TokenUsage] = None
-        duration_ms: Optional[int] = None
+        now_ns = time.perf_counter_ns()
+        duration_ms = (now_ns - last_handoff_ns[0]) // 1_000_000
+        last_handoff_ns[0] = now_ns
         try:
             usage_entry = run_ctx.usage.request_usage_entries[-1]
             usage = TokenUsage(
@@ -157,9 +202,6 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
                 input=usage_entry.input_tokens,
                 output=usage_entry.output_tokens,
             )
-            duration_ms = getattr(usage_entry, 'duration_ms', None)
-            if duration_ms is None:
-                duration_ms = getattr(usage_entry, 'latency_ms', None)
         except Exception:
             pass
 
@@ -178,12 +220,15 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
         path: List[str],
         tracker: Any,
         config_tracker: Any,
+        last_handoff_ns: List[int],
     ):
         def on_handoff(run_ctx: Any) -> None:
-            self._handle_handoff(run_ctx, src, tgt, path, tracker, config_tracker)
+            self._handle_handoff(
+                run_ctx, src, tgt, path, tracker, config_tracker, last_handoff_ns
+            )
         return on_handoff
 
-    def _build_agents(self, path: List[str]) -> Any:
+    def _build_agents(self, path: List[str], last_handoff_ns: List[int]) -> Any:
         """
         Build the agent tree from the graph definition via reverse_traverse.
 
@@ -235,6 +280,7 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
                             path,
                             tracker,
                             config_tracker,
+                            last_handoff_ns,
                         ),
                     )
                 )
