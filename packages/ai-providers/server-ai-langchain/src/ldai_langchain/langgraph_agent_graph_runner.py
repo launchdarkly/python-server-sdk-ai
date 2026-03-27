@@ -10,6 +10,7 @@ from ldai.providers import AgentGraphResult, AgentGraphRunner, ToolRegistry
 from ldai.providers.types import LDAIMetrics
 
 from ldai_langchain.langchain_helper import (
+    create_langchain_model,
     get_ai_metrics_from_response,
     get_ai_usage_from_response,
     get_tool_calls_from_response,
@@ -51,7 +52,6 @@ class LangGraphAgentGraphRunner(AgentGraphRunner):
         tracker = self._graph.get_tracker()
         start_ns = time.perf_counter_ns()
         try:
-            from langchain.chat_models import init_chat_model
             from langchain_core.messages import AnyMessage, HumanMessage
             from langgraph.graph import END, START, StateGraph
             from typing_extensions import TypedDict
@@ -72,7 +72,7 @@ class LangGraphAgentGraphRunner(AgentGraphRunner):
 
                 model = None
                 if node_config.model:
-                    lc_model = init_chat_model(model=node_config.model.name)
+                    lc_model = create_langchain_model(node_config)
                     tool_defs = node_config.model.get_parameter('tools') or []
                     tool_fns = [
                         tools_ref[t.get('name', '')]
@@ -86,7 +86,7 @@ class LangGraphAgentGraphRunner(AgentGraphRunner):
                 def invoke(state: WorkflowState) -> WorkflowState:
                     exec_path.append(node_key)
                     if not model:
-                        return state
+                        return {'messages': []}
                     gk = tracker.graph_key if tracker is not None else None
                     if node_tracker:
                         response = node_tracker.track_metrics_of(
