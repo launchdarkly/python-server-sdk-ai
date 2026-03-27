@@ -50,6 +50,7 @@ class OpenAIRunnerFactory(AIProvider):
         from ldai_openai.openai_agent_graph_runner import OpenAIAgentGraphRunner
         return OpenAIAgentGraphRunner(graph_def, tools)
 
+
     def create_agent(self, config: Any, tools: Optional[ToolRegistry] = None) -> 'OpenAIAgentRunner':
         """
         Create a configured OpenAIAgentRunner for the given AI agent config.

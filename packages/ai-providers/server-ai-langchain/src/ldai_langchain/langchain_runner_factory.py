@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Optional
 
 from ldai.models import AIConfigKind
 from ldai.providers import AIProvider, ToolRegistry
@@ -36,7 +36,7 @@ class LangChainRunnerFactory(AIProvider):
         llm = create_langchain_model(config)
         return LangChainModelRunner(llm)
 
-    def create_agent(self, config: Any, tools: Any) -> 'LangChainAgentRunner':
+    def create_agent(self, config: Any, tools: Optional[ToolRegistry] = None) -> 'LangChainAgentRunner':
         """
         Create a configured LangChainAgentRunner for the given AI agent config.
 
@@ -46,11 +46,6 @@ class LangChainRunnerFactory(AIProvider):
         """
         from ldai_langchain.langchain_agent_runner import LangChainAgentRunner
 
-        config_dict = config.to_dict()
-        model_dict = config_dict.get('model') or {}
-        parameters = dict(model_dict.get('parameters') or {})
-        tool_definitions = parameters.pop('tools', []) or []
-        instructions = config.instructions or '' if hasattr(config, 'instructions') else ''
-
-        llm = create_langchain_model(config)
-        return LangChainAgentRunner(llm, instructions, tool_definitions, tools or {})
+        instructions = (config.instructions or '') if hasattr(config, 'instructions') else ''
+        llm = create_langchain_model(config, tool_registry=tools or {})
+        return LangChainAgentRunner(llm, instructions, tools or {})

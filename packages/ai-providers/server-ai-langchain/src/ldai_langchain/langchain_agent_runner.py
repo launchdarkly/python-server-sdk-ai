@@ -1,6 +1,6 @@
 """LangChain agent runner for LaunchDarkly AI SDK."""
 
-from typing import Any, Dict, List
+from typing import Any, List
 
 from langchain_core.messages import (
     AIMessage,
@@ -21,6 +21,7 @@ class LangChainAgentRunner(AgentRunner):
     AgentRunner implementation for LangChain.
 
     Executes a single-agent loop using a LangChain BaseChatModel with tool calling.
+    The model is expected to have tools already bound to it.
     Returned by LangChainRunnerFactory.create_agent(config, tools).
     """
 
@@ -28,12 +29,10 @@ class LangChainAgentRunner(AgentRunner):
         self,
         llm: Any,
         instructions: str,
-        tool_definitions: List[Dict[str, Any]],
         tools: ToolRegistry,
     ):
         self._llm = llm
         self._instructions = instructions
-        self._tool_definitions = tool_definitions
         self._tools = tools
 
     async def run(self, input: Any) -> AgentResult:
@@ -51,14 +50,11 @@ class LangChainAgentRunner(AgentRunner):
             messages.append(SystemMessage(content=self._instructions))
         messages.append(HumanMessage(content=str(input)))
 
-        openai_tools = self._build_openai_tools()
-        model = self._llm.bind_tools(openai_tools) if openai_tools else self._llm
-
         raw_response = None
 
         try:
             while True:
-                response: AIMessage = await model.ainvoke(messages)
+                response: AIMessage = await self._llm.ainvoke(messages)
                 raw_response = response
                 messages.append(response)
 
@@ -102,25 +98,6 @@ class LangChainAgentRunner(AgentRunner):
                 raw=raw_response,
                 metrics=LDAIMetrics(success=False, usage=None),
             )
-
-    def _build_openai_tools(self) -> List[Dict[str, Any]]:
-        """Convert LD tool definitions to OpenAI function-calling format for bind_tools."""
-        tools = []
-        for td in self._tool_definitions:
-            if not isinstance(td, dict):
-                continue
-            if "type" in td:
-                tools.append(td)
-            elif "name" in td:
-                tools.append({
-                    "type": "function",
-                    "function": {
-                        "name": td["name"],
-                        "description": td.get("description", ""),
-                        "parameters": td.get("parameters", {"type": "object", "properties": {}}),
-                    },
-                })
-        return tools
 
     def get_llm(self) -> Any:
         """Return the underlying LangChain LLM."""

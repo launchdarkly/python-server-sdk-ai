@@ -429,7 +429,6 @@ class TestCreateAgent:
 
             assert isinstance(result, LangChainAgentRunner)
             assert result._instructions == "You are a helpful assistant."
-            assert len(result._tool_definitions) == 1
 
     def test_creates_agent_runner_with_no_tools(self):
         """Should create LangChainAgentRunner with no tool definitions."""
@@ -450,7 +449,7 @@ class TestCreateAgent:
             result = factory.create_agent(mock_ai_config, {})
 
             assert isinstance(result, LangChainAgentRunner)
-            assert result._tool_definitions == []
+            assert result._tools == {}
 
 
 class TestLangChainAgentRunner:
@@ -464,10 +463,9 @@ class TestLangChainAgentRunner:
 
         mock_llm = MagicMock()
         mock_response = AIMessage(content="The answer is 42.")
-        mock_llm.bind_tools = MagicMock(return_value=mock_llm)
         mock_llm.ainvoke = AsyncMock(return_value=mock_response)
 
-        runner = LangChainAgentRunner(mock_llm, "You are helpful.", [], {})
+        runner = LangChainAgentRunner(mock_llm, "You are helpful.", {})
         result = await runner.run("What is the answer?")
 
         assert result.output == "The answer is 42."
@@ -489,13 +487,11 @@ class TestLangChainAgentRunner:
         second_response = AIMessage(content="It is sunny in Paris.")
 
         mock_llm = MagicMock()
-        mock_llm.bind_tools = MagicMock(return_value=mock_llm)
         mock_llm.ainvoke = AsyncMock(side_effect=[first_response, second_response])
 
         weather_fn = MagicMock(return_value="Sunny, 25°C")
         runner = LangChainAgentRunner(
             mock_llm, "You are helpful.",
-            [{'name': 'get-weather', 'description': 'Get weather', 'parameters': {}}],
             {'get-weather': weather_fn},
         )
         result = await runner.run("What is the weather in Paris?")
@@ -510,10 +506,9 @@ class TestLangChainAgentRunner:
         from ldai_langchain import LangChainAgentRunner
 
         mock_llm = MagicMock()
-        mock_llm.bind_tools = MagicMock(return_value=mock_llm)
         mock_llm.ainvoke = AsyncMock(side_effect=Exception("LLM Error"))
 
-        runner = LangChainAgentRunner(mock_llm, "", [], {})
+        runner = LangChainAgentRunner(mock_llm, "", {})
         result = await runner.run("Hello")
 
         assert result.output == ""

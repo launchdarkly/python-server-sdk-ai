@@ -3,7 +3,7 @@ from typing import Any, Dict, List, Optional
 
 from ldai import log
 from ldai.models import LDMessage
-from ldai.providers.types import ModelResponse, StructuredResponse
+from ldai.providers.types import ModelResponse, StructuredResponse, ToolRegistry
 
 
 class AIProvider(ABC):
@@ -73,7 +73,7 @@ class AIProvider(ABC):
         log.warning('create_model not implemented by this provider')
         return None
 
-    def create_agent(self, config: Any, tools: Any) -> Optional[Any]:
+    def create_agent(self, config: Any, tools: Optional[ToolRegistry] = None) -> Optional[Any]:
         """
         Create a configured agent executor for the given AI config and tool registry.
 
