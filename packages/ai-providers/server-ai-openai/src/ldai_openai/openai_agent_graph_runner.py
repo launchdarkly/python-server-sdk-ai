@@ -97,14 +97,17 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
                 tracker.track_path(path)
                 tracker.track_latency(duration)
                 tracker.track_invocation_success()
-                usage = result.context_wrapper.usage
-                tracker.track_total_tokens(
-                    TokenUsage(
-                        total=usage.total_tokens,
-                        input=usage.input_tokens,
-                        output=usage.output_tokens,
+                try:
+                    usage = result.context_wrapper.usage
+                    tracker.track_total_tokens(
+                        TokenUsage(
+                            total=usage.total_tokens,
+                            input=usage.input_tokens,
+                            output=usage.output_tokens,
+                        )
                     )
-                )
+                except Exception:
+                    pass
 
             return AgentGraphResult(
                 output=str(result.final_output),
