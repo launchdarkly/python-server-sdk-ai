@@ -36,6 +36,14 @@ def _build_native_tool_map() -> dict:
 _NATIVE_OPENAI_TOOLS = _build_native_tool_map()
 
 
+class _RunState:
+    """Mutable state shared across handoff and tool callbacks during a single run."""
+
+    def __init__(self, last_handoff_ns: int, last_node_key: str) -> None:
+        self.last_handoff_ns = last_handoff_ns
+        self.last_node_key = last_node_key
+
+
 class OpenAIAgentGraphRunner(AgentGraphRunner):
     """
     AgentGraphRunner implementation for the OpenAI Agents SDK.
@@ -71,17 +79,17 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
         tracker = self._graph.get_tracker()
         path: List[str] = []
         root_node = self._graph.root()
-        if root_node:
-            path.append(root_node.get_key())
+        root_key = root_node.get_key() if root_node else ''
+        if root_key:
+            path.append(root_key)
 
         start_ns = time.perf_counter_ns()
-        # Mutable cell so handoff callbacks can update time-between-handoffs without globals.
-        last_handoff_ns: List[int] = [start_ns]
+        state = _RunState(last_handoff_ns=start_ns, last_node_key=root_key)
         try:
             from agents import Runner
-            root_agent = self._build_agents(path, last_handoff_ns)
+            root_agent = self._build_agents(path, state)
             result = await Runner.run(root_agent, str(input))
-            self._flush_final_segment(path, last_handoff_ns, tracker, result)
+            self._flush_final_segment(state, tracker, result)
 
             duration = (time.perf_counter_ns() - start_ns) // 1_000_000
 
@@ -123,16 +131,14 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
 
     def _flush_final_segment(
         self,
-        path: List[str],
-        last_handoff_ns: List[int],
+        state: _RunState,
         tracker: Any,
         result: Any,
     ) -> None:
         """Record duration/tokens for the last active agent (no handoff after it)."""
-        if not path:
+        if not state.last_node_key:
             return
-        last_key = path[-1]
-        node = self._graph.get_node(last_key)
+        node = self._graph.get_node(state.last_node_key)
         if node is None:
             return
         config_tracker = node.get_config().tracker
@@ -140,7 +146,7 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
             return
 
         now_ns = time.perf_counter_ns()
-        duration_ms = (now_ns - last_handoff_ns[0]) // 1_000_000
+        duration_ms = (now_ns - state.last_handoff_ns) // 1_000_000
 
         usage: Optional[TokenUsage] = None
         try:
@@ -167,16 +173,17 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
         path: List[str],
         tracker: Any,
         config_tracker: Any,
-        last_handoff_ns: List[int],
+        state: _RunState,
     ) -> None:
         path.append(tgt)
+        state.last_node_key = tgt
         if tracker:
             tracker.track_handoff_success(src, tgt)
 
         usage: Optional[TokenUsage] = None
         now_ns = time.perf_counter_ns()
-        duration_ms = (now_ns - last_handoff_ns[0]) // 1_000_000
-        last_handoff_ns[0] = now_ns
+        duration_ms = (now_ns - state.last_handoff_ns) // 1_000_000
+        state.last_handoff_ns = now_ns
         try:
             usage_entry = run_ctx.usage.request_usage_entries[-1]
             usage = TokenUsage(
@@ -202,15 +209,15 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
         path: List[str],
         tracker: Any,
         config_tracker: Any,
-        last_handoff_ns: List[int],
+        state: _RunState,
     ):
         def on_handoff(run_ctx: Any) -> None:
             self._handle_handoff(
-                run_ctx, src, tgt, path, tracker, config_tracker, last_handoff_ns
+                run_ctx, src, tgt, path, tracker, config_tracker, state
             )
         return on_handoff
 
-    def _build_agents(self, path: List[str], last_handoff_ns: List[int]) -> Any:
+    def _build_agents(self, path: List[str], state: _RunState) -> Any:
         """
         Build the agent tree from the graph definition via reverse_traverse.
 
@@ -218,6 +225,7 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
         targets exist before the agents that hand off to them.
 
         :param path: Mutable list to accumulate the execution path
+        :param state: Shared run state for tracking handoff timing and last node
         :return: The root Agent instance
         """
         try:
@@ -262,7 +270,7 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
                             path,
                             tracker,
                             config_tracker,
-                            last_handoff_ns,
+                            state,
                         ),
                     )
                 )
