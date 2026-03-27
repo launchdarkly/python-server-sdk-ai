@@ -14,6 +14,7 @@ def _to_openai_name(name: str) -> str:
     """Convert a hyphenated tool/node name to an underscore-separated OpenAI function name."""
     return name.replace('-', '_')
 
+
 def _build_native_tool_map() -> dict:
     try:
         from agents import (

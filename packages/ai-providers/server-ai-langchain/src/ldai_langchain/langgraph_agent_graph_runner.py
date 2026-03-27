@@ -79,9 +79,7 @@ class LangGraphAgentGraphRunner(AgentGraphRunner):
                         for t in tool_defs
                         if t.get('name', '') in tools_ref
                     ]
-                    if tool_fns:
-                        lc_model = lc_model.bind_tools(tool_fns)
-                    model = lc_model
+                    model = lc_model.bind_tools(tool_fns) if tool_fns else lc_model
 
                 def invoke(state: WorkflowState) -> WorkflowState:
                     exec_path.append(node_key)
