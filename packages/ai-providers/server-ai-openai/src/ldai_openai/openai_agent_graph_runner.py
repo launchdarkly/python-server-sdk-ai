@@ -14,24 +14,6 @@ def _to_openai_name(name: str) -> str:
     """Convert a hyphenated tool/node name to an underscore-separated OpenAI function name."""
     return name.replace('-', '_')
 
-
-def _log_run_result_shape(result: Any) -> None:
-    """Print RunResult attributes (excluding final_output) for debugging."""
-    attrs = [a for a in dir(result) if not a.startswith('_')]
-    print("RunResult public attributes:", attrs)
-    for name in attrs:
-        if name == 'final_output':
-            continue
-        try:
-            val = getattr(result, name)
-            if callable(val):
-                print(f"  {name}: callable")
-            else:
-                print(f"  {name}: {repr(val)}")
-        except Exception as e:
-            print(f"  {name}: (error reading: {e})")
-
-
 def _build_native_tool_map() -> dict:
     try:
         from agents import (
@@ -98,7 +80,6 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
             from agents import Runner
             root_agent = self._build_agents(path, last_handoff_ns)
             result = await Runner.run(root_agent, str(input))
-            # _log_run_result_shape(result)
             self._flush_final_segment(path, last_handoff_ns, tracker, result)
 
             duration = (time.perf_counter_ns() - start_ns) // 1_000_000
