@@ -87,8 +87,8 @@ def create_langchain_model(ai_config: AIConfigKind, tool_registry: Optional[Tool
         **parameters,
     )
 
-    if tool_definitions:
-        bindable = _resolve_tools_for_langchain(tool_definitions, tool_registry or {})
+    if tool_definitions and tool_registry is not None:
+        bindable = _resolve_tools_for_langchain(tool_definitions, tool_registry)
         if bindable:
             model = model.bind_tools(bindable)
 
@@ -136,6 +136,55 @@ def _resolve_tools_for_langchain(
         })
 
     return bindable
+
+
+def build_structured_tools(ai_config: AIConfigKind, tool_registry: ToolRegistry) -> List[Any]:
+    """
+    Build a list of LangChain StructuredTool instances from LD tool definitions and a registry.
+
+    Tools found in the registry are wrapped as StructuredTool with the name and description
+    from the LD config. Built-in provider tools and tools missing from the registry are
+    skipped with a warning.
+
+    :param ai_config: The LaunchDarkly AI configuration
+    :param tool_registry: Registry mapping tool names to callable implementations
+    :return: List of StructuredTool instances ready to pass to langchain.agents.create_agent
+    """
+    from langchain_core.tools import StructuredTool
+
+    config_dict = ai_config.to_dict()
+    model_dict = config_dict.get('model') or {}
+    parameters = dict(model_dict.get('parameters') or {})
+    tool_definitions = parameters.pop('tools', []) or []
+
+    structured = []
+    for td in tool_definitions:
+        if not isinstance(td, dict):
+            continue
+
+        tool_type = td.get('type')
+        if tool_type and tool_type != 'function':
+            log.warning(
+                f"Built-in tool '{tool_type}' is not reliably supported via LangChain and will be skipped. "
+                "Use a provider-specific runner to use built-in provider tools."
+            )
+            continue
+
+        name = td.get('name')
+        if not name:
+            continue
+
+        if name not in tool_registry:
+            log.warning(f"Tool '{name}' is defined in the AI config but was not found in the tool registry; skipping.")
+            continue
+
+        structured.append(StructuredTool.from_function(
+            func=tool_registry[name],
+            name=name,
+            description=td.get('description', ''),
+        ))
+
+    return structured
 
 
 def get_ai_usage_from_response(response: Any) -> Optional[TokenUsage]:

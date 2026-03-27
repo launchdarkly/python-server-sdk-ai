@@ -402,7 +402,7 @@ class TestCreateAgent:
     """Tests for LangChainRunnerFactory.create_agent."""
 
     def test_creates_agent_runner_with_instructions_and_tool_definitions(self):
-        """Should create LangChainAgentRunner with instructions and tool definitions."""
+        """Should create LangChainAgentRunner wrapping a compiled graph."""
         from unittest.mock import patch
         from ldai_langchain import LangChainAgentRunner
 
@@ -420,15 +420,18 @@ class TestCreateAgent:
             'provider': {'name': 'openai'},
         }
 
-        with patch('ldai_langchain.langchain_runner_factory.create_langchain_model') as mock_create:
-            mock_llm = MagicMock()
-            mock_create.return_value = mock_llm
+        mock_agent = MagicMock()
+        with patch('ldai_langchain.langchain_runner_factory.create_langchain_model') as mock_create, \
+             patch('ldai_langchain.langchain_runner_factory.build_structured_tools') as mock_tools, \
+             patch('ldai_langchain.langchain_runner_factory.lc_create_agent', return_value=mock_agent):
+            mock_create.return_value = MagicMock()
+            mock_tools.return_value = [MagicMock()]
 
             factory = LangChainRunnerFactory()
             result = factory.create_agent(mock_ai_config, {'get-weather': lambda loc: 'sunny'})
 
             assert isinstance(result, LangChainAgentRunner)
-            assert result._instructions == "You are a helpful assistant."
+            assert result._agent is mock_agent
 
     def test_creates_agent_runner_with_no_tools(self):
         """Should create LangChainAgentRunner with no tool definitions."""
@@ -442,73 +445,72 @@ class TestCreateAgent:
             'provider': {'name': 'openai'},
         }
 
-        with patch('ldai_langchain.langchain_runner_factory.create_langchain_model') as mock_create:
+        mock_agent = MagicMock()
+        with patch('ldai_langchain.langchain_runner_factory.create_langchain_model') as mock_create, \
+             patch('ldai_langchain.langchain_runner_factory.build_structured_tools', return_value=[]), \
+             patch('ldai_langchain.langchain_runner_factory.lc_create_agent', return_value=mock_agent):
             mock_create.return_value = MagicMock()
 
             factory = LangChainRunnerFactory()
             result = factory.create_agent(mock_ai_config, {})
 
             assert isinstance(result, LangChainAgentRunner)
-            assert result._tools == {}
+            assert result._agent is mock_agent
 
 
 class TestLangChainAgentRunner:
     """Tests for LangChainAgentRunner.run."""
 
     @pytest.mark.asyncio
-    async def test_runs_agent_and_returns_result_with_no_tool_calls(self):
-        """Should return AgentResult when model responds with no tool calls."""
+    async def test_runs_agent_and_returns_result(self):
+        """Should return AgentResult with the last message content from the graph."""
         from ldai_langchain import LangChainAgentRunner
-        from langchain_core.messages import AIMessage
 
-        mock_llm = MagicMock()
-        mock_response = AIMessage(content="The answer is 42.")
-        mock_llm.ainvoke = AsyncMock(return_value=mock_response)
+        final_msg = AIMessage(content="The answer is 42.")
+        mock_agent = MagicMock()
+        mock_agent.ainvoke = AsyncMock(return_value={"messages": [final_msg]})
 
-        runner = LangChainAgentRunner(mock_llm, "You are helpful.", {})
+        runner = LangChainAgentRunner(mock_agent)
         result = await runner.run("What is the answer?")
 
         assert result.output == "The answer is 42."
         assert result.metrics.success is True
+        mock_agent.ainvoke.assert_called_once_with(
+            {"messages": [{"role": "user", "content": "What is the answer?"}]}
+        )
 
     @pytest.mark.asyncio
-    async def test_executes_tool_calls_and_returns_final_response(self):
-        """Should execute tool calls and continue loop until final response."""
+    async def test_aggregates_token_usage_across_messages(self):
+        """Should sum token usage from all messages in the graph result."""
         from ldai_langchain import LangChainAgentRunner
-        from langchain_core.messages import AIMessage
 
-        # First response: has a tool call
-        first_response = AIMessage(content="")
-        first_response.tool_calls = [
-            {"name": "get-weather", "args": {"location": "Paris"}, "id": "call_123"}
-        ]
+        msg1 = AIMessage(content="intermediate")
+        msg1.usage_metadata = {'total_tokens': 10, 'input_tokens': 6, 'output_tokens': 4}
+        msg2 = AIMessage(content="final answer")
+        msg2.usage_metadata = {'total_tokens': 20, 'input_tokens': 12, 'output_tokens': 8}
 
-        # Second response: final answer
-        second_response = AIMessage(content="It is sunny in Paris.")
+        mock_agent = MagicMock()
+        mock_agent.ainvoke = AsyncMock(return_value={"messages": [msg1, msg2]})
 
-        mock_llm = MagicMock()
-        mock_llm.ainvoke = AsyncMock(side_effect=[first_response, second_response])
+        runner = LangChainAgentRunner(mock_agent)
+        result = await runner.run("Hello")
 
-        weather_fn = MagicMock(return_value="Sunny, 25°C")
-        runner = LangChainAgentRunner(
-            mock_llm, "You are helpful.",
-            {'get-weather': weather_fn},
-        )
-        result = await runner.run("What is the weather in Paris?")
-
-        assert result.output == "It is sunny in Paris."
+        assert result.output == "final answer"
         assert result.metrics.success is True
-        weather_fn.assert_called_once_with(location="Paris")
+        assert result.metrics.usage is not None
+        assert result.metrics.usage.total == 30
+        assert result.metrics.usage.input == 18
+        assert result.metrics.usage.output == 12
 
     @pytest.mark.asyncio
     async def test_returns_failure_when_exception_thrown(self):
         """Should return unsuccessful AgentResult when exception is thrown."""
         from ldai_langchain import LangChainAgentRunner
 
-        mock_llm = MagicMock()
-        mock_llm.ainvoke = AsyncMock(side_effect=Exception("LLM Error"))
+        mock_agent = MagicMock()
+        mock_agent.ainvoke = AsyncMock(side_effect=Exception("Graph Error"))
 
-        runner = LangChainAgentRunner(mock_llm, "", {})
+        runner = LangChainAgentRunner(mock_agent)
         result = await runner.run("Hello")
 
         assert result.output == ""
