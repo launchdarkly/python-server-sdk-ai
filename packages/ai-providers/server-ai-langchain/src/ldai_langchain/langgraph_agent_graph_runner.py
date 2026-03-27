@@ -119,7 +119,7 @@ class LangGraphAgentGraphRunner(AgentGraphRunner):
             self._graph.traverse(fn=handle_traversal)
             compiled = agent_builder.compile()
 
-            result = await compiled.ainvoke(
+            result = await compiled.ainvoke(  # type: ignore[call-overload]
                 {'messages': [HumanMessage(content=str(input))]}
             )
             duration = (time.perf_counter_ns() - start_ns) // 1_000_000
