@@ -23,6 +23,9 @@ dependencies = [
     "openai>=1.0.0",
 ]
 
+[project.optional-dependencies]
+agents = ["openai-agents>=0.0.1"]
+
 [project.urls]
 Homepage = "https://docs.launchdarkly.com/sdk/ai/python"
 Repository = "https://github.com/launchdarkly/python-server-sdk-ai"
@@ -35,6 +38,7 @@ dev = [
     "mypy==1.18.2",
     "pycodestyle>=2.11.0",
     "isort>=5.12.0",
+    "openai-agents>=0.0.1",
 ]
 
 [build-system]

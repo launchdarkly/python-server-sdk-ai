@@ -9,6 +9,8 @@ from ldai.providers import AgentGraphResult, AgentGraphRunner, ToolRegistry
 from ldai.providers.types import LDAIMetrics
 from ldai.tracker import TokenUsage
 
+from ldai_openai.openai_helper import get_tool_calls_from_run_items
+
 
 def _build_native_tool_map() -> dict:
     try:
@@ -85,6 +87,7 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
             root_agent = self._build_agents(path, state)
             result = await Runner.run(root_agent, str(input))
             self._flush_final_segment(state, tracker, result)
+            self._track_tool_calls(result, tracker)
 
             duration = (time.perf_counter_ns() - start_ns) // 1_000_000
 
@@ -163,6 +166,17 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
         config_tracker.track_duration(int(duration_ms), graph_key=gk)
         config_tracker.track_success(graph_key=gk)
 
+    def _track_tool_calls(self, result: Any, tracker: Any) -> None:
+        """Track all tool calls from the run result, attributed to the node that called them."""
+        gk = tracker.graph_key if tracker is not None else None
+        for agent_name, tool_name in get_tool_calls_from_run_items(result.new_items):
+            node = self._graph.get_node(agent_name)
+            if node is None:
+                continue
+            config_tracker = node.get_config().tracker
+            if config_tracker is not None:
+                config_tracker.track_tool_call(tool_name, graph_key=gk)
+
     def _handle_handoff(
         self,
         run_ctx: Any,
@@ -231,12 +245,10 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
                 Agent,
                 FunctionTool,
                 Handoff,
-                RunContextWrapper,
                 Tool,
                 handoff,
             )
             from agents.extensions.handoff_prompt import RECOMMENDED_PROMPT_PREFIX
-            from agents.tool_context import ToolContext
         except ImportError as exc:
             raise ImportError(
                 "openai-agents is required for OpenAIAgentGraphRunner. "
@@ -293,18 +305,12 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
                     description: str,
                     params_schema: dict,
                 ) -> FunctionTool:
-                    def wrapped(tool_ctx: ToolContext, tool_args: str) -> Any:
+                    def wrapped(tool_ctx: Any, tool_args: str) -> Any:
                         import json
                         try:
                             args = json.loads(tool_args)
                         except Exception:
                             args = {}
-                        path.append(name)
-                        if config_tracker is not None:
-                            config_tracker.track_tool_call(
-                                name,
-                                graph_key=tracker.graph_key if tracker is not None else None,
-                            )
                         return fn(**args)
 
                     return FunctionTool(
