@@ -7,6 +7,7 @@ from ldclient.client import LDClient
 from ldai import log
 from ldai.agent_graph import AgentGraphDefinition
 from ldai.judge import Judge
+from ldai.managed_agent_graph import ManagedAgentGraph
 from ldai.managed_model import ManagedModel
 from ldai.models import (
     AIAgentConfig,
@@ -24,6 +25,7 @@ from ldai.models import (
     ModelConfig,
     ProviderConfig,
 )
+from ldai.providers import ToolRegistry
 from ldai.providers.runner_factory import RunnerFactory
 from ldai.sdk_info import AI_SDK_LANGUAGE, AI_SDK_NAME, AI_SDK_VERSION
 from ldai.tracker import AIGraphTracker, LDAIConfigTracker
@@ -35,6 +37,7 @@ _TRACK_USAGE_JUDGE_CONFIG = '$ld:ai:usage:judge-config'
 _TRACK_USAGE_CREATE_JUDGE = '$ld:ai:usage:create-judge'
 _TRACK_USAGE_AGENT_CONFIG = '$ld:ai:usage:agent-config'
 _TRACK_USAGE_AGENT_CONFIGS = '$ld:ai:usage:agent-configs'
+_TRACK_USAGE_CREATE_AGENT_GRAPH = '$ld:ai:usage:create-agent-graph'
 
 _INIT_TRACK_CONTEXT = Context.builder('ld-internal-tracking').kind('ld_ai').anonymous(True).build()
 
@@ -608,6 +611,55 @@ class LDAIClient:
             enabled=agent_graph_config.enabled,
             tracker=tracker,
         )
+
+    async def create_agent_graph(
+        self,
+        key: str,
+        context: Context,
+        tools: Optional[ToolRegistry] = None,
+        default_ai_provider: Optional[str] = None,
+    ) -> Optional[ManagedAgentGraph]:
+        """
+        Creates and returns a new ManagedAgentGraph for AI agent graph execution.
+
+        Resolves the graph configuration via ``agent_graph()``, creates a
+        provider-specific runner, and wraps it in a ``ManagedAgentGraph``.
+
+        :param key: The key identifying the agent graph configuration
+        :param context: Standard Context used when evaluating flags
+        :param tools: Registry mapping tool names to callables
+        :param default_ai_provider: Optional provider override ('openai', 'langchain', …)
+        :return: ManagedAgentGraph instance, or None if the graph is disabled or unsupported
+
+        Example::
+
+            graph = await client.create_agent_graph(
+                "travel-assistant-graph",
+                context,
+                tools={
+                    "web_search_tool": my_search_fn,
+                    "get_weather": my_weather_fn,
+                }
+            )
+
+            if graph:
+                result = await graph.run("Find me restaurants in Seattle")
+                print(result.output)
+        """
+        self._client.track(_TRACK_USAGE_CREATE_AGENT_GRAPH, context, key, 1)
+        log.debug(f"Creating managed agent graph for key: {key}")
+
+        graph = self.agent_graph(key, context)
+        if not graph.enabled:
+            return None
+
+        runner = RunnerFactory.create_agent_graph(
+            graph, tools or {}, default_ai_provider
+        )
+        if not runner:
+            return None
+
+        return ManagedAgentGraph(runner, graph.get_tracker())
 
     def agents(
         self,

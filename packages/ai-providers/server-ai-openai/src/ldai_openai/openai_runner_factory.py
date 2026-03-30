@@ -1,8 +1,8 @@
 import os
-from typing import Optional
+from typing import Any, Optional
 
 from ldai.models import AIConfigKind
-from ldai.providers import AIProvider
+from ldai.providers import AIProvider, ToolRegistry
 from openai import AsyncOpenAI
 
 from ldai_openai.openai_model_runner import OpenAIModelRunner
@@ -35,6 +35,17 @@ class OpenAIRunnerFactory(AIProvider):
         model_name = model_dict.get('name', '')
         parameters = model_dict.get('parameters') or {}
         return OpenAIModelRunner(self._client, model_name, parameters)
+
+    def create_agent_graph(self, graph_def: Any, tools: ToolRegistry) -> Any:
+        """
+        Create a configured OpenAIAgentGraphRunner for the given graph definition.
+
+        :param graph_def: The AgentGraphDefinition to execute
+        :param tools: Registry mapping tool names to callables
+        :return: OpenAIAgentGraphRunner ready to execute the graph
+        """
+        from ldai_openai.openai_agent_graph_runner import OpenAIAgentGraphRunner
+        return OpenAIAgentGraphRunner(graph_def, tools)
 
     def get_client(self) -> AsyncOpenAI:
         """
