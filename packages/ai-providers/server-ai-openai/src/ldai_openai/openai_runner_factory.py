@@ -68,7 +68,6 @@ class OpenAIRunnerFactory(AIProvider):
         instructions = (config.instructions or '') if hasattr(config, 'instructions') else ''
 
         return OpenAIAgentRunner(
-            self._client,
             model_name,
             parameters,
             instructions,

@@ -424,30 +424,20 @@ def _make_agents_mock(runner_run_mock: Any) -> MagicMock:
     mock_runner_cls = MagicMock()
     mock_runner_cls.run = runner_run_mock
 
-    mock_agent_cls = MagicMock()
-
-    mock_function_tool_cls = MagicMock(side_effect=lambda **kw: MagicMock(**kw))
-
-    mock_model_settings_cls = MagicMock(side_effect=lambda **kw: MagicMock(**kw))
-
     mock_tool_context_module = MagicMock()
     mock_tool_context_module.ToolContext = MagicMock()
 
     agents_mock = MagicMock()
-    agents_mock.Agent = mock_agent_cls
+    agents_mock.Agent = MagicMock()
     agents_mock.Runner = mock_runner_cls
-    agents_mock.FunctionTool = mock_function_tool_cls
-    agents_mock.ModelSettings = mock_model_settings_cls
+    agents_mock.FunctionTool = MagicMock(side_effect=lambda **kw: MagicMock(**kw))
+    agents_mock.ModelSettings = MagicMock(side_effect=lambda **kw: MagicMock(**kw))
 
     return agents_mock, mock_tool_context_module
 
 
 class TestOpenAIAgentRunner:
     """Tests for OpenAIAgentRunner.run."""
-
-    @pytest.fixture
-    def mock_client(self):
-        return MagicMock()
 
     def _make_run_result(self, output: str, total: int = 15, input_tokens: int = 10, output_tokens: int = 5):
         """Build a mock RunResult with final_output and context_wrapper.usage."""
@@ -465,7 +455,7 @@ class TestOpenAIAgentRunner:
         return mock_result
 
     @pytest.mark.asyncio
-    async def test_runs_agent_and_returns_result_with_no_tool_calls(self, mock_client):
+    async def test_runs_agent_and_returns_result_with_no_tool_calls(self):
         """Should return AgentResult when Runner.run returns a final output."""
         import sys
 
@@ -474,7 +464,7 @@ class TestOpenAIAgentRunner:
         mock_run_result = self._make_run_result("The answer is 42.", total=15, input_tokens=10, output_tokens=5)
         agents_mock, tc_mock = _make_agents_mock(AsyncMock(return_value=mock_run_result))
 
-        runner = OpenAIAgentRunner(mock_client, 'gpt-4', {}, 'You are helpful.', [], {})
+        runner = OpenAIAgentRunner('gpt-4', {}, 'You are helpful.', [], {})
         with patch.dict(sys.modules, {'agents': agents_mock, 'agents.tool_context': tc_mock}):
             result = await runner.run("What is the answer?")
 
@@ -484,7 +474,7 @@ class TestOpenAIAgentRunner:
         assert result.metrics.usage.total == 15
 
     @pytest.mark.asyncio
-    async def test_executes_tool_calls_and_returns_final_response(self, mock_client):
+    async def test_executes_tool_calls_and_returns_final_response(self):
         """Should delegate tool-calling loop to Runner.run and return final output."""
         import sys
 
@@ -495,7 +485,7 @@ class TestOpenAIAgentRunner:
 
         weather_fn = MagicMock(return_value="Sunny, 25°C")
         runner = OpenAIAgentRunner(
-            mock_client, 'gpt-4', {}, 'You are helpful.',
+            'gpt-4', {}, 'You are helpful.',
             [{'name': 'get-weather', 'description': 'Get weather', 'parameters': {}}],
             {'get-weather': weather_fn},
         )
@@ -507,7 +497,7 @@ class TestOpenAIAgentRunner:
         assert result.metrics.usage.total == 43
 
     @pytest.mark.asyncio
-    async def test_returns_failure_when_exception_thrown(self, mock_client):
+    async def test_returns_failure_when_exception_thrown(self):
         """Should return unsuccessful AgentResult when Runner.run raises."""
         import sys
 
@@ -515,7 +505,7 @@ class TestOpenAIAgentRunner:
 
         agents_mock, tc_mock = _make_agents_mock(AsyncMock(side_effect=Exception("API Error")))
 
-        runner = OpenAIAgentRunner(mock_client, 'gpt-4', {}, '', [], {})
+        runner = OpenAIAgentRunner('gpt-4', {}, '', [], {})
         with patch.dict(sys.modules, {'agents': agents_mock, 'agents.tool_context': tc_mock}):
             result = await runner.run("Hello")
 
@@ -523,13 +513,13 @@ class TestOpenAIAgentRunner:
         assert result.metrics.success is False
 
     @pytest.mark.asyncio
-    async def test_returns_failure_when_openai_agents_not_installed(self, mock_client):
+    async def test_returns_failure_when_openai_agents_not_installed(self):
         """Should return unsuccessful AgentResult when openai-agents is not installed."""
         import sys
 
         from ldai_openai import OpenAIAgentRunner
 
-        runner = OpenAIAgentRunner(mock_client, 'gpt-4', {}, '', [], {})
+        runner = OpenAIAgentRunner('gpt-4', {}, '', [], {})
         with patch.dict(sys.modules, {'agents': None}):
             result = await runner.run("Hello")
 

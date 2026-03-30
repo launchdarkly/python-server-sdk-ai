@@ -6,7 +6,6 @@ from typing import Any, Dict, List
 from ldai import log
 from ldai.providers import AgentResult, AgentRunner, ToolRegistry
 from ldai.providers.types import LDAIMetrics
-from openai import AsyncOpenAI
 
 from ldai_openai.openai_helper import (
     NATIVE_OPENAI_TOOLS,
@@ -27,14 +26,12 @@ class OpenAIAgentRunner(AgentRunner):
 
     def __init__(
         self,
-        client: AsyncOpenAI,
         model_name: str,
         parameters: Dict[str, Any],
         instructions: str,
         tool_definitions: List[Dict[str, Any]],
         tools: ToolRegistry,
     ):
-        self._client = client
         self._model_name = model_name
         self._parameters = parameters
         self._instructions = instructions
@@ -155,7 +152,3 @@ class OpenAIAgentRunner(AgentRunner):
         }
         kwargs = {k: v for k, v in self._parameters.items() if k in known}
         return ModelSettings(**kwargs) if kwargs else None
-
-    def get_client(self) -> AsyncOpenAI:
-        """Return the underlying AsyncOpenAI client."""
-        return self._client
