@@ -53,6 +53,7 @@ class LangGraphAgentGraphRunner(AgentGraphRunner):
         start_ns = time.perf_counter_ns()
         try:
             from langchain_core.messages import AnyMessage, HumanMessage
+            from langchain_core.tools import StructuredTool
             from langgraph.graph import END, START, StateGraph
             from typing_extensions import TypedDict
 
@@ -74,11 +75,18 @@ class LangGraphAgentGraphRunner(AgentGraphRunner):
                 if node_config.model:
                     lc_model = create_langchain_model(node_config)
                     tool_defs = node_config.model.get_parameter('tools') or []
-                    tool_fns = [
-                        tools_ref[t.get('name', '')]
-                        for t in tool_defs
-                        if t.get('name', '') in tools_ref
-                    ]
+                    tool_fns = []
+                    for t in tool_defs:
+                        config_key = t.get('name', '')
+                        if config_key not in tools_ref:
+                            continue
+                        tool_fns.append(
+                            StructuredTool.from_function(
+                                func=tools_ref[config_key],
+                                name=config_key,
+                                description=t.get('description', ''),
+                            )
+                        )
                     model = lc_model.bind_tools(tool_fns) if tool_fns else lc_model
 
                 def invoke(state: WorkflowState) -> WorkflowState:
