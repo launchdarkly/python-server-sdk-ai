@@ -121,7 +121,7 @@ class OpenAIAgentRunner(AgentRunner):
                 )
                 continue
 
-            def _make_invoker(fn: Any) -> Any:
+            def _make_invoker(fn: Any, tool_name: str) -> Any:
                 async def on_invoke_tool(tool_ctx: ToolContext, args_json: str) -> str:
                     try:
                         args = json.loads(args_json) if args_json else {}
@@ -133,7 +133,7 @@ class OpenAIAgentRunner(AgentRunner):
                             res = await res
                         return str(res)
                     except Exception as e:
-                        log.warning(f"Tool '{name}' execution failed: {e}")
+                        log.warning(f"Tool '{tool_name}' execution failed: {e}")
                         return f"Tool execution failed: {e}"
                 return on_invoke_tool
 
@@ -141,7 +141,7 @@ class OpenAIAgentRunner(AgentRunner):
                 name=name,
                 description=td.get("description", ""),
                 params_json_schema=td.get("parameters", {}),
-                on_invoke_tool=_make_invoker(tool_fn),
+                on_invoke_tool=_make_invoker(tool_fn, name),
             ))
         return tools
 

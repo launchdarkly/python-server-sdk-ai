@@ -423,7 +423,7 @@ class TestCreateAgent:
         mock_agent = MagicMock()
         with patch('ldai_langchain.langchain_runner_factory.create_langchain_model') as mock_create, \
              patch('ldai_langchain.langchain_runner_factory.build_structured_tools') as mock_tools, \
-             patch('ldai_langchain.langchain_runner_factory.lc_create_agent', return_value=mock_agent):
+             patch('langchain.agents.create_agent', return_value=mock_agent):
             mock_create.return_value = MagicMock()
             mock_tools.return_value = [MagicMock()]
 
@@ -448,7 +448,7 @@ class TestCreateAgent:
         mock_agent = MagicMock()
         with patch('ldai_langchain.langchain_runner_factory.create_langchain_model') as mock_create, \
              patch('ldai_langchain.langchain_runner_factory.build_structured_tools', return_value=[]), \
-             patch('ldai_langchain.langchain_runner_factory.lc_create_agent', return_value=mock_agent):
+             patch('langchain.agents.create_agent', return_value=mock_agent):
             mock_create.return_value = MagicMock()
 
             factory = LangChainRunnerFactory()

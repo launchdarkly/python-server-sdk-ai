@@ -1,6 +1,5 @@
 from typing import Any, Optional
 
-from langchain.agents import create_agent as lc_create_agent
 from ldai.models import AIConfigKind
 from ldai.providers import AIProvider, ToolRegistry
 
@@ -46,6 +45,7 @@ class LangChainRunnerFactory(AIProvider):
         :param tools: ToolRegistry mapping tool names to callables
         :return: LangChainAgentRunner ready to run the agent
         """
+        from langchain.agents import create_agent as lc_create_agent
         instructions = (config.instructions or '') if hasattr(config, 'instructions') else ''
         llm = create_langchain_model(config)
         lc_tools = build_structured_tools(config, tools or {})
