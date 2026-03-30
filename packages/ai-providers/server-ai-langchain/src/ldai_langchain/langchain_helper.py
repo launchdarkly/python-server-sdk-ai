@@ -95,16 +95,16 @@ def create_langchain_model(ai_config: AIConfigKind, tool_registry: Optional[Tool
     return model
 
 
-def _resolve_tools_for_langchain(
+def _iter_valid_tools(
     tool_definitions: List[Dict[str, Any]],
     tool_registry: ToolRegistry,
-) -> List[Dict[str, Any]]:
+) -> List[tuple]:
     """
-    Match LD tool definitions against a registry, returning function-calling tool dicts
-    for tools that have a callable implementation. Built-in provider tools and tools
-    missing from the registry are skipped with a warning.
+    Filter LD tool definitions against a registry, returning (name, td) pairs for each
+    valid function tool that has a callable implementation. Built-in provider tools and
+    tools missing from the registry are skipped with a warning.
     """
-    bindable = []
+    valid = []
     for td in tool_definitions:
         if not isinstance(td, dict):
             continue
@@ -112,9 +112,8 @@ def _resolve_tools_for_langchain(
         tool_type = td.get('type')
         if tool_type and tool_type != 'function':
             log.warning(
-                f"Built-in tool '{tool_type}' is not reliably supported via LangChain's "
-                "bind_tools abstraction and will be skipped. Use a provider-specific runner "
-                "to use built-in provider tools."
+                f"Built-in tool '{tool_type}' is not reliably supported via LangChain and will be skipped. "
+                "Use a provider-specific runner to use built-in provider tools."
             )
             continue
 
@@ -126,16 +125,31 @@ def _resolve_tools_for_langchain(
             log.warning(f"Tool '{name}' is defined in the AI config but was not found in the tool registry; skipping.")
             continue
 
-        bindable.append({
+        valid.append((name, td))
+
+    return valid
+
+
+def _resolve_tools_for_langchain(
+    tool_definitions: List[Dict[str, Any]],
+    tool_registry: ToolRegistry,
+) -> List[Dict[str, Any]]:
+    """
+    Match LD tool definitions against a registry, returning function-calling tool dicts
+    for tools that have a callable implementation. Built-in provider tools and tools
+    missing from the registry are skipped with a warning.
+    """
+    return [
+        {
             'type': 'function',
             'function': {
                 'name': name,
                 'description': td.get('description', ''),
                 'parameters': td.get('parameters', {'type': 'object', 'properties': {}}),
             },
-        })
-
-    return bindable
+        }
+        for name, td in _iter_valid_tools(tool_definitions, tool_registry)
+    ]
 
 
 def build_structured_tools(ai_config: AIConfigKind, tool_registry: ToolRegistry) -> List[Any]:
@@ -157,34 +171,14 @@ def build_structured_tools(ai_config: AIConfigKind, tool_registry: ToolRegistry)
     parameters = dict(model_dict.get('parameters') or {})
     tool_definitions = parameters.pop('tools', []) or []
 
-    structured = []
-    for td in tool_definitions:
-        if not isinstance(td, dict):
-            continue
-
-        tool_type = td.get('type')
-        if tool_type and tool_type != 'function':
-            log.warning(
-                f"Built-in tool '{tool_type}' is not reliably supported via LangChain and will be skipped. "
-                "Use a provider-specific runner to use built-in provider tools."
-            )
-            continue
-
-        name = td.get('name')
-        if not name:
-            continue
-
-        if name not in tool_registry:
-            log.warning(f"Tool '{name}' is defined in the AI config but was not found in the tool registry; skipping.")
-            continue
-
-        structured.append(StructuredTool.from_function(
+    return [
+        StructuredTool.from_function(
             func=tool_registry[name],
             name=name,
             description=td.get('description', ''),
-        ))
-
-    return structured
+        )
+        for name, td in _iter_valid_tools(tool_definitions, tool_registry)
+    ]
 
 
 def get_ai_usage_from_response(response: Any) -> Optional[TokenUsage]:

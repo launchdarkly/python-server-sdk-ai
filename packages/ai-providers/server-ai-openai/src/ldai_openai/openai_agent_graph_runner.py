@@ -9,31 +9,10 @@ from ldai.providers import AgentGraphResult, AgentGraphRunner, ToolRegistry
 from ldai.providers.types import LDAIMetrics
 from ldai.tracker import TokenUsage
 
-
-def _to_openai_name(name: str) -> str:
-    """Convert a hyphenated tool/node name to an underscore-separated OpenAI function name."""
-    return name.replace('-', '_')
-
-
-def _build_native_tool_map() -> dict:
-    try:
-        from agents import (
-            CodeInterpreterTool,
-            FileSearchTool,
-            ImageGenerationTool,
-            WebSearchTool,
-        )
-        return {
-            'web_search_tool': lambda _: WebSearchTool(),
-            'file_search_tool': lambda _: FileSearchTool(),
-            'code_interpreter': lambda _: CodeInterpreterTool(),
-            'image_generation': lambda _: ImageGenerationTool(),
-        }
-    except ImportError:
-        return {}
-
-
-_NATIVE_OPENAI_TOOLS = _build_native_tool_map()
+from ldai_openai.openai_helper import (
+    NATIVE_OPENAI_TOOLS,
+    get_ai_usage_from_response,
+)
 
 
 class _RunState:
@@ -97,17 +76,9 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
                 tracker.track_path(path)
                 tracker.track_latency(duration)
                 tracker.track_invocation_success()
-                try:
-                    usage = result.context_wrapper.usage
-                    tracker.track_total_tokens(
-                        TokenUsage(
-                            total=usage.total_tokens,
-                            input=usage.input_tokens,
-                            output=usage.output_tokens,
-                        )
-                    )
-                except Exception:
-                    pass
+                token_usage = get_ai_usage_from_response(result)
+                if token_usage is not None:
+                    tracker.track_total_tokens(token_usage)
 
             return AgentGraphResult(
                 output=str(result.final_output),
@@ -281,21 +252,19 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
             # --- tools ---
             agent_tools: List[Tool] = []
             for tool_def in tool_defs:
-                tool_name_raw = tool_def.get('name', '')
-                tool_name = _to_openai_name(tool_name_raw)
+                tool_name = tool_def.get('name', '')
 
                 # Check native OpenAI tools first, then fall back to ToolRegistry
-                if tool_name in _NATIVE_OPENAI_TOOLS:
-                    agent_tools.append(_NATIVE_OPENAI_TOOLS[tool_name](tool_def))
+                if tool_name in NATIVE_OPENAI_TOOLS:
+                    agent_tools.append(NATIVE_OPENAI_TOOLS[tool_name](tool_def))
                     continue
 
-                tool_fn = self._tools.get(tool_name) or self._tools.get(tool_name_raw)
+                tool_fn = self._tools.get(tool_name)
                 if not tool_fn:
                     continue
 
                 def _make_tool(
                     name: str,
-                    raw_name: str,
                     fn: Any,
                     description: str,
                     params_schema: dict,
@@ -306,7 +275,7 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
                             args = json.loads(tool_args)
                         except Exception:
                             args = {}
-                        path.append(raw_name)
+                        path.append(name)
                         if config_tracker is not None:
                             config_tracker.track_tool_call(
                                 name,
@@ -324,7 +293,6 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
                 agent_tools.append(
                     _make_tool(
                         tool_name,
-                        tool_name_raw,
                         tool_fn,
                         tool_def.get('description', ''),
                         tool_def.get('parameters', {}),
@@ -332,7 +300,7 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
                 )
 
             return Agent(
-                name=_to_openai_name(node_config.key),
+                name=node_config.key,
                 instructions=f'{RECOMMENDED_PROMPT_PREFIX} {node_config.instructions or ""}',
                 handoffs=list(agent_handoffs),
                 tools=list(agent_tools),

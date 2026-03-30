@@ -1,6 +1,7 @@
 """Tests for OpenAI Provider."""
 
 import pytest
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from ldai import LDMessage
@@ -8,33 +9,68 @@ from ldai import LDMessage
 from ldai_openai import OpenAIModelRunner, OpenAIRunnerFactory, get_ai_metrics_from_response, get_ai_usage_from_response
 
 
+def _make_usage(attrs: dict):
+    """Build a simple namespace with only the given attributes (no MagicMock auto-attrs)."""
+    class _Usage:
+        pass
+    u = _Usage()
+    for k, v in attrs.items():
+        setattr(u, k, v)
+    return u
+
+
+def _make_completions_response(total=100, prompt=50, completion=50):
+    """Build a mock chat completions response with .usage (chat completions field names)."""
+    mock = MagicMock()
+    mock.context_wrapper = None
+    mock.usage = _make_usage({
+        'total_tokens': total,
+        'prompt_tokens': prompt,
+        'completion_tokens': completion,
+    })
+    return mock
+
+
+def _make_runner_result(total=100, input_tokens=50, output_tokens=50):
+    """Build a mock openai-agents RunResult with .context_wrapper.usage (agents field names)."""
+    mock_ctx = MagicMock()
+    mock_ctx.usage = _make_usage({
+        'total_tokens': total,
+        'input_tokens': input_tokens,
+        'output_tokens': output_tokens,
+    })
+    mock = MagicMock()
+    mock.context_wrapper = mock_ctx
+    mock.usage = None
+    return mock
+
+
 class TestGetAIUsageFromResponse:
     """Tests for OpenAIHelper.get_ai_usage_from_response."""
 
-    def test_returns_usage_when_present(self):
-        mock_response = MagicMock()
-        mock_response.usage = MagicMock()
-        mock_response.usage.prompt_tokens = 50
-        mock_response.usage.completion_tokens = 50
-        mock_response.usage.total_tokens = 100
-        u = get_ai_usage_from_response(mock_response)
+    def test_returns_usage_from_chat_completions_response(self):
+        u = get_ai_usage_from_response(_make_completions_response(total=100, prompt=50, completion=50))
         assert u is not None
         assert u.total == 100
         assert u.input == 50
         assert u.output == 50
 
+    def test_returns_usage_from_runner_result(self):
+        u = get_ai_usage_from_response(_make_runner_result(total=43, input_tokens=30, output_tokens=13))
+        assert u is not None
+        assert u.total == 43
+        assert u.input == 30
+        assert u.output == 13
+
     def test_returns_none_when_usage_missing(self):
         mock_response = MagicMock()
         mock_response.usage = None
+        mock_response.context_wrapper = None
         assert get_ai_usage_from_response(mock_response) is None
 
     def test_returns_none_when_all_counts_zero(self):
-        mock_response = MagicMock()
-        mock_response.usage = MagicMock()
-        mock_response.usage.total_tokens = 0
-        mock_response.usage.prompt_tokens = 0
-        mock_response.usage.completion_tokens = 0
-        assert get_ai_usage_from_response(mock_response) is None
+        u = get_ai_usage_from_response(_make_completions_response(total=0, prompt=0, completion=0))
+        assert u is None
 
 
 class TestGetAIMetricsFromResponse:
@@ -42,14 +78,7 @@ class TestGetAIMetricsFromResponse:
 
     def test_creates_metrics_with_success_true_and_token_usage(self):
         """Should create metrics with success=True and token usage."""
-        mock_response = MagicMock()
-        mock_response.usage = MagicMock()
-        mock_response.usage.prompt_tokens = 50
-        mock_response.usage.completion_tokens = 50
-        mock_response.usage.total_tokens = 100
-
-        result = get_ai_metrics_from_response(mock_response)
-
+        result = get_ai_metrics_from_response(_make_completions_response(total=100, prompt=50, completion=50))
         assert result.success is True
         assert result.usage is not None
         assert result.usage.total == 100
@@ -60,6 +89,7 @@ class TestGetAIMetricsFromResponse:
         """Should create metrics with success=True and no usage when usage is missing."""
         mock_response = MagicMock()
         mock_response.usage = None
+        mock_response.context_wrapper = None
 
         result = get_ai_metrics_from_response(mock_response)
 
@@ -69,10 +99,8 @@ class TestGetAIMetricsFromResponse:
     def test_handles_partial_usage_data(self):
         """Should handle partial usage data."""
         mock_response = MagicMock()
-        mock_response.usage = MagicMock()
-        mock_response.usage.prompt_tokens = 30
-        mock_response.usage.completion_tokens = None
-        mock_response.usage.total_tokens = None
+        mock_response.context_wrapper = None
+        mock_response.usage = _make_usage({'prompt_tokens': 30, 'completion_tokens': None, 'total_tokens': None})
 
         result = get_ai_metrics_from_response(mock_response)
 
@@ -95,13 +123,11 @@ class TestInvokeModel:
     async def test_invokes_openai_chat_completions_and_returns_response(self, mock_client):
         """Should invoke OpenAI chat completions and return response."""
         mock_response = MagicMock()
+        mock_response.context_wrapper = None
         mock_response.choices = [MagicMock()]
         mock_response.choices[0].message = MagicMock()
         mock_response.choices[0].message.content = 'Hello! How can I help you today?'
-        mock_response.usage = MagicMock()
-        mock_response.usage.prompt_tokens = 10
-        mock_response.usage.completion_tokens = 15
-        mock_response.usage.total_tokens = 25
+        mock_response.usage = _make_usage({'total_tokens': 25, 'prompt_tokens': 10, 'completion_tokens': 15})
 
         mock_client.chat = MagicMock()
         mock_client.chat.completions = MagicMock()
@@ -192,13 +218,11 @@ class TestInvokeStructuredModel:
     async def test_invokes_openai_with_structured_output(self, mock_client):
         """Should invoke OpenAI with structured output and return parsed response."""
         mock_response = MagicMock()
+        mock_response.context_wrapper = None
         mock_response.choices = [MagicMock()]
         mock_response.choices[0].message = MagicMock()
         mock_response.choices[0].message.content = '{"name": "John", "age": 30, "city": "New York"}'
-        mock_response.usage = MagicMock()
-        mock_response.usage.prompt_tokens = 20
-        mock_response.usage.completion_tokens = 10
-        mock_response.usage.total_tokens = 30
+        mock_response.usage = _make_usage({'total_tokens': 30, 'prompt_tokens': 20, 'completion_tokens': 10})
 
         mock_client.chat = MagicMock()
         mock_client.chat.completions = MagicMock()
@@ -253,13 +277,11 @@ class TestInvokeStructuredModel:
     async def test_handles_json_parsing_errors(self, mock_client):
         """Should handle JSON parsing errors gracefully."""
         mock_response = MagicMock()
+        mock_response.context_wrapper = None
         mock_response.choices = [MagicMock()]
         mock_response.choices[0].message = MagicMock()
         mock_response.choices[0].message.content = 'invalid json content'
-        mock_response.usage = MagicMock()
-        mock_response.usage.prompt_tokens = 10
-        mock_response.usage.completion_tokens = 5
-        mock_response.usage.total_tokens = 15
+        mock_response.usage = _make_usage({'total_tokens': 15, 'prompt_tokens': 10, 'completion_tokens': 5})
 
         mock_client.chat = MagicMock()
         mock_client.chat.completions = MagicMock()
@@ -397,6 +419,29 @@ class TestCreateAgent:
         assert result._tool_definitions == []
 
 
+def _make_agents_mock(runner_run_mock: Any) -> MagicMock:
+    """Build a mock ``agents`` module with Agent, Runner, FunctionTool, ModelSettings."""
+    mock_runner_cls = MagicMock()
+    mock_runner_cls.run = runner_run_mock
+
+    mock_agent_cls = MagicMock()
+
+    mock_function_tool_cls = MagicMock(side_effect=lambda **kw: MagicMock(**kw))
+
+    mock_model_settings_cls = MagicMock(side_effect=lambda **kw: MagicMock(**kw))
+
+    mock_tool_context_module = MagicMock()
+    mock_tool_context_module.ToolContext = MagicMock()
+
+    agents_mock = MagicMock()
+    agents_mock.Agent = mock_agent_cls
+    agents_mock.Runner = mock_runner_cls
+    agents_mock.FunctionTool = mock_function_tool_cls
+    agents_mock.ModelSettings = mock_model_settings_cls
+
+    return agents_mock, mock_tool_context_module
+
+
 class TestOpenAIAgentRunner:
     """Tests for OpenAIAgentRunner.run."""
 
@@ -404,60 +449,49 @@ class TestOpenAIAgentRunner:
     def mock_client(self):
         return MagicMock()
 
+    def _make_run_result(self, output: str, total: int = 15, input_tokens: int = 10, output_tokens: int = 5):
+        """Build a mock RunResult with final_output and context_wrapper.usage."""
+        mock_usage = MagicMock()
+        mock_usage.total_tokens = total
+        mock_usage.input_tokens = input_tokens
+        mock_usage.output_tokens = output_tokens
+
+        mock_ctx = MagicMock()
+        mock_ctx.usage = mock_usage
+
+        mock_result = MagicMock()
+        mock_result.final_output = output
+        mock_result.context_wrapper = mock_ctx
+        return mock_result
+
     @pytest.mark.asyncio
     async def test_runs_agent_and_returns_result_with_no_tool_calls(self, mock_client):
-        """Should return AgentResult when model responds with no tool calls."""
+        """Should return AgentResult when Runner.run returns a final output."""
+        import sys
+
         from ldai_openai import OpenAIAgentRunner
 
-        mock_response = MagicMock()
-        mock_response.choices = [MagicMock()]
-        mock_response.choices[0].message.content = "The answer is 42."
-        mock_response.choices[0].message.tool_calls = None
-        mock_response.usage = MagicMock()
-        mock_response.usage.prompt_tokens = 10
-        mock_response.usage.completion_tokens = 5
-        mock_response.usage.total_tokens = 15
-        mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
+        mock_run_result = self._make_run_result("The answer is 42.", total=15, input_tokens=10, output_tokens=5)
+        agents_mock, tc_mock = _make_agents_mock(AsyncMock(return_value=mock_run_result))
 
         runner = OpenAIAgentRunner(mock_client, 'gpt-4', {}, 'You are helpful.', [], {})
-        result = await runner.run("What is the answer?")
+        with patch.dict(sys.modules, {'agents': agents_mock, 'agents.tool_context': tc_mock}):
+            result = await runner.run("What is the answer?")
 
         assert result.output == "The answer is 42."
         assert result.metrics.success is True
+        assert result.metrics.usage is not None
+        assert result.metrics.usage.total == 15
 
     @pytest.mark.asyncio
     async def test_executes_tool_calls_and_returns_final_response(self, mock_client):
-        """Should execute tool calls and continue loop until final response."""
+        """Should delegate tool-calling loop to Runner.run and return final output."""
+        import sys
+
         from ldai_openai import OpenAIAgentRunner
 
-        # First response: has a tool call
-        tool_call = MagicMock()
-        tool_call.id = "call_123"
-        tool_call.function.name = "get-weather"
-        tool_call.function.arguments = '{"location": "Paris"}'
-
-        first_response = MagicMock()
-        first_response.choices = [MagicMock()]
-        first_response.choices[0].message.content = None
-        first_response.choices[0].message.tool_calls = [tool_call]
-        first_response.usage = MagicMock()
-        first_response.usage.prompt_tokens = 10
-        first_response.usage.completion_tokens = 5
-        first_response.usage.total_tokens = 15
-
-        # Second response: final answer
-        second_response = MagicMock()
-        second_response.choices = [MagicMock()]
-        second_response.choices[0].message.content = "It is sunny in Paris."
-        second_response.choices[0].message.tool_calls = None
-        second_response.usage = MagicMock()
-        second_response.usage.prompt_tokens = 20
-        second_response.usage.completion_tokens = 8
-        second_response.usage.total_tokens = 28
-
-        mock_client.chat.completions.create = AsyncMock(
-            side_effect=[first_response, second_response]
-        )
+        mock_run_result = self._make_run_result("It is sunny in Paris.", total=43, input_tokens=30, output_tokens=13)
+        agents_mock, tc_mock = _make_agents_mock(AsyncMock(return_value=mock_run_result))
 
         weather_fn = MagicMock(return_value="Sunny, 25°C")
         runner = OpenAIAgentRunner(
@@ -465,22 +499,39 @@ class TestOpenAIAgentRunner:
             [{'name': 'get-weather', 'description': 'Get weather', 'parameters': {}}],
             {'get-weather': weather_fn},
         )
-        result = await runner.run("What is the weather in Paris?")
+        with patch.dict(sys.modules, {'agents': agents_mock, 'agents.tool_context': tc_mock}):
+            result = await runner.run("What is the weather in Paris?")
 
         assert result.output == "It is sunny in Paris."
         assert result.metrics.success is True
-        weather_fn.assert_called_once_with(location="Paris")
-        assert mock_client.chat.completions.create.call_count == 2
+        assert result.metrics.usage.total == 43
 
     @pytest.mark.asyncio
     async def test_returns_failure_when_exception_thrown(self, mock_client):
-        """Should return unsuccessful AgentResult when exception is thrown."""
+        """Should return unsuccessful AgentResult when Runner.run raises."""
+        import sys
+
         from ldai_openai import OpenAIAgentRunner
 
-        mock_client.chat.completions.create = AsyncMock(side_effect=Exception("API Error"))
+        agents_mock, tc_mock = _make_agents_mock(AsyncMock(side_effect=Exception("API Error")))
 
         runner = OpenAIAgentRunner(mock_client, 'gpt-4', {}, '', [], {})
-        result = await runner.run("Hello")
+        with patch.dict(sys.modules, {'agents': agents_mock, 'agents.tool_context': tc_mock}):
+            result = await runner.run("Hello")
+
+        assert result.output == ""
+        assert result.metrics.success is False
+
+    @pytest.mark.asyncio
+    async def test_returns_failure_when_openai_agents_not_installed(self, mock_client):
+        """Should return unsuccessful AgentResult when openai-agents is not installed."""
+        import sys
+
+        from ldai_openai import OpenAIAgentRunner
+
+        runner = OpenAIAgentRunner(mock_client, 'gpt-4', {}, '', [], {})
+        with patch.dict(sys.modules, {'agents': None}):
+            result = await runner.run("Hello")
 
         assert result.output == ""
         assert result.metrics.success is False
