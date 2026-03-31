@@ -14,17 +14,9 @@ from ldai_openai.openai_helper import get_tool_calls_from_run_items
 
 def _build_native_tool_map() -> dict:
     try:
-        from agents import (
-            CodeInterpreterTool,
-            FileSearchTool,
-            ImageGenerationTool,
-            WebSearchTool,
-        )
+        from agents import WebSearchTool
         return {
             'web_search_tool': lambda _: WebSearchTool(),
-            'file_search_tool': lambda _: FileSearchTool(),
-            'code_interpreter': lambda _: CodeInterpreterTool(),
-            'image_generation': lambda _: ImageGenerationTool(),
         }
     except ImportError:
         return {}

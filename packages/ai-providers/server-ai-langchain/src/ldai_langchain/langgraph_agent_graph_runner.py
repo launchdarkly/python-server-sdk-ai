@@ -53,7 +53,6 @@ class LangGraphAgentGraphRunner(AgentGraphRunner):
         start_ns = time.perf_counter_ns()
         try:
             from langchain_core.messages import AnyMessage, HumanMessage
-            from langchain_core.tools import StructuredTool
             from langgraph.graph import END, START, StateGraph
             from typing_extensions import TypedDict
 
@@ -80,6 +79,7 @@ class LangGraphAgentGraphRunner(AgentGraphRunner):
                         config_key = t.get('name', '')
                         if config_key not in tools_ref:
                             continue
+                        from langchain_core.tools import StructuredTool
                         tool_fns.append(
                             StructuredTool.from_function(
                                 func=tools_ref[config_key],

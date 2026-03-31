@@ -49,7 +49,6 @@ def get_ai_metrics_from_response(response: Any) -> LDAIMetrics:
 # Native tool raw_item type names don't always match the LD config key convention.
 _NATIVE_TOOL_TYPE_TO_CONFIG_KEY = {
     'web_search': 'web_search_tool',
-    'file_search': 'file_search_tool',
 }
 
 
