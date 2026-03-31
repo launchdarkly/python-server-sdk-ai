@@ -258,6 +258,8 @@ def extract_json_from_response(response_str: str) -> Dict[str, Any]:
         raise ValueError(
             "Failed to parse structured output from variation generation. "
             "Expected JSON object with 'current_instructions', 'current_parameters', and 'model' fields."
+            "Response length: %d",
+            len(response_str),
         )
 
     return response_data

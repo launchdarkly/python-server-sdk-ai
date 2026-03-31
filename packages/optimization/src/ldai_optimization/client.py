@@ -21,6 +21,11 @@ from ldai_optimization.dataclasses import (
     OptimizationOptions,
     ToolDefinition,
 )
+from ldai_optimization.prompts import (
+    build_message_history_text,
+    build_new_variation_prompt,
+    build_reasoning_history,
+)
 from ldai_optimization.util import (
     await_if_needed,
     create_evaluation_tool,
@@ -179,39 +184,6 @@ class OptimizationClient:
         """
         return self._ldClient.judge_config(judge_key, context, default, variables)
 
-    def _build_message_history_text(
-        self,
-        input_text: str,
-        reasoning_history: str,
-        current_user_input: str,
-    ) -> str:
-        """
-        Build a formatted message-history string for use as a judge template variable.
-
-        Combines the current instructions (system text), the conversation turns
-        recorded in self._history, the current turn's user question, and the
-        accumulated reasoning/score history.
-
-        :param input_text: Current system instructions (may be empty string)
-        :param reasoning_history: Pre-formatted string from _build_reasoning_history
-        :param current_user_input: The user question for the turn being evaluated.
-            Must be passed explicitly because the current turn is not yet in
-            self._history when the judge runs.
-        :return: Combined string to substitute into the judge's message_history variable
-        """
-        turn_messages = []
-        for ctx in self._history:
-            if ctx.user_input:
-                turn_messages.append(f"User: {ctx.user_input}")
-            if ctx.completion_response:
-                turn_messages.append(f"Assistant: {ctx.completion_response}")
-
-        # Include the current turn's question so judges see what was actually asked
-        turn_messages.append(f"User: {current_user_input}")
-
-        sections = [input_text, "\n".join(turn_messages), reasoning_history]
-        return "\n\n".join(s for s in sections if s)
-
     def _serialize_scores(
         self, judge_results: Dict[str, JudgeResult]
     ) -> Dict[str, Any]:
@@ -349,7 +321,7 @@ class OptimizationClient:
         resolved_agent_tools: List[ToolDefinition] = agent_tools or []
 
         logger.info("[Iteration %d] -> Executing evaluation...", iteration)
-        reasoning_history = self._build_reasoning_history()
+        reasoning_history = build_reasoning_history(self._history)
         judge_results: Dict[str, JudgeResult] = {}
 
         judge_count = len(self._options.judges)
@@ -449,8 +421,8 @@ class OptimizationClient:
         # Config-type judge: fetch judge config on-demand from LaunchDarkly SDK
         input_text = self._current_instructions or ""
         # Combine current instructions, history, and current question for message_history
-        message_history_text = self._build_message_history_text(
-            input_text, reasoning_history, current_user_input=user_input
+        message_history_text = build_message_history_text(
+            self._history, input_text, reasoning_history, user_input
         )
 
         # Merge agent variables so the judge's LD-managed instructions can reference
@@ -619,8 +591,8 @@ class OptimizationClient:
         resolved_agent_tools = agent_tools or []
 
         # Build message history including the current user question
-        message_history_text = self._build_message_history_text(
-            "", reasoning_history, current_user_input=user_input
+        message_history_text = build_message_history_text(
+            self._history, "", reasoning_history, user_input
         )
 
         # Build instructions for the judge
@@ -746,342 +718,6 @@ class OptimizationClient:
         agent_config = await self._get_agent_config(agent_key, context)
         return await self._run_optimization(agent_config, options)
 
-    def _build_reasoning_history(self) -> str:
-        """
-        Build a formatted string of reasoning from previous iterations.
-
-        :return: Formatted string containing reasoning history
-        """
-        if not self._history:
-            return ""
-
-        reasoning_parts = []
-        for i, prev_ctx in enumerate(self._history, 1):
-            if prev_ctx.scores:
-                reasoning_parts.append(f"## Iteration {i} Judge Evaluations:")
-                for judge_key, result in prev_ctx.scores.items():
-                    reasoning_parts.append(f"- {judge_key}: Score {result.score}")
-                    if result.rationale:
-                        reasoning_parts.append(f"  Reasoning: {result.rationale}")
-                reasoning_parts.append("")
-
-        return "\n".join(reasoning_parts)
-
-    def _build_new_variation_prompt(self, history: List[OptimizationContext]) -> str:
-        """
-        Build the LLM prompt for generating an improved agent configuration.
-
-        Constructs a detailed instruction string based on the full optimization
-        history, including all previous configurations, completion results, and
-        judge scores. When history is empty (first variation attempt), asks the
-        LLM to improve the current config without evaluation feedback.
-
-        :param history: All previous OptimizationContexts, oldest first. Empty on the first attempt.
-        :return: The assembled prompt string
-        """
-        sections = [
-            self._new_variation_prompt_preamble(),
-            self._new_variation_prompt_acceptance_criteria(),
-            self._new_variation_prompt_configuration(history),
-            self._new_variation_prompt_feedback(history),
-            self._new_variation_prompt_improvement_instructions(history),
-        ]
-
-        built_prompt = "\n\n".join(s for s in sections if s)
-        return built_prompt
-
-    def _new_variation_prompt_preamble(self) -> str:
-        """Static opening section for the variation generation prompt."""
-        return "\n".join(
-            [
-                "You are an assistant that helps improve agent configurations through iterative optimization.",
-                "",
-                "Your task is to generate improved agent instructions and parameters based on the feedback provided.",
-                "The feedback you provide should guide the LLM to improve the agent instructions "
-                "for all possible use cases, not one concrete case.",
-                "For example, if the feedback is that the agent is not returning the correct records, "
-                "you should improve the agent instructions to return the correct records for all possible use cases. "
-                "Not just the one concrete case that was provided in the feedback.",
-                "When changing the instructions, keep the original intent in mind "
-                "when it comes to things like the use of variables and placeholders.",
-                "If the original instructions were to use a placeholder like {{id}}, "
-                "you should keep the placeholder in the new instructions, not replace it with the actual value. "
-                "This is the case for all parameterized values (all parameters should appear in each new variation).",
-                "Pay particular attention to the instructions regarding tools and the rules for variables.",
-            ]
-        )
-
-    def _new_variation_prompt_acceptance_criteria(self) -> str:
-        """
-        Acceptance criteria section of the variation prompt.
-
-        Collects every acceptance statement defined across all judges and renders
-        them as an emphatic block so the LLM understands exactly what the improved
-        configuration must achieve. Returns an empty string when no judges carry
-        acceptance statements (e.g. all judges are config-key-only judges).
-        """
-        if not self._options.judges:
-            return ""
-
-        statements = [
-            (key, judge.acceptance_statement)
-            for key, judge in self._options.judges.items()
-            if judge.acceptance_statement
-        ]
-
-        if not statements:
-            return ""
-
-        lines = [
-            "## *** ACCEPTANCE CRITERIA (MUST BE MET) ***",
-            "The improved configuration MUST produce responses that satisfy ALL of the following criteria.",
-            "These criteria are non-negotiable — every generated variation will be evaluated against them.",
-            "",
-        ]
-        for key, statement in statements:
-            lines.append(f"- [{key}] {statement}")
-
-        lines += [
-            "",
-            "When writing new instructions, explicitly address each criterion above.",
-            "Do not sacrifice any criterion in favour of another.",
-        ]
-
-        return "\n".join(lines)
-
-    def _new_variation_prompt_configuration(
-        self, history: List[OptimizationContext]
-    ) -> str:
-        """
-        Configuration section of the variation prompt.
-
-        Shows the most recent iteration's model, instructions, parameters,
-        user input, and completion response when history is available, or the
-        current instance state on the first attempt.
-        """
-        if history:
-            previous_ctx = history[-1]
-            lines = [
-                "## Most Recent Configuration:",
-                f"Model: {previous_ctx.current_model}",
-                f"Instructions: {previous_ctx.current_instructions}",
-                f"Parameters: {previous_ctx.current_parameters}",
-                "",
-                "## Most Recent Result:",
-            ]
-            if previous_ctx.user_input:
-                lines.append(f"User question: {previous_ctx.user_input}")
-            lines.append(f"Agent response: {previous_ctx.completion_response}")
-            return "\n".join(lines)
-        else:
-            return "\n".join(
-                [
-                    "## Current Configuration:",
-                    f"Model: {self._current_model}",
-                    f"Instructions: {self._current_instructions}",
-                    f"Parameters: {self._current_parameters}",
-                ]
-            )
-
-    def _new_variation_prompt_feedback(self, history: List[OptimizationContext]) -> str:
-        """
-        Evaluation feedback section of the variation prompt.
-
-        Renders all previous iterations' scores in chronological order so the
-        LLM can observe trends across the full optimization run. Returns an
-        empty string when no history exists or no iteration has scores, so it
-        is filtered out of the assembled prompt entirely.
-        """
-        iterations_with_scores = [ctx for ctx in history if ctx.scores]
-        if not iterations_with_scores:
-            return ""
-
-        lines = ["## Evaluation History:"]
-        for ctx in iterations_with_scores:
-            lines.append(f"\n### Iteration {ctx.iteration}:")
-            if ctx.user_input:
-                lines.append(f"User question: {ctx.user_input}")
-            for judge_key, result in ctx.scores.items():
-                optimization_judge = (
-                    self._options.judges.get(judge_key)
-                    if self._options.judges
-                    else None
-                )
-                if optimization_judge:
-                    score = result.score
-                    if optimization_judge.threshold is not None:
-                        passed = score >= optimization_judge.threshold
-                        status = "PASSED" if passed else "FAILED"
-                        feedback_line = (
-                            f"- {judge_key}: Score {score:.3f}"
-                            f" (threshold: {optimization_judge.threshold}) - {status}"
-                        )
-                    else:
-                        passed = score >= 1.0
-                        status = "PASSED" if passed else "FAILED"
-                        feedback_line = f"- {judge_key}: {status}"
-                    if result.rationale:
-                        feedback_line += f"\n  Reasoning: {result.rationale}"
-                    lines.append(feedback_line)
-        return "\n".join(lines)
-
-    def _new_variation_prompt_improvement_instructions(
-        self, history: List[OptimizationContext]
-    ) -> str:
-        """
-        Improvement instructions section of the variation prompt.
-
-        Includes model-choice guidance, prompt variable rules, and the required
-        output format schema. When history is non-empty, adds feedback-driven
-        improvement directives.
-        """
-        model_instructions = "\n".join(
-            [
-                "You may also choose to change the model if you believe that the current model is "
-                "not performing well or a different model would be better suited for the task. "
-                f"Here are the models you may choose from: {self._options.model_choices}. "
-                "You must always return a model property, even if it's the same as the current model.",
-                "When suggesting a new model, you should provide a rationale for why you believe "
-                "the new model would be better suited for the task.",
-            ]
-        )
-
-        # Collect unique variable keys across all variable_choices entries
-        variable_keys: set = set()
-        for choice in self._options.variable_choices:
-            variable_keys.update(choice.keys())
-        placeholder_list = ", ".join(f"{{{{{k}}}}}" for k in sorted(variable_keys))
-
-        variable_instructions = "\n".join(
-            [
-                "## Prompt Variables:",
-                "These variables are substituted into the instructions at call time using {{variable_name}} syntax.",
-                "Rules:",
-                "- If the {{variable_name}} placeholder is not present in the current instructions, "
-                "you should include it where logically appropriate.",
-                "Here are the original instructions so that you can see how the "
-                "placeholders are used and which are available:",
-                "\nSTART:" "\n" + self._initial_instructions + "\n",
-                "\nEND OF ORIGINAL INSTRUCTIONS\n",
-                f"The following prompt variables are available and are the only "
-                f"variables that should be used: {placeholder_list}",
-                "Here is an example of a good response if an {{id}} placeholder is available: "
-                "'Select records matching id {{id}}'",
-                "Here is an example of a bad response if an {{id}} placeholder is available: "
-                "'Select records matching id 1232'",
-                "Here is an example of a good response if a {{resource_id}} and {{resource_type}} "
-                "placeholder are available: "
-                "'Select records matching id {{resource_id}} and type {{resource_type}}'",
-                "Here is an example of a bad response if a {{resource_id}} and {{resource_type}} "
-                "placeholder are available: "
-                "'Select records matching id 1232 and type {{resource_type}}'",
-                "Here is another example of a bad response if a {{resource_id}} and {{resource_type}} "
-                "placeholder are available: "
-                "'Select records matching id {{resource_id}} and type resource-123'",
-            ]
-        )
-
-        tool_instructions = "\n".join(
-            [
-                "## Tool Format:",
-                'If the current configuration includes tools, you MUST return them '
-                'unchanged in current_parameters["tools"].',
-                "Do NOT include internal framework tools such as the evaluation tool or structured output tool.",
-                "Each tool must follow this exact format:",
-                "{",
-                '  "name": "tool-name",',
-                '  "type": "function",',
-                '  "description": "What the tool does",',
-                '  "parameters": {',
-                '    "type": "object",',
-                '    "properties": {',
-                '      "param_name": {',
-                '        "type": "type of the input parameter",',
-                '        "description": "Description of the parameter"',
-                "      }",
-                "    },",
-                '    "required": ["param_name"],',
-                '    "additionalProperties": false',
-                "  }",
-                "}",
-                "Example:",
-                "{",
-                '  "name": "user-preferences-lookup",',
-                '  "type": "function",',
-                '  "description": "Looks up user preferences by ID",',
-                '  "parameters": {',
-                '    "type": "object",',
-                '    "properties": {',
-                '      "user_id": {',
-                '        "type": "string",',
-                '        "description": "The user id"',
-                "      }",
-                "    },",
-                '    "required": ["user_id"],',
-                '    "additionalProperties": false',
-                "  }",
-                "}",
-            ]
-        )
-
-        parameters_instructions = "\n".join(
-            [
-                "Return these values in a JSON object with the following keys: "
-                "current_instructions, current_parameters, and model.",
-                "Example:",
-                "{",
-                '  "current_instructions": "...',
-                '  "current_parameters": {',
-                '    "...": "..."',
-                "  },",
-                '  "model": "gpt-4o"',
-                "}",
-                "Parameters should only be things that are directly parseable by an LLM call, "
-                "for example, temperature, max_tokens, etc.",
-                "Do not include any other parameters that are not directly parseable by an LLM call. "
-                "If you want to provide instruction for tone or other attributes, "
-                "provide them directly in the instructions.",
-            ]
-        )
-
-        if history:
-            return "\n".join(
-                [
-                    "## Improvement Instructions:",
-                    "Based on the evaluation history above, generate improved agent instructions and parameters.",
-                    "Focus on addressing the areas where the evaluation failed or scored below threshold.",
-                    "The new configuration should aim to improve the agent's performance on the evaluation criteria.",
-                    model_instructions,
-                    "",
-                    variable_instructions,
-                    "",
-                    tool_instructions,
-                    "",
-                    "Return the improved configuration in a structured format that can be parsed to update:",
-                    "1. The agent instructions (current_instructions)",
-                    "2. The agent parameters (current_parameters)",
-                    "3. The model (model) - you must always return a model, "
-                    "even if it's the same as the current model.",
-                    "4. You should return the tools the user has defined, as-is, on the new parameters. "
-                    "Do not modify them, but make sure you do not include internal tools like "
-                    "the evaluation tool or structured output tool.",
-                    parameters_instructions,
-                ]
-            )
-        else:
-            return "\n".join(
-                [
-                    "Generate an improved version of this configuration.",
-                    model_instructions,
-                    "",
-                    variable_instructions,
-                    "",
-                    tool_instructions,
-                    "",
-                    parameters_instructions,
-                ]
-            )
-
     def _apply_new_variation_response(
         self,
         response_data: Dict[str, Any],
@@ -1198,7 +834,16 @@ class OptimizationClient:
         )
         self._safe_status_update("generating variation", status_ctx, iteration)
 
-        instructions = self._build_new_variation_prompt(self._history)
+        instructions = build_new_variation_prompt(
+            self._history,
+            self._options.judges,
+            self._current_model,
+            self._current_instructions,
+            self._current_parameters,
+            self._options.model_choices,
+            self._options.variable_choices,
+            self._initial_instructions,
+        )
 
         # Create a flat history list (without nested history) to avoid exponential growth
         flat_history = [prev_ctx.copy_without_history() for prev_ctx in self._history]
