@@ -11,6 +11,7 @@ from ldclient import Context
 
 from ldai_optimization.client import OptimizationClient
 from ldai_optimization.dataclasses import (
+    AIJudgeCallConfig,
     JudgeResult,
     OptimizationContext,
     OptimizationJudge,
@@ -371,10 +372,57 @@ class TestEvaluateAcceptanceJudge:
         call_args = self.handle_judge_call.call_args
         key, config, ctx, handlers = call_args.args
         assert key == "relevance"
-        assert isinstance(config, AIAgentConfig)
+        assert isinstance(config, AIJudgeCallConfig)
         assert isinstance(ctx, OptimizationJudgeContext)
-        assert "relevance" in create_evaluation_tool().name or True  # handlers present
         assert create_evaluation_tool().name in handlers
+
+    async def test_messages_has_system_and_user_turns(self):
+        judge = OptimizationJudge(
+            threshold=0.8, acceptance_statement="Must be factual."
+        )
+        await self.client._evaluate_acceptance_judge(
+            judge_key="facts",
+            optimization_judge=judge,
+            completion_response="The sky is blue.",
+            iteration=1,
+            reasoning_history="",
+            user_input="What colour is the sky?",
+        )
+        _, config, _, _ = self.handle_judge_call.call_args.args
+        roles = [m.role for m in config.messages]
+        assert roles == ["system", "user"]
+
+    async def test_messages_system_content_matches_instructions(self):
+        judge = OptimizationJudge(
+            threshold=0.8, acceptance_statement="Be concise."
+        )
+        await self.client._evaluate_acceptance_judge(
+            judge_key="brevity",
+            optimization_judge=judge,
+            completion_response="Yes.",
+            iteration=1,
+            reasoning_history="",
+            user_input="Is Paris in France?",
+        )
+        _, config, _, _ = self.handle_judge_call.call_args.args
+        system_msg = next(m for m in config.messages if m.role == "system")
+        assert system_msg.content == config.instructions
+
+    async def test_messages_user_content_matches_context_user_input(self):
+        judge = OptimizationJudge(
+            threshold=0.8, acceptance_statement="Answer directly."
+        )
+        await self.client._evaluate_acceptance_judge(
+            judge_key="directness",
+            optimization_judge=judge,
+            completion_response="Paris.",
+            iteration=1,
+            reasoning_history="",
+            user_input="Capital of France?",
+        )
+        _, config, ctx, _ = self.handle_judge_call.call_args.args
+        user_msg = next(m for m in config.messages if m.role == "user")
+        assert user_msg.content == ctx.user_input
 
     async def test_acceptance_statement_in_instructions(self):
         statement = "Response must mention the Eiffel Tower."
@@ -498,7 +546,7 @@ class TestEvaluateConfigJudge:
             ],
         )
 
-    async def test_calls_handle_judge_call_with_collapsed_instructions(self):
+    async def test_calls_handle_judge_call_with_correct_config_type(self):
         self.mock_ldai.judge_config.return_value = self._make_judge_config()
         judge = OptimizationJudge(threshold=0.8, judge_key="ld-judge-key")
         await self.client._evaluate_config_judge(
@@ -512,8 +560,69 @@ class TestEvaluateConfigJudge:
         call_args = self.handle_judge_call.call_args
         key, config, ctx, handlers = call_args.args
         assert key == "quality"
+        assert isinstance(config, AIJudgeCallConfig)
         assert "You are an evaluator." in config.instructions
         assert isinstance(ctx, OptimizationJudgeContext)
+
+    async def test_messages_has_system_and_user_turns(self):
+        self.mock_ldai.judge_config.return_value = self._make_judge_config()
+        judge = OptimizationJudge(threshold=0.8, judge_key="ld-judge-key")
+        await self.client._evaluate_config_judge(
+            judge_key="quality",
+            optimization_judge=judge,
+            completion_response="Good answer.",
+            iteration=1,
+            reasoning_history="",
+            user_input="What is X?",
+        )
+        _, config, _, _ = self.handle_judge_call.call_args.args
+        roles = [m.role for m in config.messages]
+        assert roles == ["system", "user"]
+
+    async def test_messages_system_content_matches_instructions(self):
+        self.mock_ldai.judge_config.return_value = self._make_judge_config()
+        judge = OptimizationJudge(threshold=0.8, judge_key="ld-judge-key")
+        await self.client._evaluate_config_judge(
+            judge_key="quality",
+            optimization_judge=judge,
+            completion_response="Good answer.",
+            iteration=1,
+            reasoning_history="",
+            user_input="What is X?",
+        )
+        _, config, _, _ = self.handle_judge_call.call_args.args
+        system_msg = next(m for m in config.messages if m.role == "system")
+        assert system_msg.content == config.instructions
+
+    async def test_messages_user_content_matches_context_user_input(self):
+        self.mock_ldai.judge_config.return_value = self._make_judge_config()
+        judge = OptimizationJudge(threshold=0.8, judge_key="ld-judge-key")
+        await self.client._evaluate_config_judge(
+            judge_key="quality",
+            optimization_judge=judge,
+            completion_response="Good answer.",
+            iteration=1,
+            reasoning_history="",
+            user_input="What is X?",
+        )
+        _, config, ctx, _ = self.handle_judge_call.call_args.args
+        user_msg = next(m for m in config.messages if m.role == "user")
+        assert user_msg.content == ctx.user_input
+
+    async def test_messages_user_content_contains_ld_user_message(self):
+        self.mock_ldai.judge_config.return_value = self._make_judge_config()
+        judge = OptimizationJudge(threshold=0.8, judge_key="ld-judge-key")
+        await self.client._evaluate_config_judge(
+            judge_key="quality",
+            optimization_judge=judge,
+            completion_response="Good answer.",
+            iteration=1,
+            reasoning_history="",
+            user_input="What is X?",
+        )
+        _, config, _, _ = self.handle_judge_call.call_args.args
+        user_msg = next(m for m in config.messages if m.role == "user")
+        assert "Evaluate this response." in user_msg.content
 
     async def test_returns_zero_score_when_judge_disabled(self):
         self.mock_ldai.judge_config.return_value = self._make_judge_config(enabled=False)

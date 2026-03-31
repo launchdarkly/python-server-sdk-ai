@@ -10,7 +10,6 @@ def test_version_is_string():
     assert len(__version__) > 0
 
 
-def test_optimize_not_implemented():
-    client = OptimizationClient()
-    with pytest.raises(NotImplementedError):
-        client.optimize("example", {})
+def test_client_requires_ldai_client():
+    with pytest.raises(TypeError):
+        OptimizationClient()  # type: ignore[call-arg]

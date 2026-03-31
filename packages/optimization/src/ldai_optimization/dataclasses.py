@@ -16,6 +16,7 @@ from typing import (
 )
 
 from ldai import AIAgentConfig
+from ldai.models import LDMessage, ModelConfig
 from ldclient import Context
 
 
@@ -81,6 +82,28 @@ class StructuredOutputTool:
             input_schema=data.get("input_schema", {}),
             type=data.get("type", "function"),
         )
+
+
+@dataclass
+class AIJudgeCallConfig:
+    """
+    Configuration passed to ``handle_judge_call``.
+
+    Carries everything needed to run a judge in either paradigm:
+
+    * **Completions path** — pass ``messages`` directly to ``chat.completions.create``.
+      The full system + user turn sequence is already assembled and interpolated.
+    * **Agents path** — use ``instructions`` as the system prompt and
+      ``OptimizationJudgeContext.user_input`` as the ``Runner.run`` input.
+
+    Both fields are always populated, regardless of whether the judge comes from a
+    LaunchDarkly flag (config judge) or an inline acceptance statement.
+    """
+
+    key: str
+    model: ModelConfig
+    instructions: str
+    messages: List[LDMessage]
 
 
 @dataclass
@@ -199,8 +222,8 @@ class OptimizationOptions:
         Callable[[str, AIAgentConfig, OptimizationContext, Dict[str, Callable[..., Any]]], Awaitable[str]],
     ]
     handle_judge_call: Union[
-        Callable[[str, AIAgentConfig, OptimizationJudgeContext, Dict[str, Callable[..., Any]]], str],
-        Callable[[str, AIAgentConfig, OptimizationJudgeContext, Dict[str, Callable[..., Any]]], Awaitable[str]],
+        Callable[[str, AIJudgeCallConfig, OptimizationJudgeContext, Dict[str, Callable[..., Any]]], str],
+        Callable[[str, AIJudgeCallConfig, OptimizationJudgeContext, Dict[str, Callable[..., Any]]], Awaitable[str]],
     ]
     # Criteria for pass/fail - Optional
     user_input_options: Optional[List[str]] = (

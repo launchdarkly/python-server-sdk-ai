@@ -4,10 +4,22 @@ This package will provide helpers to run selected tools against the LaunchDarkly
 """
 
 from ldai_optimization.client import OptimizationClient
+from ldai_optimization.dataclasses import (
+    AIJudgeCallConfig,
+    OptimizationContext,
+    OptimizationJudge,
+    OptimizationJudgeContext,
+    OptimizationOptions,
+)
 
 __version__ = "0.0.0"
 
 __all__ = [
     '__version__',
+    'AIJudgeCallConfig',
     'OptimizationClient',
+    'OptimizationContext',
+    'OptimizationJudge',
+    'OptimizationJudgeContext',
+    'OptimizationOptions',
 ]

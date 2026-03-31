@@ -8,10 +8,11 @@ import random
 import json
 
 from ldai import LDAIClient, AIJudgeConfig, AIJudgeConfigDefault, AIAgentConfig
-from ldai.models import ModelConfig
+from ldai.models import LDMessage, ModelConfig
 from ldclient import Context
 
 from ldai_optimization.dataclasses import (
+    AIJudgeCallConfig,
     AutoCommitConfig,
     JudgeResult,
     OptimizationContext,
@@ -456,7 +457,9 @@ class OptimizationClient:
             )
             return JudgeResult(score=0.0, rationale=None)
 
-        # Collapse all system messages into a single instructions string; collect the user message
+        # Split messages into system and user turns.
+        # System turns are joined into a single instructions string (agents SDK path).
+        # All messages are forwarded as-is for the completions path.
         system_parts = []
         user_parts = []
         for msg in judge_config.messages:
@@ -471,6 +474,13 @@ class OptimizationClient:
 
         instructions = "\n\n".join(system_parts)
         judge_user_input = "\n\n".join(user_parts) if user_parts else f"Here is the response to evaluate: {completion_response}"
+
+        # Rebuild the message list with the updated system content so completions users
+        # receive the same scoring instructions that are baked into `instructions`.
+        updated_messages: List[LDMessage] = [
+            LDMessage(role="system", content=instructions),
+            LDMessage(role="user", content=judge_user_input),
+        ]
 
         # Collect model parameters from the judge config, separating out any existing tools
         model_name = judge_config.model.name if judge_config.model else self._options.judge_model
@@ -496,15 +506,14 @@ class OptimizationClient:
         # Add structured output tool for score and rationale
         tools.append(create_evaluation_tool())
 
-        judge_agent_config = AIAgentConfig(
+        judge_call_config = AIJudgeCallConfig(
             key=judge_key,
-            enabled=True,
             model=ModelConfig(
                 name=model_name,
                 parameters={**model_params, "tools": [t.to_dict() for t in tools]},
             ),
             instructions=instructions,
-            provider=self._agent_config.provider,
+            messages=updated_messages,
         )
 
         judge_ctx = OptimizationJudgeContext(
@@ -513,7 +522,7 @@ class OptimizationClient:
         )
 
         result = self._options.handle_judge_call(
-            judge_key, judge_agent_config, judge_ctx, self._builtin_judge_tool_handlers()
+            judge_key, judge_call_config, judge_ctx, self._builtin_judge_tool_handlers()
         )
         judge_response_str = await await_if_needed(result)
 
@@ -602,23 +611,28 @@ class OptimizationClient:
         # Prepend agent tools so the judge can invoke them for verification if needed
         tools: List[StructuredOutputTool] = list(resolved_agent_tools) + [create_evaluation_tool()]
 
-        judge_agent_config = AIAgentConfig(
+        judge_user_input = f"Here is the response to evaluate: {completion_response}"
+
+        judge_call_config = AIJudgeCallConfig(
             key=judge_key,
-            enabled=True,
             model=ModelConfig(
                 name=self._options.judge_model,
                 parameters={"tools": [t.to_dict() for t in tools]},
             ),
             instructions=instructions,
+            messages=[
+                LDMessage(role="system", content=instructions),
+                LDMessage(role="user", content=judge_user_input),
+            ],
         )
 
         judge_ctx = OptimizationJudgeContext(
-            user_input=f"Here is the response to evaluate: {completion_response}",
+            user_input=judge_user_input,
             variables=resolved_variables,
         )
 
         result = self._options.handle_judge_call(
-            judge_key, judge_agent_config, judge_ctx, self._builtin_judge_tool_handlers()
+            judge_key, judge_call_config, judge_ctx, self._builtin_judge_tool_handlers()
         )
         judge_response = await await_if_needed(result)
 
