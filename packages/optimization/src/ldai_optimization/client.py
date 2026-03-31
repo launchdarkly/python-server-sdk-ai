@@ -1443,43 +1443,39 @@ class OptimizationClient:
             if self._options.on_turn is not None:
                 try:
                     on_turn_result = self._options.on_turn(optimize_context)
-                    if on_turn_result:
-                        logger.info(
-                            "[Iteration %d] -> on_turn returned True — turn passed",
-                            iteration,
-                        )
-                        return self._handle_success(optimize_context, iteration)
-                    else:
-                        logger.info(
-                            "[Iteration %d] -> on_turn returned False — turn failed (attempt %d/%d)",
-                            iteration,
-                            iteration,
-                            self._options.max_attempts,
-                        )
-                        if iteration >= self._options.max_attempts:
-                            return self._handle_failure(optimize_context, iteration)
-                        self._history.append(optimize_context)
-                        await self._generate_new_variation(
-                            iteration, optimize_context.current_variables
-                        )
-                        self._safe_status_update(
-                            "turn completed", optimize_context, iteration
-                        )
-                        continue
-                except Exception as e:
+                except Exception:
                     logger.exception(
                         "[Iteration %d] -> on_turn evaluation failed", iteration
                     )
-                    if iteration >= self._options.max_attempts:
-                        return self._handle_failure(optimize_context, iteration)
-                    self._history.append(optimize_context)
+                    on_turn_result = False
+
+                if on_turn_result:
+                    logger.info(
+                        "[Iteration %d] -> on_turn returned True — turn passed",
+                        iteration,
+                    )
+                    return self._handle_success(optimize_context, iteration)
+
+                logger.info(
+                    "[Iteration %d] -> on_turn returned False — turn failed (attempt %d/%d)",
+                    iteration,
+                    iteration,
+                    self._options.max_attempts,
+                )
+                if iteration >= self._options.max_attempts:
+                    return self._handle_failure(optimize_context, iteration)
+                self._history.append(optimize_context)
+                try:
                     await self._generate_new_variation(
                         iteration, optimize_context.current_variables
                     )
-                    self._safe_status_update(
-                        "turn completed", optimize_context, iteration
+                except Exception:
+                    logger.exception(
+                        "[Iteration %d] -> variation generation failed", iteration
                     )
-                    continue
+                    return self._handle_failure(optimize_context, iteration)
+                self._safe_status_update("turn completed", optimize_context, iteration)
+                continue
             else:
                 # Auto-path: judge scores determine pass/fail via _evaluate_response
                 passes = self._evaluate_response(optimize_context)
@@ -1499,9 +1495,15 @@ class OptimizationClient:
                     if iteration >= self._options.max_attempts:
                         return self._handle_failure(optimize_context, iteration)
                     self._history.append(optimize_context)
-                    await self._generate_new_variation(
-                        iteration, optimize_context.current_variables
-                    )
+                    try:
+                        await self._generate_new_variation(
+                            iteration, optimize_context.current_variables
+                        )
+                    except Exception:
+                        logger.exception(
+                            "[Iteration %d] -> variation generation failed", iteration
+                        )
+                        return self._handle_failure(optimize_context, iteration)
                     self._safe_status_update(
                         "turn completed", optimize_context, iteration
                     )
