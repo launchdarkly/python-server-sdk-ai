@@ -215,7 +215,7 @@ class OptimizationClient:
         """
         return {key: result.to_json() for key, result in judge_results.items()}
 
-    def _extract_agent_tools(self, parameters: Dict[str, Any]) -> List[StructuredOutputTool]:
+    def _extract_agent_tools(self, parameters: Dict[str, Any]) -> List[ToolDefinition]:
         """
         Extract and normalise the tools list from agent parameters.
 

@@ -80,10 +80,9 @@ async def await_if_needed(
     :param result: Either a string or an awaitable that returns a string
     :return: The string result
     """
-    if inspect.iscoroutine(result):
-        return await result
-    else:
+    if isinstance(result, str):
         return result
+    return await result
 
 
 def create_evaluation_tool() -> ToolDefinition:
