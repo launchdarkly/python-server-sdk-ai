@@ -12,6 +12,7 @@ from ldai_langchain import (
     LangChainRunnerFactory,
     convert_messages_to_langchain,
     get_ai_metrics_from_response,
+    get_ai_usage_from_response,
     get_tool_calls_from_response,
     map_provider,
     sum_token_usage_from_messages,
@@ -126,6 +127,71 @@ class TestGetAIMetricsFromResponse:
 
         assert result.success is True
         assert result.usage is None
+
+    def test_usage_metadata_preferred_over_response_metadata(self):
+        """usage_metadata should be used when it has non-zero counts."""
+        mock_response = AIMessage(content='Test')
+        mock_response.usage_metadata = {
+            'total_tokens': 10,
+            'input_tokens': 4,
+            'output_tokens': 6,
+        }
+        mock_response.response_metadata = {
+            'tokenUsage': {
+                'totalTokens': 999,
+                'promptTokens': 500,
+                'completionTokens': 499,
+            },
+        }
+        usage = get_ai_usage_from_response(mock_response)
+        assert usage is not None
+        assert usage.total == 10
+        assert usage.input == 4
+        assert usage.output == 6
+
+
+class TestGetAIUsageFromResponse:
+    """Tests for LangChainHelper.get_ai_usage_from_response."""
+
+    def test_returns_none_when_no_usage(self):
+        msg = AIMessage(content='hi')
+        assert get_ai_usage_from_response(msg) is None
+
+    def test_returns_none_when_all_zeros_in_metadata(self):
+        msg = AIMessage(content='hi')
+        msg.usage_metadata = {'total_tokens': 0, 'input_tokens': 0, 'output_tokens': 0}
+        assert get_ai_usage_from_response(msg) is None
+
+
+class TestGetToolCallsFromResponse:
+    """Tests for LangChainHelper.get_tool_calls_from_response."""
+
+    def test_returns_empty_when_no_tool_calls(self):
+        msg = AIMessage(content='hi')
+        assert get_tool_calls_from_response(msg) == []
+
+    def test_returns_empty_when_tool_calls_not_a_sequence(self):
+        msg = AIMessage(content='hi')
+        msg.tool_calls = None  # type: ignore
+        assert get_tool_calls_from_response(msg) == []
+
+    def test_extracts_names_from_dict_tool_calls(self):
+        msg = AIMessage(content='')
+        msg.tool_calls = [  # type: ignore
+            {'name': 'search', 'args': {}, 'id': '1'},
+            {'name': 'calc', 'args': {}, 'id': '2'},
+        ]
+        assert get_tool_calls_from_response(msg) == ['search', 'calc']
+
+    def test_returns_empty_when_tool_calls_is_not_a_list(self):
+        msg = AIMessage(content='hi')
+        msg.tool_calls = ()  # type: ignore
+        assert get_tool_calls_from_response(msg) == []
+
+    def test_skips_entries_without_name(self):
+        msg = AIMessage(content='')
+        msg.tool_calls = [{'name': 'a', 'id': '1'}, {}, {'name': 'b', 'id': '2'}]  # type: ignore
+        assert get_tool_calls_from_response(msg) == ['a', 'b']
 
 
 class TestMapProvider:
@@ -330,3 +396,122 @@ class TestGetLlm:
         runner = LangChainModelRunner(mock_llm)
 
         assert runner.get_llm() is mock_llm
+
+
+class TestCreateAgent:
+    """Tests for LangChainRunnerFactory.create_agent."""
+
+    def test_creates_agent_runner_with_instructions_and_tool_definitions(self):
+        """Should create LangChainAgentRunner wrapping a compiled graph."""
+        from unittest.mock import patch
+        from ldai_langchain import LangChainAgentRunner
+
+        mock_ai_config = MagicMock()
+        mock_ai_config.instructions = "You are a helpful assistant."
+        mock_ai_config.to_dict.return_value = {
+            'model': {
+                'name': 'gpt-4',
+                'parameters': {
+                    'tools': [
+                        {'name': 'get-weather', 'description': 'Get weather', 'parameters': {}},
+                    ],
+                },
+            },
+            'provider': {'name': 'openai'},
+        }
+
+        mock_agent = MagicMock()
+        with patch('ldai_langchain.langchain_runner_factory.create_langchain_model') as mock_create, \
+             patch('ldai_langchain.langchain_runner_factory.build_structured_tools') as mock_tools, \
+             patch('langchain.agents.create_agent', return_value=mock_agent):
+            mock_create.return_value = MagicMock()
+            mock_tools.return_value = [MagicMock()]
+
+            factory = LangChainRunnerFactory()
+            result = factory.create_agent(mock_ai_config, {'get-weather': lambda loc: 'sunny'})
+
+            assert isinstance(result, LangChainAgentRunner)
+            assert result._agent is mock_agent
+
+    def test_creates_agent_runner_with_no_tools(self):
+        """Should create LangChainAgentRunner with no tool definitions."""
+        from unittest.mock import patch
+        from ldai_langchain import LangChainAgentRunner
+
+        mock_ai_config = MagicMock()
+        mock_ai_config.instructions = "You are a helpful assistant."
+        mock_ai_config.to_dict.return_value = {
+            'model': {'name': 'gpt-4', 'parameters': {}},
+            'provider': {'name': 'openai'},
+        }
+
+        mock_agent = MagicMock()
+        with patch('ldai_langchain.langchain_runner_factory.create_langchain_model') as mock_create, \
+             patch('ldai_langchain.langchain_runner_factory.build_structured_tools', return_value=[]), \
+             patch('langchain.agents.create_agent', return_value=mock_agent):
+            mock_create.return_value = MagicMock()
+
+            factory = LangChainRunnerFactory()
+            result = factory.create_agent(mock_ai_config, {})
+
+            assert isinstance(result, LangChainAgentRunner)
+            assert result._agent is mock_agent
+
+
+class TestLangChainAgentRunner:
+    """Tests for LangChainAgentRunner.run."""
+
+    @pytest.mark.asyncio
+    async def test_runs_agent_and_returns_result(self):
+        """Should return AgentResult with the last message content from the graph."""
+        from ldai_langchain import LangChainAgentRunner
+
+        final_msg = AIMessage(content="The answer is 42.")
+        mock_agent = MagicMock()
+        mock_agent.ainvoke = AsyncMock(return_value={"messages": [final_msg]})
+
+        runner = LangChainAgentRunner(mock_agent)
+        result = await runner.run("What is the answer?")
+
+        assert result.output == "The answer is 42."
+        assert result.metrics.success is True
+        mock_agent.ainvoke.assert_called_once_with(
+            {"messages": [{"role": "user", "content": "What is the answer?"}]}
+        )
+
+    @pytest.mark.asyncio
+    async def test_aggregates_token_usage_across_messages(self):
+        """Should sum token usage from all messages in the graph result."""
+        from ldai_langchain import LangChainAgentRunner
+
+        msg1 = AIMessage(content="intermediate")
+        msg1.usage_metadata = {'total_tokens': 10, 'input_tokens': 6, 'output_tokens': 4}
+        msg2 = AIMessage(content="final answer")
+        msg2.usage_metadata = {'total_tokens': 20, 'input_tokens': 12, 'output_tokens': 8}
+
+        mock_agent = MagicMock()
+        mock_agent.ainvoke = AsyncMock(return_value={"messages": [msg1, msg2]})
+
+        runner = LangChainAgentRunner(mock_agent)
+        result = await runner.run("Hello")
+
+        assert result.output == "final answer"
+        assert result.metrics.success is True
+        assert result.metrics.usage is not None
+        assert result.metrics.usage.total == 30
+        assert result.metrics.usage.input == 18
+        assert result.metrics.usage.output == 12
+
+    @pytest.mark.asyncio
+    async def test_returns_failure_when_exception_thrown(self):
+        """Should return unsuccessful AgentResult when exception is thrown."""
+        from ldai_langchain import LangChainAgentRunner
+
+        mock_agent = MagicMock()
+        mock_agent.ainvoke = AsyncMock(side_effect=Exception("Graph Error"))
+
+        runner = LangChainAgentRunner(mock_agent)
+        result = await runner.run("Hello")
+
+        assert result.output == ""
+        assert result.metrics.success is False

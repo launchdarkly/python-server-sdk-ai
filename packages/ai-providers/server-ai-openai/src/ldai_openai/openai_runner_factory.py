@@ -1,11 +1,14 @@
 import os
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 from ldai.models import AIConfigKind
 from ldai.providers import AIProvider, ToolRegistry
 from openai import AsyncOpenAI
 
 from ldai_openai.openai_model_runner import OpenAIModelRunner
+
+if TYPE_CHECKING:
+    from ldai_openai.openai_agent_runner import OpenAIAgentRunner
 
 
 class OpenAIRunnerFactory(AIProvider):
@@ -46,6 +49,31 @@ class OpenAIRunnerFactory(AIProvider):
         """
         from ldai_openai.openai_agent_graph_runner import OpenAIAgentGraphRunner
         return OpenAIAgentGraphRunner(graph_def, tools)
+
+    def create_agent(self, config: Any, tools: Optional[ToolRegistry] = None) -> 'OpenAIAgentRunner':
+        """
+        Create a configured OpenAIAgentRunner for the given AI agent config.
+
+        :param config: The LaunchDarkly AI agent configuration
+        :param tools: ToolRegistry mapping tool names to callables
+        :return: OpenAIAgentRunner ready to run the agent
+        """
+        from ldai_openai.openai_agent_runner import OpenAIAgentRunner
+
+        config_dict = config.to_dict()
+        model_dict = config_dict.get('model') or {}
+        model_name = model_dict.get('name', '')
+        parameters = dict(model_dict.get('parameters') or {})
+        tool_definitions = parameters.pop('tools', []) or []
+        instructions = (config.instructions or '') if hasattr(config, 'instructions') else ''
+
+        return OpenAIAgentRunner(
+            model_name,
+            parameters,
+            instructions,
+            tool_definitions,
+            tools or {},
+        )
 
     def get_client(self) -> AsyncOpenAI:
         """

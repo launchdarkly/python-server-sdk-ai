@@ -9,20 +9,11 @@ from ldai.providers import AgentGraphResult, AgentGraphRunner, ToolRegistry
 from ldai.providers.types import LDAIMetrics
 from ldai.tracker import TokenUsage
 
-from ldai_openai.openai_helper import get_tool_calls_from_run_items
-
-
-def _build_native_tool_map() -> dict:
-    try:
-        from agents import WebSearchTool
-        return {
-            'web_search_tool': lambda _: WebSearchTool(),
-        }
-    except ImportError:
-        return {}
-
-
-_NATIVE_OPENAI_TOOLS = _build_native_tool_map()
+from ldai_openai.openai_helper import (
+    NATIVE_OPENAI_TOOLS,
+    get_ai_usage_from_response,
+    get_tool_calls_from_run_items,
+)
 
 
 class _RunState:
@@ -87,17 +78,9 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
                 tracker.track_path(path)
                 tracker.track_latency(duration)
                 tracker.track_invocation_success()
-                try:
-                    usage = result.context_wrapper.usage
-                    tracker.track_total_tokens(
-                        TokenUsage(
-                            total=usage.total_tokens,
-                            input=usage.input_tokens,
-                            output=usage.output_tokens,
-                        )
-                    )
-                except Exception:
-                    pass
+                token_usage = get_ai_usage_from_response(result)
+                if token_usage is not None:
+                    tracker.track_total_tokens(token_usage)
 
             return AgentGraphResult(
                 output=str(result.final_output),
@@ -283,8 +266,8 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
                 tool_name = tool_def.get('name', '')
 
                 # Check native OpenAI tools first, then fall back to ToolRegistry
-                if tool_name in _NATIVE_OPENAI_TOOLS:
-                    agent_tools.append(_NATIVE_OPENAI_TOOLS[tool_name](tool_def))
+                if tool_name in NATIVE_OPENAI_TOOLS:
+                    agent_tools.append(NATIVE_OPENAI_TOOLS[tool_name](tool_def))
                     continue
 
                 tool_fn = self._tools.get(tool_name)
