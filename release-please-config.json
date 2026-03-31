@@ -8,7 +8,11 @@
       "bump-minor-pre-major": true,
       "include-v-in-tag": false,
       "draft": true,
-      "extra-files": ["src/ldai/__init__.py", "PROVENANCE.md"],
+      "force-tag-creation": true,
+      "extra-files": [
+        "src/ldai/__init__.py",
+        "PROVENANCE.md"
+      ],
       "component": "launchdarkly-server-sdk-ai"
     },
     "packages/ai-providers/server-ai-langchain": {
@@ -17,7 +21,10 @@
       "bump-minor-pre-major": true,
       "include-v-in-tag": false,
       "draft": true,
-      "extra-files": ["src/ldai_langchain/__init__.py"],
+      "force-tag-creation": true,
+      "extra-files": [
+        "src/ldai_langchain/__init__.py"
+      ],
       "component": "launchdarkly-server-sdk-ai-langchain"
     },
     "packages/ai-providers/server-ai-openai": {
@@ -26,7 +33,10 @@
       "bump-minor-pre-major": true,
       "include-v-in-tag": false,
       "draft": true,
-      "extra-files": ["src/ldai_openai/__init__.py"],
+      "force-tag-creation": true,
+      "extra-files": [
+        "src/ldai_openai/__init__.py"
+      ],
       "component": "launchdarkly-server-sdk-ai-openai"
     },
     "packages/optimization": {
@@ -35,7 +45,10 @@
       "bump-minor-pre-major": true,
       "include-v-in-tag": false,
       "draft": true,
-      "extra-files": ["src/ldai_optimization/__init__.py"],
+      "force-tag-creation": true,
+      "extra-files": [
+        "src/ldai_optimization/__init__.py"
+      ],
       "component": "launchdarkly-server-sdk-ai-optimization"
     }
   }
