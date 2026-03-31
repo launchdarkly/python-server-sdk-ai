@@ -75,16 +75,10 @@ jobs:
         with:
           workspace_path: packages/sdk/server-ai
 
-      - name: Generate checksums file
-        env:
-          HASHES: ${{ steps.build.outputs.package-hashes }}
-        run: |
-          echo "$HASHES" | base64 -d > checksums.txt
-
       - name: Attest build provenance
         uses: actions/attest@v4
         with:
-          subject-checksums: checksums.txt
+          subject-path: 'packages/sdk/server-ai/dist/*'
 
       - uses: launchdarkly/gh-actions/actions/release-secrets@release-secrets-v1.2.0
         name: 'Get PyPI token'
@@ -120,16 +114,10 @@ jobs:
         with:
           workspace_path: packages/ai-providers/server-ai-langchain
 
-      - name: Generate checksums file
-        env:
-          HASHES: ${{ steps.build.outputs.package-hashes }}
-        run: |
-          echo "$HASHES" | base64 -d > checksums.txt
-
       - name: Attest build provenance
         uses: actions/attest@v4
         with:
-          subject-checksums: checksums.txt
+          subject-path: 'packages/ai-providers/server-ai-langchain/dist/*'
 
       - uses: launchdarkly/gh-actions/actions/release-secrets@release-secrets-v1.2.0
         name: 'Get PyPI token'
@@ -197,16 +185,10 @@ jobs:
         with:
           workspace_path: packages/ai-providers/server-ai-openai
 
-      - name: Generate checksums file
-        env:
-          HASHES: ${{ steps.build.outputs.package-hashes }}
-        run: |
-          echo "$HASHES" | base64 -d > checksums.txt
-
       - name: Attest build provenance
         uses: actions/attest@v4
         with:
-          subject-checksums: checksums.txt
+          subject-path: 'packages/ai-providers/server-ai-openai/dist/*'
 
       - uses: launchdarkly/gh-actions/actions/release-secrets@release-secrets-v1.2.0
         name: 'Get PyPI token'
@@ -242,16 +224,10 @@ jobs:
         with:
           workspace_path: packages/optimization
 
-      - name: Generate checksums file
-        env:
-          HASHES: ${{ steps.build.outputs.package-hashes }}
-        run: |
-          echo "$HASHES" | base64 -d > checksums.txt
-
       - name: Attest build provenance
         uses: actions/attest@v4
         with:
-          subject-checksums: checksums.txt
+          subject-path: 'packages/optimization/dist/*'
 
       - uses: launchdarkly/gh-actions/actions/release-secrets@release-secrets-v1.2.0
         name: 'Get PyPI token'
