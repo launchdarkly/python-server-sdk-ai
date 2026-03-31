@@ -10,7 +10,7 @@ from ldai.providers import AgentGraphResult, AgentGraphRunner, ToolRegistry
 from ldai.providers.types import LDAIMetrics
 
 from ldai_langchain.langchain_helper import (
-    build_structured_tools,
+    build_tools,
     create_langchain_model,
     extract_last_message_content,
     get_ai_metrics_from_response,
@@ -75,7 +75,7 @@ class LangGraphAgentGraphRunner(AgentGraphRunner):
                 model = None
                 if node_config.model:
                     lc_model = create_langchain_model(node_config)
-                    tool_fns = build_structured_tools(node_config, tools_ref)
+                    tool_fns = build_tools(node_config, tools_ref)
                     model = lc_model.bind_tools(tool_fns) if tool_fns else lc_model
 
                 def invoke(state: WorkflowState) -> WorkflowState:

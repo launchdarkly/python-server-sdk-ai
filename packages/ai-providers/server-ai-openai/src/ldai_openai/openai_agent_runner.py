@@ -93,53 +93,45 @@ class OpenAIAgentRunner(AgentRunner):
             if not isinstance(td, dict):
                 continue
             name = td.get("name", "")
-
-            # Native OpenAI tools run on OpenAI's infrastructure — no local fn required.
-            if name and name in NATIVE_OPENAI_TOOLS:
-                tools.append(NATIVE_OPENAI_TOOLS[name](td))
-                continue
-
-            tool_type = td.get("type")
-            if tool_type and tool_type != "function":
-                log.warning(
-                    f"Built-in tool '{tool_type}' is not supported and will be skipped. "
-                    "Use the OpenAIAgentGraphRunner for built-in provider tools."
-                )
-                continue
-
             if not name:
                 continue
 
             tool_fn = self._tools.get(name)
-            if not tool_fn:
-                log.warning(
-                    f"Tool '{name}' is defined in the AI config but was not found in "
-                    "the tool registry; skipping."
-                )
+            if tool_fn:
+                def _make_invoker(fn: Any, tool_name: str) -> Any:
+                    async def on_invoke_tool(tool_ctx: ToolContext, args_json: str) -> str:
+                        try:
+                            args = json.loads(args_json) if args_json else {}
+                        except Exception:
+                            args = {}
+                        try:
+                            res = fn(**args)
+                            if hasattr(res, "__await__"):
+                                res = await res
+                            return str(res)
+                        except Exception as e:
+                            log.warning(f"Tool '{tool_name}' execution failed: {e}")
+                            return f"Tool execution failed: {e}"
+                    return on_invoke_tool
+
+                tools.append(FunctionTool(
+                    name=name,
+                    description=td.get("description", ""),
+                    params_json_schema=td.get("parameters", {}),
+                    on_invoke_tool=_make_invoker(tool_fn, name),
+                ))
                 continue
 
-            def _make_invoker(fn: Any, tool_name: str) -> Any:
-                async def on_invoke_tool(tool_ctx: ToolContext, args_json: str) -> str:
-                    try:
-                        args = json.loads(args_json) if args_json else {}
-                    except Exception:
-                        args = {}
-                    try:
-                        res = fn(**args)
-                        if hasattr(res, "__await__"):
-                            res = await res
-                        return str(res)
-                    except Exception as e:
-                        log.warning(f"Tool '{tool_name}' execution failed: {e}")
-                        return f"Tool execution failed: {e}"
-                return on_invoke_tool
+            # No callable in registry — try native OpenAI tool (exact name match required).
+            native = NATIVE_OPENAI_TOOLS.get(name)
+            if native:
+                tools.append(native(td))
+                continue
 
-            tools.append(FunctionTool(
-                name=name,
-                description=td.get("description", ""),
-                params_json_schema=td.get("parameters", {}),
-                on_invoke_tool=_make_invoker(tool_fn, name),
-            ))
+            log.warning(
+                f"Tool '{name}' is defined in the AI config but was not found in "
+                "the tool registry and is not a known native tool; skipping."
+            )
         return tools
 
     def _build_model_settings(self) -> Any:
