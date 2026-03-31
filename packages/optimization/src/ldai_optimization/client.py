@@ -625,16 +625,19 @@ class OptimizationClient:
 
         # Build instructions for the judge
         instructions = (
-            f"You are a judge that evaluates the response to the user's question.\n\n"
-            f"Here is the statement that you should evaluate the response against: '{optimization_judge.acceptance_statement}'\n"
+            "You are a judge that evaluates the response to the user's question.\n\n"
+            "Here is the statement that you should evaluate the response against: "
+            f"'{optimization_judge.acceptance_statement}'\n"
             f"Here is the history of all messages between the user and the assistant: {message_history_text}\n"
-            f"You should score the response based on how well it meets the acceptance statement using a score between 0.0 and 1.0.\n"
-            f"A score of 0.0 means it does not match at all, while a score of 1.0 means it matches perfectly.\n"
-            f"A score of 0.3-0.7 means it matches partially, while a score of 0.7-1.0 means it matches well.\n"
-            f"A score of 0.0-0.3 means that it does not match well at all. You can return any value between 0.0 and 1.0.\n"
-            f"You should also provide a rationale for your score.\n"
-            f"You should call the structured output tool to format your response.\n\n"
-            f'Example: {{"score": 0.8, "rationale": "The response matches the acceptance statement well."}}'
+            "You should score the response based on how well it meets the acceptance statement "
+            "using a score between 0.0 and 1.0.\n"
+            "A score of 0.0 means it does not match at all, while a score of 1.0 means it matches perfectly.\n"
+            "A score of 0.3-0.7 means it matches partially, while a score of 0.7-1.0 means it matches well.\n"
+            "A score of 0.0-0.3 means that it does not match well at all. "
+            "You can return any value between 0.0 and 1.0.\n"
+            "You should also provide a rationale for your score.\n"
+            "You should call the structured output tool to format your response.\n\n"
+            'Example: {"score": 0.8, "rationale": "The response matches the acceptance statement well."}'
         )
 
         if resolved_variables:
@@ -643,9 +646,13 @@ class OptimizationClient:
         if resolved_agent_tools:
             tool_names = [t.name for t in resolved_agent_tools]
             instructions += (
-                f"\n\nThe following tools were available to the agent and may be called by you to verify the response: {json.dumps(tool_names)}."
-                "\nIf verifying the response requires looking up external information, call the appropriate tool before scoring."
-                "You should only call the tools for the most recent response, and should only call the tools if necessary. Assume that previous feedback will have addressed bad tool call results from prior iterations."
+                "\n\nThe following tools were available to the agent and "
+                f"may be called by you to verify the response: {json.dumps(tool_names)}."
+                "\nIf verifying the response requires looking up external information, "
+                "call the appropriate tool before scoring. "
+                "You should only call the tools for the most recent response, "
+                "and should only call the tools if necessary. "
+                "Assume that previous feedback will have addressed bad tool call results from prior iterations."
             )
 
         # Prepend agent tools so the judge can invoke them for verification if needed
@@ -790,10 +797,16 @@ class OptimizationClient:
                 "You are an assistant that helps improve agent configurations through iterative optimization.",
                 "",
                 "Your task is to generate improved agent instructions and parameters based on the feedback provided.",
-                "The feedback you provide should guide the LLM To improve the agent instructions for all possible use cases, not one concrete case.",
-                "For example, if the feedback is that the agent is not returning the correct records, you should improve the agent instructions to return the correct records for all possible use cases. Not just the one concrete case that was provided in the feedback.",
-                "When changing the instructions, keep the original intent in mind when it comes to things like the use of variables and placeholders.",
-                "If the original instructions were to use a placeholder like {{id}}, you should keep the placeholder in the new instructions, not replace it with the actual value. This is the case for all parameterized values (all parameters should appear in each new variation).",
+                "The feedback you provide should guide the LLM to improve the agent instructions "
+                "for all possible use cases, not one concrete case.",
+                "For example, if the feedback is that the agent is not returning the correct records, "
+                "you should improve the agent instructions to return the correct records for all possible use cases. "
+                "Not just the one concrete case that was provided in the feedback.",
+                "When changing the instructions, keep the original intent in mind "
+                "when it comes to things like the use of variables and placeholders.",
+                "If the original instructions were to use a placeholder like {{id}}, "
+                "you should keep the placeholder in the new instructions, not replace it with the actual value. "
+                "This is the case for all parameterized values (all parameters should appear in each new variation).",
                 "Pay particular attention to the instructions regarding tools and the rules for variables.",
             ]
         )
@@ -899,7 +912,10 @@ class OptimizationClient:
                     if optimization_judge.threshold is not None:
                         passed = score >= optimization_judge.threshold
                         status = "PASSED" if passed else "FAILED"
-                        feedback_line = f"- {judge_key}: Score {score:.3f} (threshold: {optimization_judge.threshold}) - {status}"
+                        feedback_line = (
+                            f"- {judge_key}: Score {score:.3f}"
+                            f" (threshold: {optimization_judge.threshold}) - {status}"
+                        )
                     else:
                         passed = score >= 1.0
                         status = "PASSED" if passed else "FAILED"
@@ -921,9 +937,12 @@ class OptimizationClient:
         """
         model_instructions = "\n".join(
             [
-                "You may also choose to change the model if you believe that the current model is not performing well or a different model would be better suited for the task. "
-                f"Here are the models you may choose from: {self._options.model_choices}. You must always return a model property, even if it's the same as the current model.",
-                "When suggesting a new model, you should provide a rationale for why you believe the new model would be better suited for the task.",
+                "You may also choose to change the model if you believe that the current model is "
+                "not performing well or a different model would be better suited for the task. "
+                f"Here are the models you may choose from: {self._options.model_choices}. "
+                "You must always return a model property, even if it's the same as the current model.",
+                "When suggesting a new model, you should provide a rationale for why you believe "
+                "the new model would be better suited for the task.",
             ]
         )
 
@@ -938,23 +957,35 @@ class OptimizationClient:
                 "## Prompt Variables:",
                 "These variables are substituted into the instructions at call time using {{variable_name}} syntax.",
                 "Rules:",
-                "- If the {{variable_name}} placeholder is not present in the current instructions, you should include it where logically appropriate.",
-                "Here are the original instructions so that you can see how the placeholders are used and which are available:",
+                "- If the {{variable_name}} placeholder is not present in the current instructions, "
+                "you should include it where logically appropriate.",
+                "Here are the original instructions so that you can see how the "
+                "placeholders are used and which are available:",
                 "\nSTART:" "\n" + self._initial_instructions + "\n",
                 "\nEND OF ORIGINAL INSTRUCTIONS\n",
-                f"The following prompt variables are available and are the only variables that should be used: {placeholder_list}"
-                "Here is an example of a good response if an {{id}} placeholder is available: 'Select records matching id {{id}}'",
-                "Here is an example of a bad response if an {{id}} placeholder is available: 'Select records matching id 1232'",
-                "Here is an example of a good response if a {{resource_id}} and {{resource_type}} placeholder are available: 'Select records matching id {{resource_id}} and type {{resource_type}}'",
-                "Here is an example of a bad response if a {{resource_id}} and {{resource_type}} placeholder are available: 'Select records matching id 1232 and type {{resource_type}}'",
-                "Here is another example of a bad response if a {{resource_id}} and {{resource_type}} placeholder are available: 'Select records matching id {{resource_id}} and type resource-123'",
+                f"The following prompt variables are available and are the only "
+                f"variables that should be used: {placeholder_list}",
+                "Here is an example of a good response if an {{id}} placeholder is available: "
+                "'Select records matching id {{id}}'",
+                "Here is an example of a bad response if an {{id}} placeholder is available: "
+                "'Select records matching id 1232'",
+                "Here is an example of a good response if a {{resource_id}} and {{resource_type}} "
+                "placeholder are available: "
+                "'Select records matching id {{resource_id}} and type {{resource_type}}'",
+                "Here is an example of a bad response if a {{resource_id}} and {{resource_type}} "
+                "placeholder are available: "
+                "'Select records matching id 1232 and type {{resource_type}}'",
+                "Here is another example of a bad response if a {{resource_id}} and {{resource_type}} "
+                "placeholder are available: "
+                "'Select records matching id {{resource_id}} and type resource-123'",
             ]
         )
 
         tool_instructions = "\n".join(
             [
                 "## Tool Format:",
-                'If the current configuration includes tools, you MUST return them unchanged in current_parameters["tools"].',
+                'If the current configuration includes tools, you MUST return them '
+                'unchanged in current_parameters["tools"].',
                 "Do NOT include internal framework tools such as the evaluation tool or structured output tool.",
                 "Each tool must follow this exact format:",
                 "{",
@@ -995,7 +1026,8 @@ class OptimizationClient:
 
         parameters_instructions = "\n".join(
             [
-                "Return these values in a JSON object with the following keys: current_instructions, current_parameters, and model.",
+                "Return these values in a JSON object with the following keys: "
+                "current_instructions, current_parameters, and model.",
                 "Example:",
                 "{",
                 '  "current_instructions": "...',
@@ -1004,8 +1036,11 @@ class OptimizationClient:
                 "  },",
                 '  "model": "gpt-4o"',
                 "}",
-                "Parameters should only be things that are directly parseable by an LLM call, for example, temperature, max_tokens, etc."
-                "Do not include any other parameters that are not directly parseable by an LLM call. If you want to provide instruction for tone or other attributes, provide them directly in the instructions.",
+                "Parameters should only be things that are directly parseable by an LLM call, "
+                "for example, temperature, max_tokens, etc.",
+                "Do not include any other parameters that are not directly parseable by an LLM call. "
+                "If you want to provide instruction for tone or other attributes, "
+                "provide them directly in the instructions.",
             ]
         )
 
@@ -1025,8 +1060,11 @@ class OptimizationClient:
                     "Return the improved configuration in a structured format that can be parsed to update:",
                     "1. The agent instructions (current_instructions)",
                     "2. The agent parameters (current_parameters)",
-                    "3. The model (model) - you must always return a model, even if it's the same as the current model.",
-                    "4. You should return the tools the user has defined, as-is, on the new parameters. Do not modify them, but make sure you do not include internal tools like the evaluation tool or structured output tool.",
+                    "3. The model (model) - you must always return a model, "
+                    "even if it's the same as the current model.",
+                    "4. You should return the tools the user has defined, as-is, on the new parameters. "
+                    "Do not modify them, but make sure you do not include internal tools like "
+                    "the evaluation tool or structured output tool.",
                     parameters_instructions,
                 ]
             )
