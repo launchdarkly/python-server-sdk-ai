@@ -7,7 +7,6 @@
       "versioning": "default",
       "bump-minor-pre-major": true,
       "include-v-in-tag": false,
-      "draft": true,
       "force-tag-creation": true,
       "extra-files": [
         "src/ldai/__init__.py",
@@ -20,7 +19,6 @@
       "versioning": "default",
       "bump-minor-pre-major": true,
       "include-v-in-tag": false,
-      "draft": true,
       "force-tag-creation": true,
       "extra-files": [
         "src/ldai_langchain/__init__.py"
@@ -32,7 +30,6 @@
       "versioning": "default",
       "bump-minor-pre-major": true,
       "include-v-in-tag": false,
-      "draft": true,
       "force-tag-creation": true,
       "extra-files": [
         "src/ldai_openai/__init__.py"
@@ -44,7 +41,6 @@
       "versioning": "default",
       "bump-minor-pre-major": true,
       "include-v-in-tag": false,
-      "draft": true,
       "force-tag-creation": true,
       "extra-files": [
         "src/ldai_optimization/__init__.py"
