@@ -1,13 +1,13 @@
 """Client for LaunchDarkly AI agent optimization."""
 
-from typing import Any, Dict, List, Literal, Optional
 import dataclasses
-import os
-import logging
-import random
 import json
+import logging
+import os
+import random
+from typing import Any, Dict, List, Literal, Optional
 
-from ldai import LDAIClient, AIJudgeConfig, AIJudgeConfigDefault, AIAgentConfig
+from ldai import AIAgentConfig, AIJudgeConfig, AIJudgeConfigDefault, LDAIClient
 from ldai.models import LDMessage, ModelConfig
 from ldclient import Context
 
