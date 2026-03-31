@@ -58,13 +58,28 @@ jobs:
     needs: ['release-please']
     permissions:
       id-token: write # Needed for OIDC to get release secrets from AWS.
+      attestations: write # Needed for actions/attest.
+      contents: write # Needed for creating tags.
     if: ${{ needs.release-please.outputs.package-server-ai-released == 'true' }}
-    outputs:
-      package-hashes: ${{ steps.build.outputs.package-hashes }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Create release tag
+        env:
+          TAG_NAME: ${{ needs.release-please.outputs.package-server-ai-tag-name }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh api "repos/${{ github.repository }}/git/ref/tags/${TAG_NAME}" >/dev/null 2>&1; then
+            echo "Tag ${TAG_NAME} already exists, skipping creation."
+          else
+            echo "Creating tag ${TAG_NAME}."
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git tag "${TAG_NAME}"
+            git push origin "${TAG_NAME}"
+          fi
 
       - uses: ./.github/actions/ci
         with:
@@ -74,6 +89,17 @@ jobs:
         id: build
         with:
           workspace_path: packages/sdk/server-ai
+
+      - name: Generate checksums file
+        env:
+          HASHES: ${{ steps.build.outputs.package-hashes }}
+        run: |
+          echo "$HASHES" | base64 -d > checksums.txt
+
+      - name: Attest build provenance
+        uses: actions/attest@v4
+        with:
+          subject-checksums: checksums.txt
 
       - uses: launchdarkly/gh-actions/actions/release-secrets@release-secrets-v1.2.0
         name: 'Get PyPI token'
@@ -92,13 +118,28 @@ jobs:
     needs: ['release-please']
     permissions:
       id-token: write # Needed for OIDC to get release secrets from AWS.
+      attestations: write # Needed for actions/attest.
+      contents: write # Needed for creating tags.
     if: ${{ needs.release-please.outputs.package-server-ai-langchain-released == 'true' }}
-    outputs:
-      package-hashes: ${{ steps.build.outputs.package-hashes }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Create release tag
+        env:
+          TAG_NAME: ${{ needs.release-please.outputs.package-server-ai-langchain-tag-name }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh api "repos/${{ github.repository }}/git/ref/tags/${TAG_NAME}" >/dev/null 2>&1; then
+            echo "Tag ${TAG_NAME} already exists, skipping creation."
+          else
+            echo "Creating tag ${TAG_NAME}."
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git tag "${TAG_NAME}"
+            git push origin "${TAG_NAME}"
+          fi
 
       - uses: ./.github/actions/ci
         with:
@@ -108,6 +149,17 @@ jobs:
         id: build
         with:
           workspace_path: packages/ai-providers/server-ai-langchain
+
+      - name: Generate checksums file
+        env:
+          HASHES: ${{ steps.build.outputs.package-hashes }}
+        run: |
+          echo "$HASHES" | base64 -d > checksums.txt
+
+      - name: Attest build provenance
+        uses: actions/attest@v4
+        with:
+          subject-checksums: checksums.txt
 
       - uses: launchdarkly/gh-actions/actions/release-secrets@release-secrets-v1.2.0
         name: 'Get PyPI token'
@@ -153,44 +205,33 @@ jobs:
           password: ${{ env.PYPI_AUTH_TOKEN }}
           packages-dir: ${{ inputs.workspace_path }}/dist/
 
-  release-server-ai-provenance:
-    needs: ['release-please', 'release-server-ai']
-    if: ${{ needs.release-please.outputs.package-server-ai-released == 'true' }}
-    permissions:
-      actions: read # Needed for detecting the GitHub Actions environment.
-      id-token: write # Needed for provenance signing.
-      contents: write # Needed for uploading assets to the release.
-    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v2.0.0
-    with:
-      base64-subjects: "${{ needs.release-server-ai.outputs.package-hashes }}"
-      upload-assets: true
-      upload-tag-name: ${{ needs.release-please.outputs.package-server-ai-tag-name }}
-
-  release-server-ai-langchain-provenance:
-    needs: ['release-please', 'release-server-ai-langchain']
-    if: ${{ needs.release-please.outputs.package-server-ai-langchain-released == 'true' }}
-    permissions:
-      actions: read # Needed for detecting the GitHub Actions environment.
-      id-token: write # Needed for provenance signing.
-      contents: write # Needed for uploading assets to the release.
-    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@5a775b367a56d5bd118a224a811bba288150a563 # v2.0.0
-    with:
-      base64-subjects: "${{ needs.release-server-ai-langchain.outputs.package-hashes }}"
-      upload-assets: true
-      upload-tag-name: ${{ needs.release-please.outputs.package-server-ai-langchain-tag-name }}
-
   release-server-ai-openai:
     runs-on: ubuntu-latest
     needs: ['release-please']
     permissions:
       id-token: write # Needed for OIDC to get release secrets from AWS.
+      attestations: write # Needed for actions/attest.
+      contents: write # Needed for creating tags.
     if: ${{ needs.release-please.outputs.package-server-ai-openai-released == 'true' }}
-    outputs:
-      package-hashes: ${{ steps.build.outputs.package-hashes }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Create release tag
+        env:
+          TAG_NAME: ${{ needs.release-please.outputs.package-server-ai-openai-tag-name }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh api "repos/${{ github.repository }}/git/ref/tags/${TAG_NAME}" >/dev/null 2>&1; then
+            echo "Tag ${TAG_NAME} already exists, skipping creation."
+          else
+            echo "Creating tag ${TAG_NAME}."
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git tag "${TAG_NAME}"
+            git push origin "${TAG_NAME}"
+          fi
 
       - uses: ./.github/actions/ci
         with:
@@ -200,6 +241,17 @@ jobs:
         id: build
         with:
           workspace_path: packages/ai-providers/server-ai-openai
+
+      - name: Generate checksums file
+        env:
+          HASHES: ${{ steps.build.outputs.package-hashes }}
+        run: |
+          echo "$HASHES" | base64 -d > checksums.txt
+
+      - name: Attest build provenance
+        uses: actions/attest@v4
+        with:
+          subject-checksums: checksums.txt
 
       - uses: launchdarkly/gh-actions/actions/release-secrets@release-secrets-v1.2.0
         name: 'Get PyPI token'
@@ -213,31 +265,33 @@ jobs:
           password: ${{ env.PYPI_AUTH_TOKEN }}
           packages-dir: packages/ai-providers/server-ai-openai/dist/
 
-  release-server-ai-openai-provenance:
-    needs: ['release-please', 'release-server-ai-openai']
-    if: ${{ needs.release-please.outputs.package-server-ai-openai-released == 'true' }}
-    permissions:
-      actions: read # Needed for detecting the GitHub Actions environment.
-      id-token: write # Needed for provenance signing.
-      contents: write # Needed for uploading assets to the release.
-    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v2.0.0
-    with:
-      base64-subjects: "${{ needs.release-server-ai-openai.outputs.package-hashes }}"
-      upload-assets: true
-      upload-tag-name: ${{ needs.release-please.outputs.package-server-ai-openai-tag-name }}
-
   release-server-ai-optimization:
     runs-on: ubuntu-latest
     needs: ['release-please']
     permissions:
       id-token: write # Needed for OIDC to get release secrets from AWS.
+      attestations: write # Needed for actions/attest.
+      contents: write # Needed for creating tags.
     if: ${{ needs.release-please.outputs.package-server-ai-optimization-released == 'true' }}
-    outputs:
-      package-hashes: ${{ steps.build.outputs.package-hashes }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Create release tag
+        env:
+          TAG_NAME: ${{ needs.release-please.outputs.package-server-ai-optimization-tag-name }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh api "repos/${{ github.repository }}/git/ref/tags/${TAG_NAME}" >/dev/null 2>&1; then
+            echo "Tag ${TAG_NAME} already exists, skipping creation."
+          else
+            echo "Creating tag ${TAG_NAME}."
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git tag "${TAG_NAME}"
+            git push origin "${TAG_NAME}"
+          fi
 
       - uses: ./.github/actions/ci
         with:
@@ -247,6 +301,17 @@ jobs:
         id: build
         with:
           workspace_path: packages/optimization
+
+      - name: Generate checksums file
+        env:
+          HASHES: ${{ steps.build.outputs.package-hashes }}
+        run: |
+          echo "$HASHES" | base64 -d > checksums.txt
+
+      - name: Attest build provenance
+        uses: actions/attest@v4
+        with:
+          subject-checksums: checksums.txt
 
       - uses: launchdarkly/gh-actions/actions/release-secrets@release-secrets-v1.2.0
         name: 'Get PyPI token'
@@ -260,15 +325,49 @@ jobs:
           password: ${{ env.PYPI_AUTH_TOKEN }}
           packages-dir: packages/optimization/dist/
 
-  release-server-ai-optimization-provenance:
-    needs: ['release-please', 'release-server-ai-optimization']
-    if: ${{ needs.release-please.outputs.package-server-ai-optimization-released == 'true' }}
+  publish-release:
+    needs: ['release-please', 'release-server-ai', 'release-server-ai-langchain', 'release-server-ai-openai', 'release-server-ai-optimization']
+    if: ${{ always() && needs.release-please.result == 'success' && (needs.release-please.outputs.package-server-ai-released == 'true' || needs.release-please.outputs.package-server-ai-langchain-released == 'true' || needs.release-please.outputs.package-server-ai-openai-released == 'true' || needs.release-please.outputs.package-server-ai-optimization-released == 'true') }}
+    runs-on: ubuntu-latest
     permissions:
-      actions: read # Needed for detecting the GitHub Actions environment.
-      id-token: write # Needed for provenance signing.
-      contents: write # Needed for uploading assets to the release.
-    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v2.0.0
-    with:
-      base64-subjects: "${{ needs.release-server-ai-optimization.outputs.package-hashes }}"
-      upload-assets: true
-      upload-tag-name: ${{ needs.release-please.outputs.package-server-ai-optimization-tag-name }}
+      contents: write
+    steps:
+      - name: Publish server-ai release
+        if: ${{ needs.release-please.outputs.package-server-ai-released == 'true' && needs.release-server-ai.result == 'success' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ needs.release-please.outputs.package-server-ai-tag-name }}
+        run: >
+          gh release edit "$TAG_NAME"
+          --repo ${{ github.repository }}
+          --draft=false
+
+      - name: Publish server-ai-langchain release
+        if: ${{ needs.release-please.outputs.package-server-ai-langchain-released == 'true' && needs.release-server-ai-langchain.result == 'success' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ needs.release-please.outputs.package-server-ai-langchain-tag-name }}
+        run: >
+          gh release edit "$TAG_NAME"
+          --repo ${{ github.repository }}
+          --draft=false
+
+      - name: Publish server-ai-openai release
+        if: ${{ needs.release-please.outputs.package-server-ai-openai-released == 'true' && needs.release-server-ai-openai.result == 'success' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ needs.release-please.outputs.package-server-ai-openai-tag-name }}
+        run: >
+          gh release edit "$TAG_NAME"
+          --repo ${{ github.repository }}
+          --draft=false
+
+      - name: Publish server-ai-optimization release
+        if: ${{ needs.release-please.outputs.package-server-ai-optimization-released == 'true' && needs.release-server-ai-optimization.result == 'success' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ needs.release-please.outputs.package-server-ai-optimization-tag-name }}
+        run: >
+          gh release edit "$TAG_NAME"
+          --repo ${{ github.repository }}
+          --draft=false
