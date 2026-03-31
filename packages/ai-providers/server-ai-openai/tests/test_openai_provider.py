@@ -72,6 +72,15 @@ class TestGetAIUsageFromResponse:
         u = get_ai_usage_from_response(_make_completions_response(total=0, prompt=0, completion=0))
         assert u is None
 
+    def test_zero_input_tokens_not_conflated_with_missing(self):
+        """input_tokens=0 should be used as-is, not fall through to prompt_tokens."""
+        u = get_ai_usage_from_response(
+            _make_runner_result(total=10, input_tokens=0, output_tokens=10)
+        )
+        assert u is not None
+        assert u.input == 0
+        assert u.output == 10
+
 
 class TestGetAIMetricsFromResponse:
     """Tests for get_ai_metrics_from_response."""

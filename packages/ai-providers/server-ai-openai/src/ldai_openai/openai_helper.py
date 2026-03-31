@@ -46,30 +46,29 @@ def get_ai_usage_from_response(response: Any) -> Optional[TokenUsage]:
 
     Handles both chat completions responses (``response.usage``) and
     openai-agents ``RunResult`` objects (``response.context_wrapper.usage``).
-    Field names are normalised: agents SDK uses ``input_tokens``/``output_tokens``
-    while the chat completions API uses ``prompt_tokens``/``completion_tokens``.
 
     :param response: An OpenAI chat completions response or openai-agents RunResult
     :return: TokenUsage or None if unavailable
     """
-    usage = None
     try:
         usage = response.context_wrapper.usage
+        if usage is not None:
+            total = getattr(usage, 'total_tokens', None) or 0
+            inp = getattr(usage, 'input_tokens', None) or 0
+            out = getattr(usage, 'output_tokens', None) or 0
+            if total or inp or out:
+                return TokenUsage(total=total, input=inp, output=out)
     except Exception:
         pass
 
-    if usage is None and hasattr(response, 'usage') and response.usage:
-        usage = response.usage
+    usage = getattr(response, 'usage', None)
+    if usage is not None:
+        total = getattr(usage, 'total_tokens', None) or 0
+        inp = getattr(usage, 'prompt_tokens', None) or 0
+        out = getattr(usage, 'completion_tokens', None) or 0
+        if total or inp or out:
+            return TokenUsage(total=total, input=inp, output=out)
 
-    if usage is None:
-        return None
-
-    total = getattr(usage, 'total_tokens', None) or 0
-    inp = getattr(usage, 'input_tokens', None) or getattr(usage, 'prompt_tokens', None) or 0
-    out = getattr(usage, 'output_tokens', None) or getattr(usage, 'completion_tokens', None) or 0
-
-    if total or inp or out:
-        return TokenUsage(total=total, input=inp, output=out)
     return None
 
 
