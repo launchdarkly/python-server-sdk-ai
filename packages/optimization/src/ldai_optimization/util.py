@@ -241,7 +241,7 @@ def extract_json_from_response(response_str: str) -> Dict[str, Any]:
             try:
                 response_data = json.loads(json_match.group())
             except json.JSONDecodeError:
-                logger.error(
+                logger.debug(
                     "Extracted JSON string failed to parse: %s",
                     json_match.group()[:200],
                 )
@@ -250,7 +250,7 @@ def extract_json_from_response(response_str: str) -> Dict[str, Any]:
                 )
 
     if response_data is None:
-        logger.error(
+        logger.debug(
             "Failed to extract JSON from response. "
             "Response length: %d, response: %s",
             len(response_str),

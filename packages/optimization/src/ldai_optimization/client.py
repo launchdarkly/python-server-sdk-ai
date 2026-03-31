@@ -372,7 +372,7 @@ class OptimizationClient:
 
                 threshold = optimization_judge.threshold if optimization_judge.threshold is not None else 1.0
                 passed = result.score >= threshold
-                logger.info(
+                logger.debug(
                     "[Iteration %d] -> Judge '%s' scored %.3f (threshold=%.3f) -> %s%s",
                     iteration,
                     judge_key,
@@ -388,7 +388,7 @@ class OptimizationClient:
                 judge_results[judge_key] = JudgeResult(score=0.0, rationale=None)
 
         judge_results_json = self._serialize_scores(judge_results)
-        logger.info(
+        logger.debug(
             "[Iteration %d] -> Evaluation result: %s",
             iteration,
             json.dumps(judge_results_json, indent=2),
@@ -526,7 +526,7 @@ class OptimizationClient:
         )
         judge_response_str = await await_if_needed(result)
 
-        logger.info(
+        logger.debug(
             "[Iteration %d] -> Judge response (%s): %s",
             iteration,
             judge_key,
@@ -636,7 +636,7 @@ class OptimizationClient:
         )
         judge_response = await await_if_needed(result)
 
-        logger.info(
+        logger.debug(
             "[Iteration %d] -> Judge response (%s): %s", iteration, judge_key, judge_response
         )
 
@@ -1011,7 +1011,7 @@ class OptimizationClient:
             missing_fields.append("model")
 
         if missing_fields:
-            logger.error(
+            logger.debug(
                 "[Iteration %d] -> Response missing required fields: %s. Received fields: %s. Full response_data: %s",
                 iteration,
                 ", ".join(missing_fields),
@@ -1056,7 +1056,7 @@ class OptimizationClient:
                 self._current_model,
             )
 
-        logger.info(
+        logger.debug(
             "[Iteration %d] -> New variation generated: instructions='%s', model=%s, parameters=%s",
             iteration,
             self._current_instructions,
@@ -1184,7 +1184,7 @@ class OptimizationClient:
                 self._builtin_agent_tool_handlers(is_variation=False),
             )
             completion_response = await await_if_needed(result)
-            logger.info(
+            logger.debug(
                 "[Iteration %d] -> Agent response: %.300s%s",
                 iteration,
                 completion_response,
@@ -1322,7 +1322,7 @@ class OptimizationClient:
             if self._options.user_input_options:
                 user_input = random.choice(self._options.user_input_options)
             if user_input:
-                logger.info("[Iteration %d] -> User input: %s", iteration, user_input)
+                logger.debug("[Iteration %d] -> User input: %s", iteration, user_input)
 
             optimize_context = self._create_optimization_context(
                 iteration=iteration,
