@@ -1,3 +1,4 @@
+from ldai_langchain.langchain_agent_runner import LangChainAgentRunner
 from ldai_langchain.langchain_helper import (
     convert_messages_to_langchain,
     create_langchain_model,
@@ -18,6 +19,7 @@ __all__ = [
     'LangChainRunnerFactory',
     'LangGraphAgentGraphRunner',
     'LangChainModelRunner',
+    'LangChainAgentRunner',
     'convert_messages_to_langchain',
     'create_langchain_model',
     'get_ai_metrics_from_response',

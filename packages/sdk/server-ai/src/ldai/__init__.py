@@ -6,6 +6,7 @@ from ldai.agent_graph import AgentGraphDefinition
 from ldai.chat import Chat  # Deprecated — use ManagedModel
 from ldai.client import LDAIClient
 from ldai.judge import Judge
+from ldai.managed_agent import ManagedAgent
 from ldai.managed_agent_graph import ManagedAgentGraph
 from ldai.managed_model import ManagedModel
 from ldai.models import (  # Deprecated aliases for backward compatibility
@@ -56,6 +57,7 @@ __all__ = [
     'AICompletionConfigDefault',
     'AIJudgeConfig',
     'AIJudgeConfigDefault',
+    'ManagedAgent',
     'ManagedModel',
     'ManagedAgentGraph',
     'EvalScore',
