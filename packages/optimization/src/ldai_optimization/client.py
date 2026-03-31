@@ -1,6 +1,6 @@
 """Client for LaunchDarkly AI agent optimization."""
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 import dataclasses
 import os
 import logging
@@ -19,7 +19,7 @@ from ldai_optimization.dataclasses import (
     OptimizationJudge,
     OptimizationJudgeContext,
     OptimizationOptions,
-    StructuredOutputTool,
+    ToolDefinition,
 )
 from ldai_optimization.util import (
     await_if_needed,
@@ -60,7 +60,9 @@ class OptimizationClient:
         self, agent_config: AIAgentConfig
     ) -> None:
         self._current_instructions = agent_config.instructions or ""
-        self._current_parameters: Dict[str, Any] = agent_config.model._parameters or {}
+        self._current_parameters: Dict[str, Any] = (
+            agent_config.model._parameters if agent_config.model else None
+        ) or {}
         self._current_model: Optional[str] = (
             agent_config.model.name if agent_config.model else None
         )
@@ -128,7 +130,10 @@ class OptimizationClient:
         )
 
     def _safe_status_update(
-        self, status: str, context: OptimizationContext, iteration: int
+        self,
+        status: Literal["init", "generating", "evaluating", "generating variation", "turn completed", "success", "failure"],
+        context: OptimizationContext,
+        iteration: int,
     ) -> None:
         """
         Safely call on_status_update callback, catching and logging errors.
@@ -215,10 +220,10 @@ class OptimizationClient:
         Extract and normalise the tools list from agent parameters.
 
         Reads the ``tools`` key from *parameters* (if present) and converts
-        every entry to a StructuredOutputTool so judges receive typed objects.
+        every entry to a ToolDefinition so judges receive typed objects.
 
         :param parameters: The agent's current_parameters dict
-        :return: List of StructuredOutputTool instances, empty list if no tools are configured
+        :return: List of ToolDefinition instances, empty list if no tools are configured
         """
         raw_tools = parameters.get("tools", [])
         if not raw_tools:
@@ -228,12 +233,12 @@ class OptimizationClient:
 
         result = []
         for tool in raw_tools:
-            if isinstance(tool, StructuredOutputTool):
+            if isinstance(tool, ToolDefinition):
                 result.append(tool)
             elif hasattr(tool, "to_dict"):
-                result.append(StructuredOutputTool.from_dict(tool.to_dict()))
+                result.append(ToolDefinition.from_dict(tool.to_dict()))
             elif isinstance(tool, dict):
-                result.append(StructuredOutputTool.from_dict(tool))
+                result.append(ToolDefinition.from_dict(tool))
         return result
 
     def _parse_judge_response(
@@ -310,7 +315,7 @@ class OptimizationClient:
         iteration: int,
         user_input: str,
         variables: Optional[Dict[str, Any]] = None,
-        agent_tools: Optional[List[StructuredOutputTool]] = None,
+        agent_tools: Optional[List[ToolDefinition]] = None,
     ) -> Dict[str, JudgeResult]:
         """
         Call all judges in parallel (auto-path).
@@ -331,7 +336,7 @@ class OptimizationClient:
             return {}
 
         resolved_variables: Dict[str, Any] = variables or {}
-        resolved_agent_tools: List[Dict[str, Any]] = agent_tools or []
+        resolved_agent_tools: List[ToolDefinition] = agent_tools or []
 
         logger.info("[Iteration %d] -> Executing evaluation...", iteration)
         reasoning_history = self._build_reasoning_history()
@@ -404,7 +409,7 @@ class OptimizationClient:
         reasoning_history: str,
         user_input: str,
         variables: Optional[Dict[str, Any]] = None,
-        agent_tools: Optional[List[StructuredOutputTool]] = None,
+        agent_tools: Optional[List[ToolDefinition]] = None,
     ) -> JudgeResult:
         """
         Evaluate using a config-type judge (with judge_key).
@@ -434,6 +439,7 @@ class OptimizationClient:
             "response_to_evaluate": completion_response,
         }
 
+        assert optimization_judge.judge_key is not None
         judge_config = self._judge_config(
             optimization_judge.judge_key,
             self._options.context_choices[0],
@@ -485,18 +491,18 @@ class OptimizationClient:
         # Collect model parameters from the judge config, separating out any existing tools
         model_name = judge_config.model.name if judge_config.model else self._options.judge_model
         model_params: Dict[str, Any] = {}
-        tools: List[StructuredOutputTool] = []
+        tools: List[ToolDefinition] = []
         if judge_config.model and judge_config.model._parameters:
             existing_tools = judge_config.model._parameters.get("tools")
             if existing_tools:
                 raw = existing_tools if isinstance(existing_tools, list) else [existing_tools]
                 for t in raw:
-                    if isinstance(t, StructuredOutputTool):
+                    if isinstance(t, ToolDefinition):
                         tools.append(t)
                     elif hasattr(t, "to_dict"):
-                        tools.append(StructuredOutputTool.from_dict(t.to_dict()))
+                        tools.append(ToolDefinition.from_dict(t.to_dict()))
                     elif isinstance(t, dict):
-                        tools.append(StructuredOutputTool.from_dict(t))
+                        tools.append(ToolDefinition.from_dict(t))
             model_params = {k: v for k, v in judge_config.model._parameters.items() if k != "tools"}
 
         # Prepend agent tools so the judge can call them when verifying the response
@@ -552,7 +558,7 @@ class OptimizationClient:
         reasoning_history: str,
         user_input: str,
         variables: Optional[Dict[str, Any]] = None,
-        agent_tools: Optional[List[StructuredOutputTool]] = None,
+        agent_tools: Optional[List[ToolDefinition]] = None,
     ) -> JudgeResult:
         """
         Evaluate using an acceptance statement judge.
@@ -609,7 +615,7 @@ class OptimizationClient:
             )
 
         # Prepend agent tools so the judge can invoke them for verification if needed
-        tools: List[StructuredOutputTool] = list(resolved_agent_tools) + [create_evaluation_tool()]
+        tools: List[ToolDefinition] = list(resolved_agent_tools) + [create_evaluation_tool()]
 
         judge_user_input = f"Here is the response to evaluate: {completion_response}"
 
@@ -889,7 +895,7 @@ class OptimizationClient:
             "\nSTART:"
             "\n" + self._initial_instructions + "\n",
             "\nEND OF ORIGINAL INSTRUCTIONS\n",
-            "The following prompt variables are available and are the only variables that should be used: {placeholder_list}"
+            f"The following prompt variables are available and are the only variables that should be used: {placeholder_list}"
             "Here is an example of a good response if an {{id}} placeholder is available: 'Select records matching id {{id}}'",
             "Here is an example of a bad response if an {{id}} placeholder is available: 'Select records matching id 1232'",
             "Here is an example of a good response if a {{resource_id}} and {{resource_type}} placeholder are available: 'Select records matching id {{resource_id}} and type {{resource_type}}'",
@@ -1203,7 +1209,7 @@ class OptimizationClient:
             scores = await self._call_judges(
                 completion_response,
                 iteration,
-                user_input=optimize_context.user_input,
+                user_input=optimize_context.user_input or "",
                 variables=optimize_context.current_variables,
                 agent_tools=agent_tools,
             )
@@ -1358,10 +1364,10 @@ class OptimizationClient:
                     logger.exception(
                         "[Iteration %d] -> on_turn evaluation failed", iteration
                     )
-                    self._history.append(optimize_context)
-                    await self._generate_new_variation(iteration, optimize_context.current_variables)
                     if iteration >= self._options.max_attempts:
                         return self._handle_failure(optimize_context, iteration)
+                    self._history.append(optimize_context)
+                    await self._generate_new_variation(iteration, optimize_context.current_variables)
                     self._safe_status_update(
                         "turn completed", optimize_context, iteration
                     )
@@ -1377,10 +1383,10 @@ class OptimizationClient:
                         "[Iteration %d] -> One or more judges failed (attempt %d/%d) — generating new variation",
                         iteration, iteration, self._options.max_attempts,
                     )
-                    self._history.append(optimize_context)
-                    await self._generate_new_variation(iteration, optimize_context.current_variables)
                     if iteration >= self._options.max_attempts:
                         return self._handle_failure(optimize_context, iteration)
+                    self._history.append(optimize_context)
+                    await self._generate_new_variation(iteration, optimize_context.current_variables)
                     self._safe_status_update(
                         "turn completed", optimize_context, iteration
                     )

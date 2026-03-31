@@ -10,6 +10,7 @@ from ldai_optimization.dataclasses import (
     OptimizationJudge,
     OptimizationJudgeContext,
     OptimizationOptions,
+    ToolDefinition,
 )
 
 __version__ = "0.0.0"
@@ -22,4 +23,5 @@ __all__ = [
     'OptimizationJudge',
     'OptimizationJudgeContext',
     'OptimizationOptions',
+    'ToolDefinition',
 ]

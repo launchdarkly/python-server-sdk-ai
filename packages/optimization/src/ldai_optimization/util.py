@@ -6,7 +6,7 @@ import logging
 import re
 from typing import Any, Awaitable, Dict, List, Optional, Union
 
-from ldai_optimization.dataclasses import StructuredOutputTool
+from ldai_optimization.dataclasses import ToolDefinition
 
 logger = logging.getLogger(__name__)
 
@@ -86,13 +86,13 @@ async def await_if_needed(
         return result
 
 
-def create_evaluation_tool() -> StructuredOutputTool:
+def create_evaluation_tool() -> ToolDefinition:
     """
     Create the structured output tool for judge evaluations.
 
-    :return: A StructuredOutputTool for evaluation responses
+    :return: A ToolDefinition for evaluation responses
     """
-    return StructuredOutputTool(
+    return ToolDefinition(
         type="function",
         name="return_evaluation",
         description="Returns an evaluation with a score and rationale.",
@@ -113,13 +113,13 @@ def create_evaluation_tool() -> StructuredOutputTool:
     )
 
 
-def create_boolean_tool() -> StructuredOutputTool:
+def create_boolean_tool() -> ToolDefinition:
     """
     Create the structured output tool for acceptance judges.
 
-    :return: A StructuredOutputTool for boolean evaluation responses
+    :return: A ToolDefinition for boolean evaluation responses
     """
-    return StructuredOutputTool(
+    return ToolDefinition(
         type="function",
         name="return_boolean",
         description="Returns a boolean value and reasoning for the evaluation.",
@@ -140,14 +140,14 @@ def create_boolean_tool() -> StructuredOutputTool:
     )
 
 
-def create_variation_tool(model_choices: List[str]) -> StructuredOutputTool:
+def create_variation_tool(model_choices: List[str]) -> ToolDefinition:
     """
     Create the structured output tool for variation generation.
 
     :param model_choices: List of model IDs the LLM may select from
-    :return: A StructuredOutputTool for variation generation responses
+    :return: A ToolDefinition for variation generation responses
     """
-    return StructuredOutputTool(
+    return ToolDefinition(
         type="function",
         name="return_improved_configuration",
         description=(

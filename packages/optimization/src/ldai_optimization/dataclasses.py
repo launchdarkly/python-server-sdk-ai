@@ -40,7 +40,7 @@ class JudgeResult:
 
 
 @dataclass
-class StructuredOutputTool:
+class ToolDefinition:
     """
     Generic tool definition for enforcing structured output from LLM responses.
 
@@ -68,13 +68,13 @@ class StructuredOutputTool:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "StructuredOutputTool":
+    def from_dict(cls, data: Dict[str, Any]) -> "ToolDefinition":
         """
-        Construct a StructuredOutputTool from a plain dictionary.
+        Construct a ToolDefinition from a plain dictionary.
 
         :param data: Dictionary with at least a ``name`` key; ``description`` and
             ``input_schema`` default to empty values when absent.
-        :return: A new StructuredOutputTool instance
+        :return: A new ToolDefinition instance
         """
         return cls(
             name=data.get("name", ""),

@@ -17,7 +17,7 @@ from ldai_optimization.dataclasses import (
     OptimizationJudge,
     OptimizationJudgeContext,
     OptimizationOptions,
-    StructuredOutputTool,
+    ToolDefinition,
 )
 from ldai_optimization.util import (
     create_evaluation_tool,
@@ -172,11 +172,11 @@ class TestExtractAgentTools:
         }
         result = self.client._extract_agent_tools({"tools": [tool_dict]})
         assert len(result) == 1
-        assert isinstance(result[0], StructuredOutputTool)
+        assert isinstance(result[0], ToolDefinition)
         assert result[0].name == "lookup"
 
     def test_passes_through_existing_structured_output_tool(self):
-        tool = StructuredOutputTool(
+        tool = ToolDefinition(
             name="my-tool", description="desc", input_schema={}
         )
         result = self.client._extract_agent_tools({"tools": [tool]})
@@ -456,7 +456,7 @@ class TestEvaluateAcceptanceJudge:
         assert create_evaluation_tool().name in tool_names
 
     async def test_agent_tools_prepended_to_config_tools(self):
-        agent_tool = StructuredOutputTool(
+        agent_tool = ToolDefinition(
             name="lookup", description="Lookup data", input_schema={}
         )
         judge = OptimizationJudge(threshold=0.8, acceptance_statement="Use tool.")
@@ -679,7 +679,7 @@ class TestEvaluateConfigJudge:
 
     async def test_agent_tools_prepended_before_evaluation_tool(self):
         self.mock_ldai.judge_config.return_value = self._make_judge_config()
-        agent_tool = StructuredOutputTool(name="search", description="Search", input_schema={})
+        agent_tool = ToolDefinition(name="search", description="Search", input_schema={})
         judge = OptimizationJudge(threshold=0.8, judge_key="ld-judge-key")
         await self.client._evaluate_config_judge(
             judge_key="quality",
@@ -858,15 +858,14 @@ class TestRunOptimization:
         assert handle_agent_call.call_count == 3  # 1 agent + 1 variation + 1 agent
 
     async def test_returns_last_context_after_max_attempts(self):
-        # The loop always calls _generate_new_variation before the max_attempts
-        # guard, so each of the 3 failing iterations produces a variation call.
+        # The max_attempts guard fires before variation on the final iteration,
+        # so only iterations 1 and 2 produce a variation call.
         handle_agent_call = AsyncMock(side_effect=[
             "Bad answer.",       # iteration 1: agent
             VARIATION_RESPONSE,  # iteration 1: variation
             "Still bad.",        # iteration 2: agent
             VARIATION_RESPONSE,  # iteration 2: variation
-            "Still bad.",        # iteration 3: agent
-            VARIATION_RESPONSE,  # iteration 3: variation (before max-attempts guard)
+            "Still bad.",        # iteration 3: agent (max_attempts reached — no variation)
         ])
         handle_judge_call = AsyncMock(return_value=JUDGE_FAIL_RESPONSE)
         client = _make_client(self.mock_ldai)
@@ -896,8 +895,7 @@ class TestRunOptimization:
         handle_agent_call = AsyncMock(side_effect=[
             "Bad.",             # iteration 1: agent
             VARIATION_RESPONSE, # iteration 1: variation
-            "Still bad.",       # iteration 2: agent
-            VARIATION_RESPONSE, # iteration 2: variation (before max-attempts guard)
+            "Still bad.",       # iteration 2: agent (max_attempts reached — no variation)
         ])
         handle_judge_call = AsyncMock(return_value=JUDGE_FAIL_RESPONSE)
         client = _make_client(self.mock_ldai)
