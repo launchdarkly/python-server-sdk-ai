@@ -19,6 +19,10 @@ from ldai_optimization.dataclasses import (
     OptimizationOptions,
     ToolDefinition,
 )
+from ldai_optimization.prompts import (
+    build_new_variation_prompt,
+    variation_prompt_acceptance_criteria,
+)
 from ldai_optimization.util import (
     create_evaluation_tool,
     create_variation_tool,
@@ -949,60 +953,56 @@ class TestRunOptimization:
 
 
 class TestVariationPromptAcceptanceCriteria:
-    def setup_method(self):
-        self.client = _make_client()
-        agent_config = _make_agent_config()
-        self.client._agent_key = "test-agent"
-        self.client._agent_config = agent_config
-        self.client._initial_instructions = AGENT_INSTRUCTIONS
-        self.client._initialize_class_members_from_config(agent_config)
-
-    def _set_judges(self, judges):
-        self.client._options = _make_options(judges=judges)
-
     def test_includes_acceptance_statement_in_section(self):
-        self._set_judges({
+        judges = {
             "quality": OptimizationJudge(
                 threshold=0.8,
                 acceptance_statement="Responses must be concise and factual.",
             )
-        })
-        section = self.client._new_variation_prompt_acceptance_criteria()
+        }
+        section = variation_prompt_acceptance_criteria(judges)
         assert "Responses must be concise and factual." in section
         assert "quality" in section
 
     def test_labels_all_judges(self):
-        self._set_judges({
+        judges = {
             "a": OptimizationJudge(threshold=0.8, acceptance_statement="Must be brief."),
             "b": OptimizationJudge(threshold=0.9, acceptance_statement="Must cite sources."),
-        })
-        section = self.client._new_variation_prompt_acceptance_criteria()
+        }
+        section = variation_prompt_acceptance_criteria(judges)
         assert "[a]" in section
         assert "[b]" in section
         assert "Must be brief." in section
         assert "Must cite sources." in section
 
     def test_returns_empty_string_when_no_acceptance_statements(self):
-        self._set_judges({
+        judges = {
             "ld-judge": OptimizationJudge(threshold=0.8, judge_key="some-ld-key"),
-        })
-        section = self.client._new_variation_prompt_acceptance_criteria()
+        }
+        section = variation_prompt_acceptance_criteria(judges)
         assert section == ""
 
     def test_returns_empty_string_with_no_judges(self):
-        options = MagicMock()
-        options.judges = None
-        self.client._options = options
-        section = self.client._new_variation_prompt_acceptance_criteria()
+        section = variation_prompt_acceptance_criteria(None)
         assert section == ""
 
     def test_section_appears_in_full_prompt(self):
-        self._set_judges({
+        judges = {
             "accuracy": OptimizationJudge(
                 threshold=0.8,
                 acceptance_statement="Facts only.",
             )
-        })
-        prompt = self.client._build_new_variation_prompt([])
+        }
+        options = _make_options(judges=judges)
+        prompt = build_new_variation_prompt(
+            history=[],
+            judges=judges,
+            current_model="gpt-4o",
+            current_instructions=AGENT_INSTRUCTIONS,
+            current_parameters={},
+            model_choices=options.model_choices,
+            variable_choices=options.variable_choices,
+            initial_instructions=AGENT_INSTRUCTIONS,
+        )
         assert "Facts only." in prompt
         assert "ACCEPTANCE CRITERIA" in prompt
