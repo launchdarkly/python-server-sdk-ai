@@ -15,6 +15,7 @@ from typing import (
     Union,
 )
 
+from ldai import AIAgentConfig
 from ldclient import Context
 
 
@@ -50,6 +51,7 @@ class StructuredOutputTool:
     name: str
     description: str
     input_schema: Dict[str, Any]  # JSON schema defining the expected output structure
+    type: Literal["function"] = "function"
 
     def to_dict(self) -> Dict[str, Any]:
         """
@@ -61,7 +63,24 @@ class StructuredOutputTool:
             "name": self.name,
             "description": self.description,
             "input_schema": self.input_schema,
+            "type": self.type,
         }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "StructuredOutputTool":
+        """
+        Construct a StructuredOutputTool from a plain dictionary.
+
+        :param data: Dictionary with at least a ``name`` key; ``description`` and
+            ``input_schema`` default to empty values when absent.
+        :return: A new StructuredOutputTool instance
+        """
+        return cls(
+            name=data.get("name", ""),
+            description=data.get("description", ""),
+            input_schema=data.get("input_schema", {}),
+            type=data.get("type", "function"),
+        )
 
 
 @dataclass
@@ -102,15 +121,13 @@ class OptimizationContext:
     completion_response: str
     current_instructions: str
     current_parameters: Dict[str, Any]
+    current_variables: Dict[str, Any]  # variable set chosen for this iteration; interpolated into instructions at call time
     current_model: Optional[str] = None  # the current model being used
     user_input: Optional[str] = None  # the user input message for this iteration
     history: Sequence[OptimizationContext] = field(
         default_factory=list
     )  # previous context items
     iteration: int = 0  # current iteration number
-    structured_output_tool: Optional[StructuredOutputTool] = (
-        None  # tool definition for structured output
-    )
 
     def copy_without_history(self) -> OptimizationContext:
         """
@@ -123,11 +140,11 @@ class OptimizationContext:
             completion_response=self.completion_response,
             current_instructions=self.current_instructions,
             current_parameters=self.current_parameters,
+            current_variables=self.current_variables,
             current_model=self.current_model,
             user_input=self.user_input,
             history=(),  # Empty history to keep it flat
             iteration=self.iteration,
-            structured_output_tool=self.structured_output_tool,
         )
 
     def to_json(self) -> Dict[str, Any]:
@@ -140,10 +157,6 @@ class OptimizationContext:
         for judge_key, judge_result in self.scores.items():
             scores_dict[judge_key] = judge_result.to_json()
 
-        structured_output_tool_dict = None
-        if self.structured_output_tool:
-            structured_output_tool_dict = self.structured_output_tool.to_dict()
-
         history_list = [ctx.to_json() for ctx in self.history]
 
         return {
@@ -153,19 +166,18 @@ class OptimizationContext:
             "current_parameters": self.current_parameters,
             "current_model": self.current_model,
             "user_input": self.user_input,
+            "current_variables": self.current_variables,
             "history": history_list,
             "iteration": self.iteration,
-            "structured_output_tool": structured_output_tool_dict,
         }
 
 
 @dataclass
 class OptimizationJudgeContext:
-    """Context for judge evaluation."""
+    """Context for a single judge evaluation turn."""
 
-    messages: List[Message]
-    parameters: Dict[str, Any]
-    tools: Optional[List[Dict[str, Any]]] = None
+    user_input: str  # the agent response being evaluated
+    variables: Dict[str, Any] = field(default_factory=dict)  # variable set used during agent generation
 
 
 @dataclass
@@ -183,12 +195,12 @@ class OptimizationOptions:
     ]  # choices of interpolated variables to be chosen at random per turn, 1 min required
     # Actual agent/completion (judge) calls - Required
     handle_agent_call: Union[
-        Callable[[str, OptimizationContext], str],
-        Callable[[str, OptimizationContext], Awaitable[str]],
+        Callable[[str, AIAgentConfig, OptimizationContext, Dict[str, Callable[..., Any]]], str],
+        Callable[[str, AIAgentConfig, OptimizationContext, Dict[str, Callable[..., Any]]], Awaitable[str]],
     ]
     handle_judge_call: Union[
-        Callable[[str, OptimizationContext], str],
-        Callable[[str, OptimizationJudgeContext], Awaitable[str]],
+        Callable[[str, AIAgentConfig, OptimizationJudgeContext, Dict[str, Callable[..., Any]]], str],
+        Callable[[str, AIAgentConfig, OptimizationJudgeContext, Dict[str, Callable[..., Any]]], Awaitable[str]],
     ]
     # Criteria for pass/fail - Optional
     user_input_options: Optional[List[str]] = (
@@ -230,8 +242,6 @@ class OptimizationOptions:
             raise ValueError("context_choices must have at least 1 context")
         if len(self.model_choices) < 1:
             raise ValueError("model_choices must have at least 1 model")
-        if len(self.variable_choices) < 1:
-            raise ValueError("variable_choices must have at least 1 variable choice")
         if self.judges is None and self.on_turn is None:
             raise ValueError("Either judges or on_turn must be provided")
         if self.judge_model is None:

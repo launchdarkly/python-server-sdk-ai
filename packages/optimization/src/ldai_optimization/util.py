@@ -11,6 +11,66 @@ from ldai_optimization.dataclasses import StructuredOutputTool
 logger = logging.getLogger(__name__)
 
 
+def handle_evaluation_tool_call(score: float, rationale: str) -> str:
+    """
+    Process the return_evaluation tool call from the judge LLM.
+
+    Serialises the score and rationale to a JSON string. The caller
+    (handle_judge_call implementor) should return this string as the result of
+    the judge turn; the framework will then parse it via _parse_judge_response
+    to extract the score and rationale.
+
+    :param score: The evaluation score (0.0 to 1.0)
+    :param rationale: Explanation of the evaluation decision
+    :return: JSON string of the score and rationale
+    """
+    return json.dumps({"score": score, "rationale": rationale})
+
+
+def handle_variation_tool_call(
+    current_instructions: str,
+    current_parameters: Dict[str, Any],
+    model: str,
+) -> str:
+    """
+    Process the return_improved_configuration tool call from the variation LLM.
+
+    Serialises the improved configuration to a JSON string. The caller
+    (handle_agent_call implementor) should return this string as the result of
+    the variation agent turn; the framework will then parse it via
+    extract_json_from_response and apply it in _apply_new_variation_response.
+
+    :param current_instructions: The improved agent instructions
+    :param current_parameters: The improved agent parameters (e.g. temperature, max_tokens)
+    :param model: The model to use for the improved agent
+    :return: JSON string of the improved configuration
+    """
+    return json.dumps({
+        "current_instructions": current_instructions,
+        "current_parameters": current_parameters,
+        "model": model,
+    })
+
+
+def interpolate_variables(text: str, variables: Dict[str, Any]) -> str:
+    """
+    Interpolate ``{{variable}}`` placeholders in text using the provided variables.
+
+    Matches LaunchDarkly's Mustache-style template format so that manually
+    generated variation instructions use the same syntax as LD-fetched templates.
+    Unrecognised placeholders are left unchanged.
+
+    :param text: Template string potentially containing ``{{key}}`` placeholders
+    :param variables: Mapping of variable names to their replacement values
+    :return: Text with all recognised placeholders replaced
+    """
+    def replace(match: re.Match) -> str:
+        key = match.group(1).strip()
+        return str(variables[key]) if key in variables else match.group(0)
+
+    return re.sub(r"\{\{(\w+)\}\}", replace, text)
+
+
 async def await_if_needed(
     result: Union[str, Awaitable[str]]
 ) -> str:
@@ -33,6 +93,7 @@ def create_evaluation_tool() -> StructuredOutputTool:
     :return: A StructuredOutputTool for evaluation responses
     """
     return StructuredOutputTool(
+        type="function",
         name="return_evaluation",
         description="Returns an evaluation with a score and rationale.",
         input_schema={
@@ -59,6 +120,7 @@ def create_boolean_tool() -> StructuredOutputTool:
     :return: A StructuredOutputTool for boolean evaluation responses
     """
     return StructuredOutputTool(
+        type="function",
         name="return_boolean",
         description="Returns a boolean value and reasoning for the evaluation.",
         input_schema={
@@ -86,6 +148,7 @@ def create_variation_tool(model_choices: List[str]) -> StructuredOutputTool:
     :return: A StructuredOutputTool for variation generation responses
     """
     return StructuredOutputTool(
+        type="function",
         name="return_improved_configuration",
         description=(
             "Returns the improved agent configuration with updated instructions and parameters. "
@@ -189,9 +252,9 @@ def extract_json_from_response(response_str: str) -> Dict[str, Any]:
     if response_data is None:
         logger.error(
             "Failed to extract JSON from response. "
-            "Response length: %d, first 200 chars: %s",
+            "Response length: %d, response: %s",
             len(response_str),
-            response_str[:200],
+            response_str,
         )
         raise ValueError(
             "Failed to parse structured output from variation generation. "
