@@ -144,7 +144,8 @@ class OptimizationContext:
     completion_response: str
     current_instructions: str
     current_parameters: Dict[str, Any]
-    current_variables: Dict[str, Any]  # variable set chosen for this iteration; interpolated into instructions at call time
+    # variable set chosen for this iteration; interpolated into instructions at call time
+    current_variables: Dict[str, Any]
     current_model: Optional[str] = None  # the current model being used
     user_input: Optional[str] = None  # the user input message for this iteration
     history: Sequence[OptimizationContext] = field(
