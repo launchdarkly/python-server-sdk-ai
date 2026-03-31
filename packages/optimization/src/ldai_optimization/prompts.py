@@ -360,7 +360,8 @@ def variation_prompt_improvement_instructions(
             '    "required": ["user_id"],',
             '    "additionalProperties": false',
             "  }",
-            "}"
+            "}",
+            "",
             "Always call the return_improved_configuration tool to format the response.",
             "Return the response as-is from the return_improved_configuration tool,",
             "do not modify it in any way.",
