@@ -131,7 +131,15 @@ class OptimizationClient:
 
     def _safe_status_update(
         self,
-        status: Literal["init", "generating", "evaluating", "generating variation", "turn completed", "success", "failure"],
+        status: Literal[
+            "init",
+            "generating",
+            "evaluating",
+            "generating variation",
+            "turn completed",
+            "success",
+            "failure",
+        ],
         context: OptimizationContext,
         iteration: int,
     ) -> None:
@@ -305,7 +313,9 @@ class OptimizationClient:
         """
         if is_variation:
             return {
-                create_variation_tool(self._options.model_choices).name: handle_variation_tool_call,
+                create_variation_tool(
+                    self._options.model_choices
+                ).name: handle_variation_tool_call,
             }
         return {}
 
@@ -343,11 +353,19 @@ class OptimizationClient:
         judge_results: Dict[str, JudgeResult] = {}
 
         judge_count = len(self._options.judges)
-        for idx, (judge_key, optimization_judge) in enumerate(self._options.judges.items(), 1):
-            judge_type = "config" if optimization_judge.judge_key is not None else "acceptance"
+        for idx, (judge_key, optimization_judge) in enumerate(
+            self._options.judges.items(), 1
+        ):
+            judge_type = (
+                "config" if optimization_judge.judge_key is not None else "acceptance"
+            )
             logger.info(
                 "[Iteration %d] -> Running judge %d/%d '%s' (%s)...",
-                iteration, idx, judge_count, judge_key, judge_type,
+                iteration,
+                idx,
+                judge_count,
+                judge_key,
+                judge_type,
             )
             try:
                 if optimization_judge.judge_key is not None:
@@ -375,7 +393,11 @@ class OptimizationClient:
                     )
                     judge_results[judge_key] = result
 
-                threshold = optimization_judge.threshold if optimization_judge.threshold is not None else 1.0
+                threshold = (
+                    optimization_judge.threshold
+                    if optimization_judge.threshold is not None
+                    else 1.0
+                )
                 passed = result.score >= threshold
                 logger.debug(
                     "[Iteration %d] -> Judge '%s' scored %.3f (threshold=%.3f) -> %s%s",
@@ -479,7 +501,11 @@ class OptimizationClient:
                 user_parts.append(msg.content)
 
         instructions = "\n\n".join(system_parts)
-        judge_user_input = "\n\n".join(user_parts) if user_parts else f"Here is the response to evaluate: {completion_response}"
+        judge_user_input = (
+            "\n\n".join(user_parts)
+            if user_parts
+            else f"Here is the response to evaluate: {completion_response}"
+        )
 
         # Rebuild the message list with the updated system content so completions users
         # receive the same scoring instructions that are baked into `instructions`.
@@ -489,13 +515,19 @@ class OptimizationClient:
         ]
 
         # Collect model parameters from the judge config, separating out any existing tools
-        model_name = judge_config.model.name if judge_config.model else self._options.judge_model
+        model_name = (
+            judge_config.model.name if judge_config.model else self._options.judge_model
+        )
         model_params: Dict[str, Any] = {}
         tools: List[ToolDefinition] = []
         if judge_config.model and judge_config.model._parameters:
             existing_tools = judge_config.model._parameters.get("tools")
             if existing_tools:
-                raw = existing_tools if isinstance(existing_tools, list) else [existing_tools]
+                raw = (
+                    existing_tools
+                    if isinstance(existing_tools, list)
+                    else [existing_tools]
+                )
                 for t in raw:
                     if isinstance(t, ToolDefinition):
                         tools.append(t)
@@ -503,7 +535,9 @@ class OptimizationClient:
                         tools.append(ToolDefinition.from_dict(t.to_dict()))
                     elif isinstance(t, dict):
                         tools.append(ToolDefinition.from_dict(t))
-            model_params = {k: v for k, v in judge_config.model._parameters.items() if k != "tools"}
+            model_params = {
+                k: v for k, v in judge_config.model._parameters.items() if k != "tools"
+            }
 
         # Prepend agent tools so the judge can call them when verifying the response
         if agent_tools:
@@ -615,7 +649,9 @@ class OptimizationClient:
             )
 
         # Prepend agent tools so the judge can invoke them for verification if needed
-        tools: List[ToolDefinition] = list(resolved_agent_tools) + [create_evaluation_tool()]
+        tools: List[ToolDefinition] = list(resolved_agent_tools) + [
+            create_evaluation_tool()
+        ]
 
         judge_user_input = f"Here is the response to evaluate: {completion_response}"
 
@@ -643,7 +679,10 @@ class OptimizationClient:
         judge_response = await await_if_needed(result)
 
         logger.debug(
-            "[Iteration %d] -> Judge response (%s): %s", iteration, judge_key, judge_response
+            "[Iteration %d] -> Judge response (%s): %s",
+            iteration,
+            judge_key,
+            judge_response,
         )
 
         # Parse judge response — expect structured JSON output with score and rationale
@@ -651,7 +690,9 @@ class OptimizationClient:
             judge_response, judge_key, judge_key, iteration, clamp_score=True
         )
 
-    async def _get_agent_config(self, agent_key: str, context: Context) -> AIAgentConfig:
+    async def _get_agent_config(
+        self, agent_key: str, context: Context
+    ) -> AIAgentConfig:
         """
         Fetch the agent configuration, replacing the instructions with the raw variation
         template so that {{placeholder}} tokens are preserved for client-side interpolation.
@@ -670,10 +711,14 @@ class OptimizationClient:
             # variation() returns the raw JSON before chevron.render(), so instructions
             # still contain {{placeholder}} tokens rather than empty strings.
             raw_variation = self._ldClient._client.variation(agent_key, context, {})
-            raw_instructions = raw_variation.get("instructions", agent_config.instructions)
+            raw_instructions = raw_variation.get(
+                "instructions", agent_config.instructions
+            )
             self._initial_instructions = raw_instructions
 
-            agent_config = dataclasses.replace(agent_config, instructions=raw_instructions)
+            agent_config = dataclasses.replace(
+                agent_config, instructions=raw_instructions
+            )
             self._initialize_class_members_from_config(agent_config)
             return agent_config
         except Exception:
@@ -715,9 +760,7 @@ class OptimizationClient:
 
         return "\n".join(reasoning_parts)
 
-    def _build_new_variation_prompt(
-        self, history: List[OptimizationContext]
-    ) -> str:
+    def _build_new_variation_prompt(self, history: List[OptimizationContext]) -> str:
         """
         Build the LLM prompt for generating an improved agent configuration.
 
@@ -742,16 +785,18 @@ class OptimizationClient:
 
     def _new_variation_prompt_preamble(self) -> str:
         """Static opening section for the variation generation prompt."""
-        return "\n".join([
-            "You are an assistant that helps improve agent configurations through iterative optimization.",
-            "",
-            "Your task is to generate improved agent instructions and parameters based on the feedback provided.",
-            "The feedback you provide should guide the LLM To improve the agent instructions for all possible use cases, not one concrete case.",
-            "For example, if the feedback is that the agent is not returning the correct records, you should improve the agent instructions to return the correct records for all possible use cases. Not just the one concrete case that was provided in the feedback.",
-            "When changing the instructions, keep the original intent in mind when it comes to things like the use of variables and placeholders.",
-            "If the original instructions were to use a placeholder like {{id}}, you should keep the placeholder in the new instructions, not replace it with the actual value. This is the case for all parameterized values (all parameters should appear in each new variation).",
-            "Pay particular attention to the instructions regarding tools and the rules for variables."
-        ])
+        return "\n".join(
+            [
+                "You are an assistant that helps improve agent configurations through iterative optimization.",
+                "",
+                "Your task is to generate improved agent instructions and parameters based on the feedback provided.",
+                "The feedback you provide should guide the LLM To improve the agent instructions for all possible use cases, not one concrete case.",
+                "For example, if the feedback is that the agent is not returning the correct records, you should improve the agent instructions to return the correct records for all possible use cases. Not just the one concrete case that was provided in the feedback.",
+                "When changing the instructions, keep the original intent in mind when it comes to things like the use of variables and placeholders.",
+                "If the original instructions were to use a placeholder like {{id}}, you should keep the placeholder in the new instructions, not replace it with the actual value. This is the case for all parameterized values (all parameters should appear in each new variation).",
+                "Pay particular attention to the instructions regarding tools and the rules for variables.",
+            ]
+        )
 
     def _new_variation_prompt_acceptance_criteria(self) -> str:
         """
@@ -816,16 +861,16 @@ class OptimizationClient:
             lines.append(f"Agent response: {previous_ctx.completion_response}")
             return "\n".join(lines)
         else:
-            return "\n".join([
-                "## Current Configuration:",
-                f"Model: {self._current_model}",
-                f"Instructions: {self._current_instructions}",
-                f"Parameters: {self._current_parameters}",
-            ])
+            return "\n".join(
+                [
+                    "## Current Configuration:",
+                    f"Model: {self._current_model}",
+                    f"Instructions: {self._current_instructions}",
+                    f"Parameters: {self._current_parameters}",
+                ]
+            )
 
-    def _new_variation_prompt_feedback(
-        self, history: List[OptimizationContext]
-    ) -> str:
+    def _new_variation_prompt_feedback(self, history: List[OptimizationContext]) -> str:
         """
         Evaluation feedback section of the variation prompt.
 
@@ -874,11 +919,13 @@ class OptimizationClient:
         output format schema. When history is non-empty, adds feedback-driven
         improvement directives.
         """
-        model_instructions = "\n".join([
-            "You may also choose to change the model if you believe that the current model is not performing well or a different model would be better suited for the task. "
-            f"Here are the models you may choose from: {self._options.model_choices}. You must always return a model property, even if it's the same as the current model.",
-            "When suggesting a new model, you should provide a rationale for why you believe the new model would be better suited for the task.",
-        ])
+        model_instructions = "\n".join(
+            [
+                "You may also choose to change the model if you believe that the current model is not performing well or a different model would be better suited for the task. "
+                f"Here are the models you may choose from: {self._options.model_choices}. You must always return a model property, even if it's the same as the current model.",
+                "When suggesting a new model, you should provide a rationale for why you believe the new model would be better suited for the task.",
+            ]
+        )
 
         # Collect unique variable keys across all variable_choices entries
         variable_keys: set = set()
@@ -886,107 +933,116 @@ class OptimizationClient:
             variable_keys.update(choice.keys())
         placeholder_list = ", ".join(f"{{{{{k}}}}}" for k in sorted(variable_keys))
 
-        variable_instructions = "\n".join([
-            "## Prompt Variables:",
-            "These variables are substituted into the instructions at call time using {{variable_name}} syntax.",
-            "Rules:",
-            "- If the {{variable_name}} placeholder is not present in the current instructions, you should include it where logically appropriate.",
-            "Here are the original instructions so that you can see how the placeholders are used and which are available:",
-            "\nSTART:"
-            "\n" + self._initial_instructions + "\n",
-            "\nEND OF ORIGINAL INSTRUCTIONS\n",
-            f"The following prompt variables are available and are the only variables that should be used: {placeholder_list}"
-            "Here is an example of a good response if an {{id}} placeholder is available: 'Select records matching id {{id}}'",
-            "Here is an example of a bad response if an {{id}} placeholder is available: 'Select records matching id 1232'",
-            "Here is an example of a good response if a {{resource_id}} and {{resource_type}} placeholder are available: 'Select records matching id {{resource_id}} and type {{resource_type}}'",
-            "Here is an example of a bad response if a {{resource_id}} and {{resource_type}} placeholder are available: 'Select records matching id 1232 and type {{resource_type}}'",
-            "Here is another example of a bad response if a {{resource_id}} and {{resource_type}} placeholder are available: 'Select records matching id {{resource_id}} and type resource-123'",
-        ])
+        variable_instructions = "\n".join(
+            [
+                "## Prompt Variables:",
+                "These variables are substituted into the instructions at call time using {{variable_name}} syntax.",
+                "Rules:",
+                "- If the {{variable_name}} placeholder is not present in the current instructions, you should include it where logically appropriate.",
+                "Here are the original instructions so that you can see how the placeholders are used and which are available:",
+                "\nSTART:" "\n" + self._initial_instructions + "\n",
+                "\nEND OF ORIGINAL INSTRUCTIONS\n",
+                f"The following prompt variables are available and are the only variables that should be used: {placeholder_list}"
+                "Here is an example of a good response if an {{id}} placeholder is available: 'Select records matching id {{id}}'",
+                "Here is an example of a bad response if an {{id}} placeholder is available: 'Select records matching id 1232'",
+                "Here is an example of a good response if a {{resource_id}} and {{resource_type}} placeholder are available: 'Select records matching id {{resource_id}} and type {{resource_type}}'",
+                "Here is an example of a bad response if a {{resource_id}} and {{resource_type}} placeholder are available: 'Select records matching id 1232 and type {{resource_type}}'",
+                "Here is another example of a bad response if a {{resource_id}} and {{resource_type}} placeholder are available: 'Select records matching id {{resource_id}} and type resource-123'",
+            ]
+        )
 
-        tool_instructions = "\n".join([
-            "## Tool Format:",
-            "If the current configuration includes tools, you MUST return them unchanged in current_parameters[\"tools\"].",
-            "Do NOT include internal framework tools such as the evaluation tool or structured output tool.",
-            "Each tool must follow this exact format:",
-            "{",
-            '  "name": "tool-name",',
-            '  "type": "function",',
-            '  "description": "What the tool does",',
-            '  "parameters": {',
-            '    "type": "object",',
-            '    "properties": {',
-            '      "param_name": {',
-            '        "type": "type of the input parameter",',
-            '        "description": "Description of the parameter"',
-            "      }",
-            "    },",
-            '    "required": ["param_name"],',
-            '    "additionalProperties": false',
-            "  }",
-            "}",
-            "Example:",
-            "{",
-            '  "name": "user-preferences-lookup",',
-            '  "type": "function",',
-            '  "description": "Looks up user preferences by ID",',
-            '  "parameters": {',
-            '    "type": "object",',
-            '    "properties": {',
-            '      "user_id": {',
-            '        "type": "string",',
-            '        "description": "The user id"',
-            "      }",
-            "    },",
-            '    "required": ["user_id"],',
-            '    "additionalProperties": false',
-            "  }",
-            "}",
-        ])
+        tool_instructions = "\n".join(
+            [
+                "## Tool Format:",
+                'If the current configuration includes tools, you MUST return them unchanged in current_parameters["tools"].',
+                "Do NOT include internal framework tools such as the evaluation tool or structured output tool.",
+                "Each tool must follow this exact format:",
+                "{",
+                '  "name": "tool-name",',
+                '  "type": "function",',
+                '  "description": "What the tool does",',
+                '  "parameters": {',
+                '    "type": "object",',
+                '    "properties": {',
+                '      "param_name": {',
+                '        "type": "type of the input parameter",',
+                '        "description": "Description of the parameter"',
+                "      }",
+                "    },",
+                '    "required": ["param_name"],',
+                '    "additionalProperties": false',
+                "  }",
+                "}",
+                "Example:",
+                "{",
+                '  "name": "user-preferences-lookup",',
+                '  "type": "function",',
+                '  "description": "Looks up user preferences by ID",',
+                '  "parameters": {',
+                '    "type": "object",',
+                '    "properties": {',
+                '      "user_id": {',
+                '        "type": "string",',
+                '        "description": "The user id"',
+                "      }",
+                "    },",
+                '    "required": ["user_id"],',
+                '    "additionalProperties": false',
+                "  }",
+                "}",
+            ]
+        )
 
-        parameters_instructions = "\n".join([
-            "Return these values in a JSON object with the following keys: current_instructions, current_parameters, and model.",
-            "Example:",
-            "{",
-            '  "current_instructions": "...',
-            '  "current_parameters": {',
-            '    "...": "..."',
-            "  },",
-            '  "model": "gpt-4o"',
-            "}",
-            "Parameters should only be things that are directly parseable by an LLM call, for example, temperature, max_tokens, etc."
-            "Do not include any other parameters that are not directly parseable by an LLM call. If you want to provide instruction for tone or other attributes, provide them directly in the instructions.",
-        ])
+        parameters_instructions = "\n".join(
+            [
+                "Return these values in a JSON object with the following keys: current_instructions, current_parameters, and model.",
+                "Example:",
+                "{",
+                '  "current_instructions": "...',
+                '  "current_parameters": {',
+                '    "...": "..."',
+                "  },",
+                '  "model": "gpt-4o"',
+                "}",
+                "Parameters should only be things that are directly parseable by an LLM call, for example, temperature, max_tokens, etc."
+                "Do not include any other parameters that are not directly parseable by an LLM call. If you want to provide instruction for tone or other attributes, provide them directly in the instructions.",
+            ]
+        )
 
         if history:
-            return "\n".join([
-                "## Improvement Instructions:",
-                "Based on the evaluation history above, generate improved agent instructions and parameters.",
-                "Focus on addressing the areas where the evaluation failed or scored below threshold.",
-                "The new configuration should aim to improve the agent's performance on the evaluation criteria.",
-                model_instructions,
-                "",
-                variable_instructions,
-                "",
-                tool_instructions,
-                "",
-                "Return the improved configuration in a structured format that can be parsed to update:",
-                "1. The agent instructions (current_instructions)",
-                "2. The agent parameters (current_parameters)",
-                "3. The model (model) - you must always return a model, even if it's the same as the current model.",
-                "4. You should return the tools the user has defined, as-is, on the new parameters. Do not modify them, but make sure you do not include internal tools like the evaluation tool or structured output tool.",
-                parameters_instructions,
-            ])
+            return "\n".join(
+                [
+                    "## Improvement Instructions:",
+                    "Based on the evaluation history above, generate improved agent instructions and parameters.",
+                    "Focus on addressing the areas where the evaluation failed or scored below threshold.",
+                    "The new configuration should aim to improve the agent's performance on the evaluation criteria.",
+                    model_instructions,
+                    "",
+                    variable_instructions,
+                    "",
+                    tool_instructions,
+                    "",
+                    "Return the improved configuration in a structured format that can be parsed to update:",
+                    "1. The agent instructions (current_instructions)",
+                    "2. The agent parameters (current_parameters)",
+                    "3. The model (model) - you must always return a model, even if it's the same as the current model.",
+                    "4. You should return the tools the user has defined, as-is, on the new parameters. Do not modify them, but make sure you do not include internal tools like the evaluation tool or structured output tool.",
+                    parameters_instructions,
+                ]
+            )
         else:
-            return "\n".join([
-                "Generate an improved version of this configuration.",
-                model_instructions,
-                "",
-                variable_instructions,
-                "",
-                tool_instructions,
-                "",
-                parameters_instructions,
-            ])
+            return "\n".join(
+                [
+                    "Generate an improved version of this configuration.",
+                    model_instructions,
+                    "",
+                    variable_instructions,
+                    "",
+                    tool_instructions,
+                    "",
+                    parameters_instructions,
+                ]
+            )
 
     def _apply_new_variation_response(
         self,
@@ -1322,7 +1378,10 @@ class OptimizationClient:
             iteration += 1
             logger.info(
                 "[Iteration %d] -> Starting (attempt %d/%d, model=%s)",
-                iteration, iteration, self._options.max_attempts, self._current_model,
+                iteration,
+                iteration,
+                self._options.max_attempts,
+                self._current_model,
             )
             user_input = None
             if self._options.user_input_options:
@@ -1338,24 +1397,33 @@ class OptimizationClient:
             )
 
             self._safe_status_update("generating", optimize_context, iteration)
-            optimize_context = await self._execute_agent_turn(optimize_context, iteration)
+            optimize_context = await self._execute_agent_turn(
+                optimize_context, iteration
+            )
 
             # Manual path: on_turn callback gives caller full control over pass/fail
             if self._options.on_turn is not None:
                 try:
                     on_turn_result = self._options.on_turn(optimize_context)
                     if on_turn_result:
-                        logger.info("[Iteration %d] -> on_turn returned True — turn passed", iteration)
+                        logger.info(
+                            "[Iteration %d] -> on_turn returned True — turn passed",
+                            iteration,
+                        )
                         return self._handle_success(optimize_context, iteration)
                     else:
                         logger.info(
                             "[Iteration %d] -> on_turn returned False — turn failed (attempt %d/%d)",
-                            iteration, iteration, self._options.max_attempts,
+                            iteration,
+                            iteration,
+                            self._options.max_attempts,
                         )
                         if iteration >= self._options.max_attempts:
                             return self._handle_failure(optimize_context, iteration)
                         self._history.append(optimize_context)
-                        await self._generate_new_variation(iteration, optimize_context.current_variables)
+                        await self._generate_new_variation(
+                            iteration, optimize_context.current_variables
+                        )
                         self._safe_status_update(
                             "turn completed", optimize_context, iteration
                         )
@@ -1367,7 +1435,9 @@ class OptimizationClient:
                     if iteration >= self._options.max_attempts:
                         return self._handle_failure(optimize_context, iteration)
                     self._history.append(optimize_context)
-                    await self._generate_new_variation(iteration, optimize_context.current_variables)
+                    await self._generate_new_variation(
+                        iteration, optimize_context.current_variables
+                    )
                     self._safe_status_update(
                         "turn completed", optimize_context, iteration
                     )
@@ -1376,17 +1446,24 @@ class OptimizationClient:
                 # Auto-path: judge scores determine pass/fail via _evaluate_response
                 passes = self._evaluate_response(optimize_context)
                 if passes:
-                    logger.info("[Iteration %d] -> All judges passed — turn succeeded", iteration)
+                    logger.info(
+                        "[Iteration %d] -> All judges passed — turn succeeded",
+                        iteration,
+                    )
                     return self._handle_success(optimize_context, iteration)
                 else:
                     logger.info(
                         "[Iteration %d] -> One or more judges failed (attempt %d/%d) — generating new variation",
-                        iteration, iteration, self._options.max_attempts,
+                        iteration,
+                        iteration,
+                        self._options.max_attempts,
                     )
                     if iteration >= self._options.max_attempts:
                         return self._handle_failure(optimize_context, iteration)
                     self._history.append(optimize_context)
-                    await self._generate_new_variation(iteration, optimize_context.current_variables)
+                    await self._generate_new_variation(
+                        iteration, optimize_context.current_variables
+                    )
                     self._safe_status_update(
                         "turn completed", optimize_context, iteration
                     )
