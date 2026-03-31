@@ -234,6 +234,20 @@ def get_tool_calls_from_response(response: Any) -> List[str]:
     return names
 
 
+def extract_last_message_content(messages: List[Any]) -> str:
+    """
+    Extract the string content of the last message in a list.
+
+    :param messages: List of LangChain message objects
+    :return: String content of the last message, or empty string if none
+    """
+    if messages:
+        last = messages[-1]
+        if hasattr(last, 'content'):
+            return str(last.content)
+    return ''
+
+
 def sum_token_usage_from_messages(messages: List[Any]) -> Optional[TokenUsage]:
     """
     Sum token usage across LangChain messages using get_ai_usage_from_response per message.

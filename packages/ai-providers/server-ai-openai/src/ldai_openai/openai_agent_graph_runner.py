@@ -1,5 +1,6 @@
 """OpenAI agent graph runner for LaunchDarkly AI SDK."""
 
+import json
 import time
 from typing import Any, List, Optional
 
@@ -11,6 +12,7 @@ from ldai.tracker import TokenUsage
 
 from ldai_openai.openai_helper import (
     NATIVE_OPENAI_TOOLS,
+    extract_usage_from_request_entry,
     get_ai_usage_from_response,
     get_tool_calls_from_run_items,
 )
@@ -40,7 +42,7 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
         Initialize the runner.
 
         :param graph: The AgentGraphDefinition to execute
-        :param tools: Registry mapping OpenAI-formatted tool names to callables
+        :param tools: Registry mapping tool names to callables
         """
         self._graph = graph
         self._tools = tools
@@ -104,105 +106,6 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
                 raw=None,
                 metrics=LDAIMetrics(success=False),
             )
-
-    def _flush_final_segment(
-        self,
-        state: _RunState,
-        tracker: Any,
-        result: Any,
-    ) -> None:
-        """Record duration/tokens for the last active agent (no handoff after it)."""
-        if not state.last_node_key:
-            return
-        node = self._graph.get_node(state.last_node_key)
-        if node is None:
-            return
-        config_tracker = node.get_config().tracker
-        if config_tracker is None:
-            return
-
-        now_ns = time.perf_counter_ns()
-        duration_ms = (now_ns - state.last_handoff_ns) // 1_000_000
-
-        usage: Optional[TokenUsage] = None
-        try:
-            usage_entry = result.context_wrapper.usage.request_usage_entries[-1]
-            usage = TokenUsage(
-                total=usage_entry.total_tokens,
-                input=usage_entry.input_tokens,
-                output=usage_entry.output_tokens,
-            )
-        except Exception:
-            pass
-
-        gk = tracker.graph_key if tracker is not None else None
-        if usage is not None:
-            config_tracker.track_tokens(usage, graph_key=gk)
-        config_tracker.track_duration(int(duration_ms), graph_key=gk)
-        config_tracker.track_success(graph_key=gk)
-
-    def _track_tool_calls(self, result: Any, tracker: Any) -> None:
-        """Track all tool calls from the run result, attributed to the node that called them."""
-        gk = tracker.graph_key if tracker is not None else None
-        for agent_name, tool_name in get_tool_calls_from_run_items(result.new_items):
-            node = self._graph.get_node(agent_name)
-            if node is None:
-                continue
-            config_tracker = node.get_config().tracker
-            if config_tracker is not None:
-                config_tracker.track_tool_call(tool_name, graph_key=gk)
-
-    def _handle_handoff(
-        self,
-        run_ctx: Any,
-        src: str,
-        tgt: str,
-        path: List[str],
-        tracker: Any,
-        config_tracker: Any,
-        state: _RunState,
-    ) -> None:
-        path.append(tgt)
-        state.last_node_key = tgt
-        if tracker:
-            tracker.track_handoff_success(src, tgt)
-
-        usage: Optional[TokenUsage] = None
-        now_ns = time.perf_counter_ns()
-        duration_ms = (now_ns - state.last_handoff_ns) // 1_000_000
-        state.last_handoff_ns = now_ns
-        try:
-            usage_entry = run_ctx.usage.request_usage_entries[-1]
-            usage = TokenUsage(
-                total=usage_entry.total_tokens,
-                input=usage_entry.input_tokens,
-                output=usage_entry.output_tokens,
-            )
-        except Exception:
-            pass
-
-        gk = tracker.graph_key if tracker is not None else None
-        if config_tracker is not None:
-            if usage is not None:
-                config_tracker.track_tokens(usage, graph_key=gk)
-            if duration_ms is not None:
-                config_tracker.track_duration(int(duration_ms), graph_key=gk)
-            config_tracker.track_success(graph_key=gk)
-
-    def _make_on_handoff(
-        self,
-        src: str,
-        tgt: str,
-        path: List[str],
-        tracker: Any,
-        config_tracker: Any,
-        state: _RunState,
-    ):
-        def on_handoff(run_ctx: Any) -> None:
-            self._handle_handoff(
-                run_ctx, src, tgt, path, tracker, config_tracker, state
-            )
-        return on_handoff
 
     def _build_agents(self, path: List[str], state: _RunState) -> Any:
         """
@@ -280,16 +183,22 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
                     description: str,
                     params_schema: dict,
                 ) -> FunctionTool:
-                    def wrapped(tool_ctx: Any, tool_args: str) -> Any:
-                        import json
+                    async def wrapped(tool_ctx: Any, tool_args: str) -> str:
                         try:
-                            args = json.loads(tool_args)
+                            args = json.loads(tool_args) if tool_args else {}
                         except Exception:
                             args = {}
-                        return fn(**args)
+                        try:
+                            res = fn(**args)
+                            if hasattr(res, "__await__"):
+                                res = await res
+                            return str(res)
+                        except Exception as e:
+                            log.warning(f"Tool '{name}' execution failed: {e}")
+                            return f"Tool execution failed: {e}"
 
                     return FunctionTool(
-                        name=f'tool_{name}',
+                        name=name,
                         description=description,
                         params_json_schema=params_schema,
                         on_invoke_tool=wrapped,
@@ -313,3 +222,97 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
             )
 
         return self._graph.reverse_traverse(fn=build_node)
+
+    def _make_on_handoff(
+        self,
+        src: str,
+        tgt: str,
+        path: List[str],
+        tracker: Any,
+        config_tracker: Any,
+        state: _RunState,
+    ):
+        def on_handoff(run_ctx: Any) -> None:
+            self._handle_handoff(
+                run_ctx, src, tgt, path, tracker, config_tracker, state
+            )
+        return on_handoff
+
+    def _handle_handoff(
+        self,
+        run_ctx: Any,
+        src: str,
+        tgt: str,
+        path: List[str],
+        tracker: Any,
+        config_tracker: Any,
+        state: _RunState,
+    ) -> None:
+        path.append(tgt)
+        state.last_node_key = tgt
+        if tracker:
+            tracker.track_handoff_success(src, tgt)
+
+        now_ns = time.perf_counter_ns()
+        duration_ms = (now_ns - state.last_handoff_ns) // 1_000_000
+        state.last_handoff_ns = now_ns
+
+        usage: Optional[TokenUsage] = None
+        try:
+            usage = extract_usage_from_request_entry(
+                run_ctx.usage.request_usage_entries[-1]
+            )
+        except Exception:
+            pass
+
+        gk = tracker.graph_key if tracker is not None else None
+        if config_tracker is not None:
+            if usage is not None:
+                config_tracker.track_tokens(usage, graph_key=gk)
+            if duration_ms is not None:
+                config_tracker.track_duration(int(duration_ms), graph_key=gk)
+            config_tracker.track_success(graph_key=gk)
+
+    def _flush_final_segment(
+        self,
+        state: _RunState,
+        tracker: Any,
+        result: Any,
+    ) -> None:
+        """Record duration/tokens for the last active agent (no handoff after it)."""
+        if not state.last_node_key:
+            return
+        node = self._graph.get_node(state.last_node_key)
+        if node is None:
+            return
+        config_tracker = node.get_config().tracker
+        if config_tracker is None:
+            return
+
+        now_ns = time.perf_counter_ns()
+        duration_ms = (now_ns - state.last_handoff_ns) // 1_000_000
+
+        usage: Optional[TokenUsage] = None
+        try:
+            usage = extract_usage_from_request_entry(
+                result.context_wrapper.usage.request_usage_entries[-1]
+            )
+        except Exception:
+            pass
+
+        gk = tracker.graph_key if tracker is not None else None
+        if usage is not None:
+            config_tracker.track_tokens(usage, graph_key=gk)
+        config_tracker.track_duration(int(duration_ms), graph_key=gk)
+        config_tracker.track_success(graph_key=gk)
+
+    def _track_tool_calls(self, result: Any, tracker: Any) -> None:
+        """Track all tool calls from the run result, attributed to the node that called them."""
+        gk = tracker.graph_key if tracker is not None else None
+        for agent_name, tool_name in get_tool_calls_from_run_items(result.new_items):
+            node = self._graph.get_node(agent_name)
+            if node is None:
+                continue
+            config_tracker = node.get_config().tracker
+            if config_tracker is not None:
+                config_tracker.track_tool_call(tool_name, graph_key=gk)

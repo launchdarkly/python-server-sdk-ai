@@ -24,6 +24,17 @@ class OpenAIRunnerFactory(AIProvider):
             api_key=os.environ.get('OPENAI_API_KEY'),
         )
 
+    def _extract_model_config(self, config: AIConfigKind) -> tuple:
+        """
+        Extract model name and parameters from an AI config.
+
+        :param config: The LaunchDarkly AI configuration
+        :return: Tuple of (model_name, parameters)
+        """
+        config_dict = config.to_dict()
+        model_dict = config_dict.get('model') or {}
+        return model_dict.get('name', ''), model_dict.get('parameters') or {}
+
     def create_model(self, config: AIConfigKind) -> OpenAIModelRunner:
         """
         Create a configured OpenAIModelRunner for the given AI config.
@@ -33,10 +44,7 @@ class OpenAIRunnerFactory(AIProvider):
         :param config: The LaunchDarkly AI configuration
         :return: OpenAIModelRunner ready to invoke the model
         """
-        config_dict = config.to_dict()
-        model_dict = config_dict.get('model') or {}
-        model_name = model_dict.get('name', '')
-        parameters = model_dict.get('parameters') or {}
+        model_name, parameters = self._extract_model_config(config)
         return OpenAIModelRunner(self._client, model_name, parameters)
 
     def create_agent_graph(self, graph_def: Any, tools: ToolRegistry) -> Any:
@@ -60,10 +68,8 @@ class OpenAIRunnerFactory(AIProvider):
         """
         from ldai_openai.openai_agent_runner import OpenAIAgentRunner
 
-        config_dict = config.to_dict()
-        model_dict = config_dict.get('model') or {}
-        model_name = model_dict.get('name', '')
-        parameters = dict(model_dict.get('parameters') or {})
+        model_name, base_parameters = self._extract_model_config(config)
+        parameters = dict(base_parameters)
         tool_definitions = parameters.pop('tools', []) or []
         instructions = (config.instructions or '') if hasattr(config, 'instructions') else ''
 

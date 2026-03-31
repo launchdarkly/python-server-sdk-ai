@@ -64,6 +64,23 @@ def get_ai_usage_from_response(response: Any) -> Optional[TokenUsage]:
     return None
 
 
+def extract_usage_from_request_entry(entry: Any) -> Optional[TokenUsage]:
+    """
+    Extract token usage from a single request_usage_entry in an openai-agents RunResult.
+
+    :param entry: A request_usage_entry from context_wrapper.usage.request_usage_entries
+    :return: TokenUsage or None if extraction fails
+    """
+    try:
+        return TokenUsage(
+            total=entry.total_tokens,
+            input=entry.input_tokens,
+            output=entry.output_tokens,
+        )
+    except Exception:
+        return None
+
+
 def get_ai_metrics_from_response(response: Any) -> LDAIMetrics:
     """
     Extract LaunchDarkly AI metrics from an OpenAI response.
@@ -105,8 +122,7 @@ def get_tool_calls_from_run_items(new_items: List[Any]) -> List[Tuple[str, str]]
             continue
         raw = item.raw_item
         if isinstance(raw, ResponseFunctionToolCall):
-            # Custom FunctionTools are registered as 'tool_{config_key}'
-            tool_name = raw.name.removeprefix('tool_')
+            tool_name = raw.name
         else:
             raw_type = getattr(raw, 'type', None) or (raw.get('type') if isinstance(raw, dict) else None)
             if not raw_type:

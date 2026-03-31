@@ -10,7 +10,9 @@ from ldai.providers import AgentGraphResult, AgentGraphRunner, ToolRegistry
 from ldai.providers.types import LDAIMetrics
 
 from ldai_langchain.langchain_helper import (
+    build_structured_tools,
     create_langchain_model,
+    extract_last_message_content,
     get_ai_metrics_from_response,
     get_ai_usage_from_response,
     get_tool_calls_from_response,
@@ -73,20 +75,7 @@ class LangGraphAgentGraphRunner(AgentGraphRunner):
                 model = None
                 if node_config.model:
                     lc_model = create_langchain_model(node_config)
-                    tool_defs = node_config.model.get_parameter('tools') or []
-                    tool_fns = []
-                    for t in tool_defs:
-                        config_key = t.get('name', '')
-                        if config_key not in tools_ref:
-                            continue
-                        from langchain_core.tools import StructuredTool
-                        tool_fns.append(
-                            StructuredTool.from_function(
-                                func=tools_ref[config_key],
-                                name=config_key,
-                                description=t.get('description', ''),
-                            )
-                        )
+                    tool_fns = build_structured_tools(node_config, tools_ref)
                     model = lc_model.bind_tools(tool_fns) if tool_fns else lc_model
 
                 def invoke(state: WorkflowState) -> WorkflowState:
@@ -132,12 +121,8 @@ class LangGraphAgentGraphRunner(AgentGraphRunner):
             )
             duration = (time.perf_counter_ns() - start_ns) // 1_000_000
 
-            output = ''
             messages = result.get('messages', [])
-            if messages:
-                last = messages[-1]
-                if hasattr(last, 'content'):
-                    output = str(last.content)
+            output = extract_last_message_content(messages)
 
             if tracker:
                 tracker.track_path(exec_path)

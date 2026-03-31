@@ -4,6 +4,8 @@ from typing import Any, Callable, List, Optional, TypeVar
 from ldai import log
 from ldai.models import AIConfigKind
 from ldai.providers.ai_provider import AIProvider
+from ldai.providers.agent_graph_runner import AgentGraphRunner
+from ldai.providers.agent_runner import AgentRunner
 from ldai.providers.model_runner import ModelRunner
 
 T = TypeVar('T')
@@ -133,14 +135,14 @@ class RunnerFactory:
         config: Any,
         tools: Any,
         default_ai_provider: Optional[str] = None,
-    ) -> Optional[Any]:
+    ) -> Optional[AgentRunner]:
         """
         Create an agent executor for the given AI agent config and tool registry.
 
         :param config: LaunchDarkly AI agent config
         :param tools: Tool registry mapping tool names to callables
         :param default_ai_provider: Optional provider override
-        :return: AgentExecutor instance, or None
+        :return: AgentRunner instance, or None
         """
         provider_name = config.provider.name.lower() if config.provider else None
         providers = RunnerFactory._get_providers_to_try(default_ai_provider, provider_name)
@@ -151,14 +153,14 @@ class RunnerFactory:
         graph_def: Any,
         tools: Any,
         default_ai_provider: Optional[str] = None,
-    ) -> Optional[Any]:
+    ) -> Optional[AgentGraphRunner]:
         """
         Create an agent graph executor for the given graph definition and tool registry.
 
         :param graph_def: AgentGraphDefinition instance
         :param tools: Tool registry mapping tool names to callables
         :param default_ai_provider: Optional provider override
-        :return: AgentGraphExecutor instance, or None
+        :return: AgentGraphRunner instance, or None
         """
         provider_name = None
         if graph_def.root() and graph_def.root().get_config() and graph_def.root().get_config().provider:

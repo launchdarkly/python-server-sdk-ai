@@ -6,7 +6,7 @@ from ldai import log
 from ldai.providers import AgentResult, AgentRunner
 from ldai.providers.types import LDAIMetrics
 
-from ldai_langchain.langchain_helper import sum_token_usage_from_messages
+from ldai_langchain.langchain_helper import extract_last_message_content, sum_token_usage_from_messages
 
 
 class LangChainAgentRunner(AgentRunner):
@@ -37,11 +37,7 @@ class LangChainAgentRunner(AgentRunner):
                 "messages": [{"role": "user", "content": str(input)}]
             })
             messages = result.get("messages", [])
-            output = ""
-            if messages:
-                last = messages[-1]
-                if hasattr(last, 'content') and isinstance(last.content, str):
-                    output = last.content
+            output = extract_last_message_content(messages)
             return AgentResult(
                 output=output,
                 raw=result,
