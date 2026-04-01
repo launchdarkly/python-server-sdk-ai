@@ -1,3 +1,4 @@
+import typing
 from typing import Any, Dict, Iterable, List, Optional, Tuple, cast
 
 from ldai import LDMessage
@@ -112,6 +113,60 @@ def normalize_tool_types(tool_definitions: List[Any]) -> List[Dict[str, Any]]:
 _NATIVE_TOOL_TYPE_TO_CONFIG_KEY = {
     'web_search': 'web_search_tool',
 }
+
+# ``agents.Tool`` is a typing.Union of concrete tool classes, not a runtime class.
+# Using ``isinstance(x, Tool)`` raises TypeError (subscripted generics / union checks).
+_AGENT_TOOL_TYPES: Optional[Tuple[type, ...]] = None
+
+
+def _concrete_agent_tool_types() -> Tuple[type, ...]:
+    """Resolve concrete classes behind ``agents.Tool`` (a Union alias)."""
+    try:
+        from agents import Tool as ToolUnion
+    except ImportError:
+        return ()
+    args = typing.get_args(ToolUnion)
+    if not args:
+        return ()
+    out: List[type] = []
+    for a in args:
+        origin = getattr(a, '__origin__', None)
+        if origin is not None and isinstance(origin, type):
+            out.append(origin)
+        elif isinstance(a, type):
+            out.append(a)
+    return tuple(out)
+
+
+def is_agent_tool_instance(value: Any) -> bool:
+    """True if ``value`` is already an openai-agents tool object (not a plain callable)."""
+    global _AGENT_TOOL_TYPES
+    if _AGENT_TOOL_TYPES is None:
+        _AGENT_TOOL_TYPES = _concrete_agent_tool_types()
+    if not _AGENT_TOOL_TYPES:
+        return False
+    return isinstance(value, _AGENT_TOOL_TYPES)
+
+
+def registry_value_to_agent_tool(value: Any) -> Any:
+    """
+    Turn a ToolRegistry value into an object the OpenAI Agents SDK accepts in ``Agent(tools=…)``.
+
+    Plain callables are wrapped with ``function_tool``. Values that are already
+    tool instances (e.g. ``WebSearchTool()``, ``FileSearchTool(...)``) are
+    returned unchanged so they are not double-wrapped.
+    """
+    try:
+        from agents import function_tool
+    except ImportError as exc:
+        raise ImportError(
+            "openai-agents is required for agent tools. "
+            "Install it with: pip install openai-agents"
+        ) from exc
+
+    if is_agent_tool_instance(value):
+        return value
+    return function_tool(value)
 
 
 def get_tool_calls_from_run_items(new_items: List[Any]) -> List[Tuple[str, str]]:

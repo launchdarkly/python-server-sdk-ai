@@ -6,7 +6,7 @@ from ldai import log
 from ldai.providers import AgentResult, AgentRunner, ToolRegistry
 from ldai.providers.types import LDAIMetrics
 
-from ldai_openai.openai_helper import get_ai_usage_from_response
+from ldai_openai.openai_helper import get_ai_usage_from_response, registry_value_to_agent_tool
 
 
 class OpenAIAgentRunner(AgentRunner):
@@ -81,8 +81,6 @@ class OpenAIAgentRunner(AgentRunner):
 
     def _build_agent_tools(self) -> List[Any]:
         """Build tool instances from LD tool definitions and registry."""
-        from agents import function_tool
-
         tools = []
         for td in self._tool_definitions:
             if not isinstance(td, dict):
@@ -93,7 +91,7 @@ class OpenAIAgentRunner(AgentRunner):
 
             tool_fn = self._tools.get(name)
             if tool_fn:
-                tools.append(function_tool(tool_fn))
+                tools.append(registry_value_to_agent_tool(tool_fn))
                 continue
 
             log.warning(
