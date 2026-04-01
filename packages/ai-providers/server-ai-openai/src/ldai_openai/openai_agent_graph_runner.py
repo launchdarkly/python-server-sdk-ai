@@ -51,6 +51,7 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
         self._graph = graph
         self._tools = tools
         self._agent_name_map: Dict[str, str] = {}
+        self._tool_name_map: Dict[str, str] = {}
 
     async def run(self, input: Any) -> AgentGraphResult:
         """
@@ -140,6 +141,7 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
 
         tracker = self._graph.get_tracker()
         name_map: Dict[str, str] = {}
+        tool_name_map: Dict[str, str] = {}
 
         def build_node(node: AgentGraphNode, ctx: dict) -> Any:
             node_config = node.get_config()
@@ -180,6 +182,8 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
                 if not tool_fn:
                     continue
 
+                # Map fn.__name__ → config key so tracked names match the AI config.
+                tool_name_map[tool_fn.__name__] = tool_name
                 agent_tools.append(function_tool(tool_fn))
 
             return Agent(
@@ -192,6 +196,7 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
 
         root = self._graph.reverse_traverse(fn=build_node)
         self._agent_name_map = name_map
+        self._tool_name_map = tool_name_map
         return root
 
     def _make_on_handoff(
@@ -280,8 +285,9 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
     def _track_tool_calls(self, result: Any, tracker: Any) -> None:
         """Track all tool calls from the run result, attributed to the node that called them."""
         gk = tracker.graph_key if tracker is not None else None
-        for agent_name, tool_name in get_tool_calls_from_run_items(result.new_items):
+        for agent_name, tool_fn_name in get_tool_calls_from_run_items(result.new_items):
             original_key = self._agent_name_map.get(agent_name, agent_name)
+            tool_name = self._tool_name_map.get(tool_fn_name, '')
             node = self._graph.get_node(original_key)
             if node is None:
                 continue

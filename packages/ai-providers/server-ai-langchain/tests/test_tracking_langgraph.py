@@ -254,12 +254,23 @@ async def test_tracks_tool_calls():
     """A tool_call event fires for each tool name found in the model response."""
     mock_ld_client = MagicMock()
     graph = _make_graph(mock_ld_client, tool_names=['get_weather'])
-    fake_response = _make_fake_response('Calling tool.', tool_call_names=['get_weather'])
 
-    tool_registry = {'get_weather': lambda location='NYC': 'sunny'}
+    # Model returns a tool call on the first invoke, then a final answer.
+    tool_response = _make_fake_response('Calling tool.', tool_call_names=['get_weather'])
+    final_response = _make_fake_response('It is sunny in NYC.')
+
+    mock_model = MagicMock()
+    mock_model.invoke.side_effect = [tool_response, final_response]
+    mock_model.bind_tools.return_value = mock_model
+
+    def get_weather(location: str = 'NYC') -> str:
+        """Return the current weather for a location."""
+        return 'sunny'
+
+    tool_registry = {'get_weather': get_weather}
 
     with patch('ldai_langchain.langgraph_agent_graph_runner.create_langchain_model',
-               return_value=_mock_model(fake_response)):
+               return_value=mock_model):
         runner = LangGraphAgentGraphRunner(graph, tool_registry)
         await runner.run('What is the weather?')
 
@@ -274,12 +285,27 @@ async def test_tracks_multiple_tool_calls():
     """One tool_call event fires per tool name in the response."""
     mock_ld_client = MagicMock()
     graph = _make_graph(mock_ld_client, tool_names=['search', 'summarize'])
-    fake_response = _make_fake_response('Done.', tool_call_names=['search', 'summarize'])
 
-    tool_registry = {'search': lambda q='': q, 'summarize': lambda text='': text}
+    # Both tools called in one response; second invoke returns a final answer.
+    tool_response = _make_fake_response('Done.', tool_call_names=['search', 'summarize'])
+    final_response = _make_fake_response('Here is the summary.')
+
+    mock_model = MagicMock()
+    mock_model.invoke.side_effect = [tool_response, final_response]
+    mock_model.bind_tools.return_value = mock_model
+
+    def search(q: str = '') -> str:
+        """Search for information."""
+        return q
+
+    def summarize(text: str = '') -> str:
+        """Summarize the given text."""
+        return text
+
+    tool_registry = {'search': search, 'summarize': summarize}
 
     with patch('ldai_langchain.langgraph_agent_graph_runner.create_langchain_model',
-               return_value=_mock_model(fake_response)):
+               return_value=mock_model):
         runner = LangGraphAgentGraphRunner(graph, tool_registry)
         await runner.run('Search and summarize.')
 
