@@ -5,6 +5,7 @@ from ldai.models import AIConfigKind
 from ldai.providers import AIProvider, ToolRegistry
 from openai import AsyncOpenAI
 
+from ldai_openai.openai_helper import normalize_tool_types
 from ldai_openai.openai_model_runner import OpenAIModelRunner
 
 if TYPE_CHECKING:
@@ -40,11 +41,17 @@ class OpenAIRunnerFactory(AIProvider):
         Create a configured OpenAIModelRunner for the given AI config.
 
         Reuses the underlying AsyncOpenAI client so connection pooling is preserved.
+        Tool definitions are converted from LD's flat format to the Chat Completions
+        API format, with native tools mapped to their correct API type.
 
         :param config: The LaunchDarkly AI configuration
         :return: OpenAIModelRunner ready to invoke the model
         """
         model_name, parameters = self._extract_model_config(config)
+        parameters = dict(parameters)
+        tool_defs = parameters.pop('tools', None) or []
+        if tool_defs:
+            parameters['tools'] = normalize_tool_types(tool_defs)
         return OpenAIModelRunner(self._client, model_name, parameters)
 
     def create_agent_graph(self, graph_def: Any, tools: ToolRegistry) -> Any:

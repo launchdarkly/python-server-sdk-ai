@@ -10,7 +10,6 @@ from ldai.providers.types import LDAIMetrics
 from ldai.tracker import TokenUsage
 
 from ldai_openai.openai_helper import (
-    NATIVE_OPENAI_TOOLS,
     extract_usage_from_request_entry,
     get_ai_usage_from_response,
     get_tool_calls_from_run_items,
@@ -166,11 +165,6 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
             agent_tools: List[Tool] = []
             for tool_def in tool_defs:
                 tool_name = tool_def.get('name', '')
-
-                # Check native OpenAI tools first, then fall back to ToolRegistry
-                if tool_name in NATIVE_OPENAI_TOOLS:
-                    agent_tools.append(NATIVE_OPENAI_TOOLS[tool_name](tool_def))
-                    continue
 
                 tool_fn = self._tools.get(tool_name)
                 if not tool_fn:

@@ -6,10 +6,7 @@ from ldai import log
 from ldai.providers import AgentResult, AgentRunner, ToolRegistry
 from ldai.providers.types import LDAIMetrics
 
-from ldai_openai.openai_helper import (
-    NATIVE_OPENAI_TOOLS,
-    get_ai_usage_from_response,
-)
+from ldai_openai.openai_helper import get_ai_usage_from_response
 
 
 class OpenAIAgentRunner(AgentRunner):
@@ -99,15 +96,9 @@ class OpenAIAgentRunner(AgentRunner):
                 tools.append(function_tool(tool_fn))
                 continue
 
-            # No callable in registry — try native OpenAI tool (exact name match required).
-            native = NATIVE_OPENAI_TOOLS.get(name)
-            if native:
-                tools.append(native(td))
-                continue
-
             log.warning(
                 f"Tool '{name}' is defined in the AI config but was not found in "
-                "the tool registry and is not a known native tool; skipping."
+                "the tool registry; skipping."
             )
         return tools
 

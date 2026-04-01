@@ -6,18 +6,6 @@ from ldai.tracker import TokenUsage
 from openai.types.chat import ChatCompletionMessageParam
 
 
-def _build_native_tool_map() -> Dict[str, Any]:
-    try:
-        from agents import WebSearchTool
-        return {
-            'web_search_tool': lambda _: WebSearchTool(),
-        }
-    except ImportError:
-        return {}
-
-
-NATIVE_OPENAI_TOOLS: Dict[str, Any] = _build_native_tool_map()
-
 
 def convert_messages_to_openai(messages: List[LDMessage]) -> Iterable[ChatCompletionMessageParam]:
     """
@@ -89,6 +77,35 @@ def get_ai_metrics_from_response(response: Any) -> LDAIMetrics:
     :return: LDAIMetrics with success status and token usage
     """
     return LDAIMetrics(success=True, usage=get_ai_usage_from_response(response))
+
+
+# Tool names that require their own API type in the Chat Completions API.
+# LD stores all tools as type="function"; these are converted to their correct type.
+_NATIVE_API_TOOL_NAMES = frozenset({
+    'web_search_tool',
+    'file_search',
+    'computer_use_preview',
+})
+
+
+def normalize_tool_types(tool_definitions: List[Any]) -> List[Dict[str, Any]]:
+    """
+    Convert LD tool definitions to Chat Completions API format.
+
+    LD emits all tools as ``type="function"`` with a flat structure. This helper
+    wraps regular function tools in the nested ``function`` key the API requires,
+    and converts known native tool names to their correct API type without a schema.
+
+    :param tool_definitions: Tool definitions from the LD AI config
+    :return: Tool list ready to pass to ``chat.completions.create``
+    """
+    result = []
+    for td in tool_definitions:
+        if not isinstance(td, dict):
+            continue
+        name = td.get('name', '')
+        result.append({**td, 'type': name} if name in _NATIVE_API_TOOL_NAMES else td)
+    return result
 
 
 # Native tool raw_item type names don't always match the LD config key convention.
