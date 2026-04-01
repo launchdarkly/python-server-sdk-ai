@@ -45,6 +45,21 @@ from ldai_optimization.util import (
 
 logger = logging.getLogger(__name__)
 
+
+def _strip_provider_prefix(model: str) -> str:
+    """Strip the provider prefix from a model identifier returned by the LD API.
+
+    API model keys are formatted as "Provider.model-name" (e.g. "OpenAI.gpt-5",
+    "Anthropic.claude-opus-4.6"). Only the part after the first period is needed
+    by the underlying LLM clients. If no period is present the string is returned
+    unchanged.
+
+    :param model: Raw model string from the API.
+    :return: Model name with provider prefix removed.
+    """
+    return model.split(".", 1)[-1]
+
+
 # Maps SDK status strings to the API status/activity values expected by
 # agent_optimization_result records. Defined at module level to avoid
 # allocating the dict on every on_status_update invocation.
@@ -981,10 +996,12 @@ class OptimizationClient:
                 judge_key=judge["key"],
             )
 
-        if not judges and options.on_turn is None:
+        has_ground_truth = bool(config.get("groundTruthResponses"))
+        if not judges and not has_ground_truth and options.on_turn is None:
             raise ValueError(
-                "The optimization config has no acceptance statements or judges, "
-                "and no on_turn callback was provided. At least one is required."
+                "The optimization config has no acceptance statements, judges, or ground truth "
+                "responses, and no on_turn callback was provided. At least one is required to "
+                "evaluate optimization results."
             )
 
         variable_choices: List[Dict[str, Any]] = config["variableChoices"] or [{}]
@@ -1034,8 +1051,8 @@ class OptimizationClient:
         return OptimizationOptions(
             context_choices=options.context_choices,
             max_attempts=config["maxAttempts"],
-            model_choices=config["modelChoices"],
-            judge_model=config["judgeModel"],
+            model_choices=[_strip_provider_prefix(m) for m in config["modelChoices"]],
+            judge_model=_strip_provider_prefix(config["judgeModel"]),
             variable_choices=variable_choices,
             handle_agent_call=options.handle_agent_call,
             handle_judge_call=options.handle_judge_call,

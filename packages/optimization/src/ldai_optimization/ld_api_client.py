@@ -10,6 +10,28 @@ logger = logging.getLogger(__name__)
 
 _BASE_URL = "https://app.launchdarkly.com"
 
+
+class LDApiError(Exception):
+    """Raised when the LaunchDarkly REST API returns an error or is unreachable.
+
+    Attributes:
+        status_code: HTTP status code, or None for network-level failures.
+        path: The API path that was requested.
+    """
+
+    def __init__(self, message: str, status_code: Optional[int] = None, path: str = "") -> None:
+        super().__init__(message)
+        self.status_code = status_code
+        self.path = path
+
+
+_HTTP_ERROR_HINTS: Dict[int, str] = {
+    401: "Authentication failed — check that LAUNCHDARKLY_API_KEY is set correctly.",
+    403: "Authorization failed — check that your API key has the required permissions.",
+    404: "Resource not found — check that the project key and optimization config key are correct.",
+    429: "Rate limit exceeded — too many requests to the LaunchDarkly API.",
+}
+
 _REQUIRED_STRING_FIELDS = ("id", "key", "aiConfigKey", "judgeModel")
 _REQUIRED_INT_FIELDS = ("maxAttempts", "version", "createdAt")
 _REQUIRED_LIST_FIELDS = (
@@ -170,12 +192,18 @@ class LDApiClient:
                 return json.loads(raw) if raw else None
         except urllib.error.HTTPError as exc:
             body_excerpt = exc.read(500).decode(errors="replace")
-            raise RuntimeError(
-                f"LaunchDarkly API error {exc.code} for {method} {path}: {body_excerpt}"
+            hint = _HTTP_ERROR_HINTS.get(exc.code, "")
+            detail = f"{hint} (API response: {body_excerpt})" if hint else f"API response: {body_excerpt}"
+            raise LDApiError(
+                f"LaunchDarkly API error {exc.code} {exc.msg} for {method} {path}. {detail}",
+                status_code=exc.code,
+                path=path,
             ) from exc
         except urllib.error.URLError as exc:
-            raise RuntimeError(
-                f"LaunchDarkly API request failed for {method} {path}: {exc.reason}"
+            raise LDApiError(
+                f"Could not reach LaunchDarkly API at {url}: {exc.reason}. "
+                "Check your network connection and the base_url setting.",
+                path=path,
             ) from exc
 
     def get_agent_optimization(
@@ -186,7 +214,7 @@ class LDApiClient:
         :param project_key: LaunchDarkly project key.
         :param optimization_key: Key of the agent optimization config.
         :return: Validated AgentOptimizationConfig.
-        :raises RuntimeError: On non-200 HTTP responses or network errors.
+        :raises LDApiError: On non-200 HTTP responses or network errors.
         :raises ValueError: If the response is missing required fields.
         """
         path = f"/api/v2/projects/{project_key}/agent-optimizations/{optimization_key}"
@@ -208,7 +236,17 @@ class LDApiClient:
         path = f"/api/v2/projects/{project_key}/agent-optimizations/{optimization_id}/results"
         try:
             self._request("POST", path, body=payload)
-        except Exception:
-            logger.exception(
-                "Failed to persist optimization result for optimization_id=%s", optimization_id
+        except LDApiError as exc:
+            logger.debug(
+                "Failed to persist optimization result (optimization_id=%s, iteration=%s): %s",
+                optimization_id,
+                payload.get("iteration"),
+                exc,
+            )
+        except Exception as exc:
+            logger.debug(
+                "Unexpected error persisting optimization result (optimization_id=%s, iteration=%s): %s",
+                optimization_id,
+                payload.get("iteration"),
+                exc,
             )

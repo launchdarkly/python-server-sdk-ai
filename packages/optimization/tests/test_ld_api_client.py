@@ -12,6 +12,7 @@ import pytest
 from ldai_optimization.ld_api_client import (
     AgentOptimizationConfig,
     LDApiClient,
+    LDApiError,
     OptimizationResultPayload,
     _parse_agent_optimization,
 )
@@ -160,20 +161,42 @@ class TestLDApiClientRequest:
             req: urllib.request.Request = mock_open.call_args[0][0]
             assert req.get_header("Authorization") == "my-api-key"
 
-    def test_raises_runtime_error_on_http_error(self):
+    def test_raises_ld_api_error_on_http_error(self):
         client = LDApiClient("test-key")
         http_error = urllib.error.HTTPError(
             url="http://x", code=404, msg="Not Found", hdrs=MagicMock(), fp=BytesIO(b"not found body")
         )
         with patch("urllib.request.urlopen", side_effect=http_error):
-            with pytest.raises(RuntimeError, match="404"):
+            with pytest.raises(LDApiError) as exc_info:
                 client._request("GET", "/missing")
+        assert exc_info.value.status_code == 404
+        assert "404" in str(exc_info.value)
 
-    def test_raises_runtime_error_on_url_error(self):
+    def test_raises_ld_api_error_on_url_error(self):
         client = LDApiClient("test-key")
         url_error = urllib.error.URLError(reason="Connection refused")
         with patch("urllib.request.urlopen", side_effect=url_error):
-            with pytest.raises(RuntimeError, match="Connection refused"):
+            with pytest.raises(LDApiError) as exc_info:
+                client._request("GET", "/path")
+        assert exc_info.value.status_code is None
+        assert "Connection refused" in str(exc_info.value)
+
+    def test_401_error_includes_api_key_hint(self):
+        client = LDApiClient("test-key")
+        http_error = urllib.error.HTTPError(
+            url="http://x", code=401, msg="Unauthorized", hdrs=MagicMock(), fp=BytesIO(b"")
+        )
+        with patch("urllib.request.urlopen", side_effect=http_error):
+            with pytest.raises(LDApiError, match="LAUNCHDARKLY_API_KEY"):
+                client._request("GET", "/path")
+
+    def test_404_error_includes_key_hint(self):
+        client = LDApiClient("test-key")
+        http_error = urllib.error.HTTPError(
+            url="http://x", code=404, msg="Not Found", hdrs=MagicMock(), fp=BytesIO(b"")
+        )
+        with patch("urllib.request.urlopen", side_effect=http_error):
+            with pytest.raises(LDApiError, match="project key"):
                 client._request("GET", "/path")
 
     def test_custom_base_url_used_in_request(self):
@@ -218,14 +241,15 @@ class TestGetAgentOptimization:
             with pytest.raises(ValueError, match="Invalid AgentOptimization response"):
                 client.get_agent_optimization("proj", "opt")
 
-    def test_raises_runtime_error_on_http_404(self):
+    def test_raises_ld_api_error_on_http_404(self):
         client = LDApiClient("test-key")
         http_error = urllib.error.HTTPError(
             url="http://x", code=404, msg="Not Found", hdrs=MagicMock(), fp=BytesIO(b"not found")
         )
         with patch("urllib.request.urlopen", side_effect=http_error):
-            with pytest.raises(RuntimeError, match="404"):
+            with pytest.raises(LDApiError) as exc_info:
                 client.get_agent_optimization("proj", "missing-key")
+        assert exc_info.value.status_code == 404
 
 
 # ---------------------------------------------------------------------------

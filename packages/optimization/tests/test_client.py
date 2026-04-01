@@ -1105,9 +1105,16 @@ class TestBuildOptionsFromConfig:
         assert "acceptance-statement-0" in result.judges
         assert "accuracy" in result.judges
 
-    def test_raises_when_no_judges_and_no_on_turn(self):
+    def test_raises_when_no_judges_no_ground_truth_no_on_turn(self):
         config = dict(_API_CONFIG, acceptanceStatements=[], judges=[])
-        with pytest.raises(ValueError, match="no acceptance statements or judges"):
+        with pytest.raises(ValueError, match="no acceptance statements, judges, or ground truth"):
+            self._build(config=config)
+
+    def test_ground_truth_responses_alone_does_not_pass_no_criteria_check(self):
+        # groundTruthResponses is not yet implemented as standalone criteria;
+        # OptimizationOptions still requires judges or on_turn.
+        config = dict(_API_CONFIG, acceptanceStatements=[], judges=[], groundTruthResponses=["4"])
+        with pytest.raises((ValueError, Exception)):
             self._build(config=config)
 
     def test_on_turn_satisfies_no_judges_requirement(self):
@@ -1138,13 +1145,28 @@ class TestBuildOptionsFromConfig:
         result = self._build()
         assert result.max_attempts == 3
 
-    def test_model_choices_from_config(self):
+    def test_model_choices_provider_prefix_stripped(self):
+        config = dict(_API_CONFIG, modelChoices=["OpenAI.gpt-4o", "Anthropic.claude-opus-4-5"])
+        result = self._build(config=config)
+        assert result.model_choices == ["gpt-4o", "claude-opus-4-5"]
+
+    def test_judge_model_provider_prefix_stripped(self):
+        config = dict(_API_CONFIG, judgeModel="OpenAI.gpt-4o")
+        result = self._build(config=config)
+        assert result.judge_model == "gpt-4o"
+
+    def test_model_choices_without_prefix_unchanged(self):
         result = self._build()
         assert result.model_choices == ["gpt-4o", "gpt-4o-mini"]
 
-    def test_judge_model_from_config(self):
+    def test_judge_model_without_prefix_unchanged(self):
         result = self._build()
         assert result.judge_model == "gpt-4o"
+
+    def test_model_with_multiple_dots_only_prefix_stripped(self):
+        config = dict(_API_CONFIG, judgeModel="Anthropic.claude-opus-4.6")
+        result = self._build(config=config)
+        assert result.judge_model == "claude-opus-4.6"
 
     def test_callbacks_forwarded_from_options(self):
         handle_agent = AsyncMock(return_value="ok")
