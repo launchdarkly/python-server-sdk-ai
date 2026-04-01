@@ -1,7 +1,8 @@
 """OpenAI agent graph runner for LaunchDarkly AI SDK."""
 
+import re
 import time
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional
 
 from ldai import log
 from ldai.agent_graph import AgentGraphDefinition, AgentGraphNode
@@ -14,6 +15,11 @@ from ldai_openai.openai_helper import (
     get_ai_usage_from_response,
     get_tool_calls_from_run_items,
 )
+
+
+def _sanitize_agent_name(key: str) -> str:
+    """Replace characters invalid for OpenAI function names with underscores."""
+    return re.sub(r'[^a-zA-Z0-9_]', '_', key)
 
 
 class _RunState:
@@ -44,6 +50,7 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
         """
         self._graph = graph
         self._tools = tools
+        self._agent_name_map: Dict[str, str] = {}
 
     async def run(self, input: Any) -> AgentGraphResult:
         """
@@ -132,6 +139,7 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
             ) from exc
 
         tracker = self._graph.get_tracker()
+        name_map: Dict[str, str] = {}
 
         def build_node(node: AgentGraphNode, ctx: dict) -> Any:
             node_config = node.get_config()
@@ -142,6 +150,8 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
                 raise ValueError(f"Model not set for node '{node_config.key}'")
 
             tool_defs = model.get_parameter('tools') or []
+            sanitized_name = _sanitize_agent_name(node_config.key)
+            name_map[sanitized_name] = node_config.key
 
             # --- handoffs ---
             agent_handoffs: List[Handoff] = []
@@ -173,14 +183,16 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
                 agent_tools.append(function_tool(tool_fn))
 
             return Agent(
-                name=node_config.key,
+                name=sanitized_name,
                 model=model.name,
                 instructions=f'{RECOMMENDED_PROMPT_PREFIX} {node_config.instructions or ""}',
                 handoffs=list(agent_handoffs),
                 tools=list(agent_tools),
             )
 
-        return self._graph.reverse_traverse(fn=build_node)
+        root = self._graph.reverse_traverse(fn=build_node)
+        self._agent_name_map = name_map
+        return root
 
     def _make_on_handoff(
         self,
@@ -269,7 +281,8 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
         """Track all tool calls from the run result, attributed to the node that called them."""
         gk = tracker.graph_key if tracker is not None else None
         for agent_name, tool_name in get_tool_calls_from_run_items(result.new_items):
-            node = self._graph.get_node(agent_name)
+            original_key = self._agent_name_map.get(agent_name, agent_name)
+            node = self._graph.get_node(original_key)
             if node is None:
                 continue
             config_tracker = node.get_config().tracker

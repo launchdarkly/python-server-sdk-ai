@@ -11,7 +11,7 @@ from collections import defaultdict
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from ldai.agent_graph import AgentGraphDefinition
-from ldai.models import AIAgentGraphConfig, AIAgentConfig, ModelConfig, ProviderConfig
+from ldai.models import AIAgentGraphConfig, AIAgentConfig, Edge, ModelConfig, ProviderConfig
 from ldai.tracker import AIGraphTracker, LDAIConfigTracker
 from ldai_openai.openai_agent_graph_runner import OpenAIAgentGraphRunner
 
@@ -151,6 +151,74 @@ def _make_agents_modules(run_result: MagicMock) -> dict:
         'agents.extensions.handoff_prompt': mock_ext,
         'agents.tool_context': MagicMock(),
     }
+
+
+def _make_two_node_graph(mock_ld_client: MagicMock) -> AgentGraphDefinition:
+    """Build a two-node AgentGraphDefinition (root-agent → child-agent)."""
+    context = MagicMock()
+
+    root_tracker = LDAIConfigTracker(
+        ld_client=mock_ld_client,
+        variation_key='test-variation',
+        config_key='root-agent',
+        version=1,
+        model_name='gpt-4',
+        provider_name='openai',
+        context=context,
+    )
+    child_tracker = LDAIConfigTracker(
+        ld_client=mock_ld_client,
+        variation_key='test-variation',
+        config_key='child-agent',
+        version=1,
+        model_name='gpt-4',
+        provider_name='openai',
+        context=context,
+    )
+    graph_tracker = AIGraphTracker(
+        ld_client=mock_ld_client,
+        variation_key='test-variation',
+        graph_key='two-node-graph',
+        version=1,
+        context=context,
+    )
+
+    root_config = AIAgentConfig(
+        key='root-agent',
+        enabled=True,
+        model=ModelConfig(name='gpt-4', parameters={}),
+        provider=ProviderConfig(name='openai'),
+        instructions='You are root.',
+        tracker=root_tracker,
+    )
+    child_config = AIAgentConfig(
+        key='child-agent',
+        enabled=True,
+        model=ModelConfig(name='gpt-4', parameters={}),
+        provider=ProviderConfig(name='openai'),
+        instructions='You are child.',
+        tracker=child_tracker,
+    )
+
+    edge = Edge(key='root-to-child', source_config='root-agent', target_config='child-agent')
+    graph_config = AIAgentGraphConfig(
+        key='two-node-graph',
+        root_config_key='root-agent',
+        edges=[edge],
+        enabled=True,
+    )
+
+    nodes = AgentGraphDefinition.build_nodes(graph_config, {
+        'root-agent': root_config,
+        'child-agent': child_config,
+    })
+    return AgentGraphDefinition(
+        agent_graph=graph_config,
+        nodes=nodes,
+        context=context,
+        enabled=True,
+        tracker=graph_tracker,
+    )
 
 
 def _events(mock_ld_client: MagicMock) -> dict:
@@ -303,3 +371,89 @@ async def test_tracks_failure_and_latency_on_runner_error():
     assert '$ld:ai:graph:invocation_failure' in ev
     assert '$ld:ai:graph:latency' in ev
     assert '$ld:ai:graph:invocation_success' not in ev
+
+
+@pytest.mark.asyncio
+async def test_multi_node_tracks_per_node_tokens_and_handoff():
+    """Each node emits its own token events; handoff event fires between them."""
+    mock_ld_client = MagicMock()
+    graph = _make_two_node_graph(mock_ld_client)
+
+    root_entry = MagicMock()
+    root_entry.total_tokens = 15
+    root_entry.input_tokens = 10
+    root_entry.output_tokens = 5
+
+    child_entry = MagicMock()
+    child_entry.total_tokens = 9
+    child_entry.input_tokens = 6
+    child_entry.output_tokens = 3
+
+    run_result = MagicMock()
+    run_result.final_output = 'child answer'
+    run_result.new_items = []
+    run_result.usage = None
+    run_result.context_wrapper.usage.total_tokens = 24
+    run_result.context_wrapper.usage.input_tokens = 16
+    run_result.context_wrapper.usage.output_tokens = 8
+    run_result.context_wrapper.usage.request_usage_entries = [root_entry, child_entry]
+
+    on_handoff_callbacks = []
+
+    def capture_handoff(**kwargs):
+        cb = kwargs.get('on_handoff')
+        if cb:
+            on_handoff_callbacks.append(cb)
+        return MagicMock()
+
+    async def mock_run(agent, input_str, **kwargs):
+        # Simulate the root→child handoff before returning
+        if on_handoff_callbacks:
+            run_ctx = MagicMock()
+            run_ctx.usage.request_usage_entries = [root_entry]
+            on_handoff_callbacks[0](run_ctx)
+        return run_result
+
+    mock_runner_cls = MagicMock()
+    mock_runner_cls.run = mock_run
+
+    mock_agents = MagicMock()
+    mock_agents.Runner = mock_runner_cls
+    mock_agents.Agent = MagicMock(return_value=MagicMock())
+    mock_agents.Handoff = MagicMock()
+    mock_agents.Tool = MagicMock()
+    mock_agents.function_tool = lambda fn: MagicMock()
+    mock_agents.handoff = capture_handoff
+
+    mock_ext = MagicMock()
+    mock_ext.RECOMMENDED_PROMPT_PREFIX = '[PREFIX]'
+
+    with patch.dict('sys.modules', {
+        'agents': mock_agents,
+        'agents.extensions': MagicMock(),
+        'agents.extensions.handoff_prompt': mock_ext,
+        'agents.tool_context': MagicMock(),
+    }):
+        runner = OpenAIAgentGraphRunner(graph, {})
+        result = await runner.run('hello')
+
+    assert result.metrics.success is True
+
+    ev = _events(mock_ld_client)
+
+    # Per-node token events identified by configKey
+    root_tokens = [(d, v) for d, v in ev.get('$ld:ai:tokens:total', []) if d.get('configKey') == 'root-agent']
+    child_tokens = [(d, v) for d, v in ev.get('$ld:ai:tokens:total', []) if d.get('configKey') == 'child-agent']
+    assert root_tokens[0][1] == 15
+    assert child_tokens[0][1] == 9
+
+    # Execution path includes both node keys
+    path_data = ev['$ld:ai:graph:path'][0][0]
+    assert 'root-agent' in path_data['path']
+    assert 'child-agent' in path_data['path']
+
+    # Handoff event fires with correct source and target
+    handoff_events = ev.get('$ld:ai:graph:handoff_success', [])
+    assert len(handoff_events) == 1
+    assert handoff_events[0][0]['sourceKey'] == 'root-agent'
+    assert handoff_events[0][0]['targetKey'] == 'child-agent'

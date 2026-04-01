@@ -11,7 +11,7 @@ from collections import defaultdict
 from unittest.mock import MagicMock, patch
 
 from ldai.agent_graph import AgentGraphDefinition
-from ldai.models import AIAgentGraphConfig, AIAgentConfig, ModelConfig, ProviderConfig
+from ldai.models import AIAgentGraphConfig, AIAgentConfig, Edge, ModelConfig, ProviderConfig
 from ldai.tracker import AIGraphTracker, LDAIConfigTracker
 from ldai_langchain.langgraph_agent_graph_runner import LangGraphAgentGraphRunner
 
@@ -127,6 +127,74 @@ def _mock_model(response):
     model.invoke.return_value = response
     model.bind_tools.return_value = model
     return model
+
+
+def _make_two_node_graph(mock_ld_client: MagicMock) -> 'AgentGraphDefinition':
+    """Build a two-node AgentGraphDefinition (root-agent → child-agent)."""
+    context = MagicMock()
+
+    root_tracker = LDAIConfigTracker(
+        ld_client=mock_ld_client,
+        variation_key='test-variation',
+        config_key='root-agent',
+        version=1,
+        model_name='gpt-4',
+        provider_name='openai',
+        context=context,
+    )
+    child_tracker = LDAIConfigTracker(
+        ld_client=mock_ld_client,
+        variation_key='test-variation',
+        config_key='child-agent',
+        version=1,
+        model_name='gpt-4',
+        provider_name='openai',
+        context=context,
+    )
+    graph_tracker = AIGraphTracker(
+        ld_client=mock_ld_client,
+        variation_key='test-variation',
+        graph_key='two-node-graph',
+        version=1,
+        context=context,
+    )
+
+    root_config = AIAgentConfig(
+        key='root-agent',
+        enabled=True,
+        model=ModelConfig(name='gpt-4', parameters={}),
+        provider=ProviderConfig(name='openai'),
+        instructions='You are root.',
+        tracker=root_tracker,
+    )
+    child_config = AIAgentConfig(
+        key='child-agent',
+        enabled=True,
+        model=ModelConfig(name='gpt-4', parameters={}),
+        provider=ProviderConfig(name='openai'),
+        instructions='You are child.',
+        tracker=child_tracker,
+    )
+
+    edge = Edge(key='root-to-child', source_config='root-agent', target_config='child-agent')
+    graph_config = AIAgentGraphConfig(
+        key='two-node-graph',
+        root_config_key='root-agent',
+        edges=[edge],
+        enabled=True,
+    )
+
+    nodes = AgentGraphDefinition.build_nodes(graph_config, {
+        'root-agent': root_config,
+        'child-agent': child_config,
+    })
+    return AgentGraphDefinition(
+        agent_graph=graph_config,
+        nodes=nodes,
+        context=context,
+        enabled=True,
+        tracker=graph_tracker,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -258,3 +326,41 @@ async def test_tracks_failure_and_latency_on_model_error():
     assert '$ld:ai:graph:invocation_failure' in ev
     assert '$ld:ai:graph:latency' in ev
     assert '$ld:ai:graph:invocation_success' not in ev
+
+
+@pytest.mark.asyncio
+async def test_multi_node_tracks_per_node_tokens_and_path():
+    """Each node emits its own token events; path and graph total cover both nodes."""
+    mock_ld_client = MagicMock()
+    graph = _make_two_node_graph(mock_ld_client)
+
+    root_response = _make_fake_response('Root done.', input_tokens=10, output_tokens=5)
+    child_response = _make_fake_response('Child done.', input_tokens=3, output_tokens=2)
+
+    def model_factory(node_config):
+        if node_config.key == 'root-agent':
+            return _mock_model(root_response)
+        return _mock_model(child_response)
+
+    with patch('ldai_langchain.langgraph_agent_graph_runner.create_langchain_model',
+               side_effect=model_factory):
+        runner = LangGraphAgentGraphRunner(graph, {})
+        result = await runner.run('hello')
+
+    assert result.metrics.success is True
+
+    ev = _events(mock_ld_client)
+
+    # Per-node token events identified by configKey
+    root_tokens = [(d, v) for d, v in ev.get('$ld:ai:tokens:total', []) if d.get('configKey') == 'root-agent']
+    child_tokens = [(d, v) for d, v in ev.get('$ld:ai:tokens:total', []) if d.get('configKey') == 'child-agent']
+    assert root_tokens[0][1] == 15
+    assert child_tokens[0][1] == 5
+
+    # Graph-level total accumulates both nodes (10+3 in, 5+2 out)
+    assert ev['$ld:ai:graph:total_tokens'][0][1] == 20
+
+    # Execution path includes both node keys
+    path_data = ev['$ld:ai:graph:path'][0][0]
+    assert 'root-agent' in path_data['path']
+    assert 'child-agent' in path_data['path']
