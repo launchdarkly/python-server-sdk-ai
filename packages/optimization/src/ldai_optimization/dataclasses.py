@@ -204,6 +204,20 @@ class OptimizationJudgeContext:
     variables: Dict[str, Any] = field(default_factory=dict)  # variable set used during agent generation
 
 
+# Shared callback type aliases used by both OptimizationOptions and
+# OptimizationFromConfigOptions to avoid duplicating the full signatures.
+# Placed here so all referenced types (OptimizationContext, AIJudgeCallConfig,
+# OptimizationJudgeContext) are already defined above.
+HandleAgentCall = Union[
+    Callable[[str, AIAgentConfig, OptimizationContext, Dict[str, Callable[..., Any]]], str],
+    Callable[[str, AIAgentConfig, OptimizationContext, Dict[str, Callable[..., Any]]], Awaitable[str]],
+]
+HandleJudgeCall = Union[
+    Callable[[str, AIJudgeCallConfig, OptimizationJudgeContext, Dict[str, Callable[..., Any]]], str],
+    Callable[[str, AIJudgeCallConfig, OptimizationJudgeContext, Dict[str, Callable[..., Any]]], Awaitable[str]],
+]
+
+
 @dataclass
 class OptimizationOptions:
     """Options for agent optimization."""
@@ -218,14 +232,8 @@ class OptimizationOptions:
         Dict[str, Any]
     ]  # choices of interpolated variables to be chosen at random per turn, 1 min required
     # Actual agent/completion (judge) calls - Required
-    handle_agent_call: Union[
-        Callable[[str, AIAgentConfig, OptimizationContext, Dict[str, Callable[..., Any]]], str],
-        Callable[[str, AIAgentConfig, OptimizationContext, Dict[str, Callable[..., Any]]], Awaitable[str]],
-    ]
-    handle_judge_call: Union[
-        Callable[[str, AIJudgeCallConfig, OptimizationJudgeContext, Dict[str, Callable[..., Any]]], str],
-        Callable[[str, AIJudgeCallConfig, OptimizationJudgeContext, Dict[str, Callable[..., Any]]], Awaitable[str]],
-    ]
+    handle_agent_call: HandleAgentCall
+    handle_judge_call: HandleJudgeCall
     # Criteria for pass/fail - Optional
     user_input_options: Optional[List[str]] = (
         None  # optional list of user input messages to randomly select from
@@ -270,3 +278,56 @@ class OptimizationOptions:
             raise ValueError("Either judges or on_turn must be provided")
         if self.judge_model is None:
             raise ValueError("judge_model must be provided")
+
+
+@dataclass
+class OptimizationFromConfigOptions:
+    """User-provided options for optimize_from_config.
+
+    Fields that come from the LaunchDarkly API (max_attempts, model_choices,
+    judge_model, variable_choices, user_input_options, judges) are omitted here
+    and sourced from the fetched agent optimization config instead.
+
+    :param project_key: LaunchDarkly project key used to build API paths.
+    :param context_choices: One or more LD evaluation contexts to use.
+    :param handle_agent_call: Callback that invokes the agent and returns its response.
+    :param handle_judge_call: Callback that invokes a judge and returns its response.
+    :param on_turn: Optional manual pass/fail callback; when provided, judge scoring is skipped.
+    :param on_passing_result: Called with the winning OptimizationContext on success.
+    :param on_failing_result: Called with the final OptimizationContext on failure.
+    :param on_status_update: Called on each status transition; chained after the
+        automatic result-persistence POST so it always runs after the record is saved.
+    :param base_url: Base URL of the LaunchDarkly instance. Defaults to
+        https://app.launchdarkly.com. Override to target a staging instance.
+    """
+
+    project_key: str
+    context_choices: List[Context]
+    handle_agent_call: HandleAgentCall
+    handle_judge_call: HandleJudgeCall
+    on_turn: Optional[Callable[["OptimizationContext"], bool]] = None
+    on_passing_result: Optional[Callable[["OptimizationContext"], None]] = None
+    on_failing_result: Optional[Callable[["OptimizationContext"], None]] = None
+    on_status_update: Optional[
+        Callable[
+            [
+                Literal[
+                    "init",
+                    "generating",
+                    "evaluating",
+                    "generating variation",
+                    "turn completed",
+                    "success",
+                    "failure",
+                ],
+                "OptimizationContext",
+            ],
+            None,
+        ]
+    ] = None
+    base_url: Optional[str] = None
+
+    def __post_init__(self):
+        """Validate required options."""
+        if len(self.context_choices) < 1:
+            raise ValueError("context_choices must have at least 1 context")

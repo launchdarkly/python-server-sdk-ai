@@ -7,6 +7,7 @@ from ldai_optimization.client import OptimizationClient
 from ldai_optimization.dataclasses import (
     AIJudgeCallConfig,
     OptimizationContext,
+    OptimizationFromConfigOptions,
     OptimizationJudge,
     OptimizationJudgeContext,
     OptimizationOptions,
@@ -20,6 +21,7 @@ __all__ = [
     'AIJudgeCallConfig',
     'OptimizationClient',
     'OptimizationContext',
+    'OptimizationFromConfigOptions',
     'OptimizationJudge',
     'OptimizationJudgeContext',
     'OptimizationOptions',

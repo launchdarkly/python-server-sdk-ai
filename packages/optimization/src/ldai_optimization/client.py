@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import random
+import uuid
 from typing import Any, Dict, List, Literal, Optional
 
 from ldai import AIAgentConfig, AIJudgeConfig, AIJudgeConfigDefault, LDAIClient
@@ -16,10 +17,16 @@ from ldai_optimization.dataclasses import (
     AutoCommitConfig,
     JudgeResult,
     OptimizationContext,
+    OptimizationFromConfigOptions,
     OptimizationJudge,
     OptimizationJudgeContext,
     OptimizationOptions,
     ToolDefinition,
+)
+from ldai_optimization.ld_api_client import (
+    AgentOptimizationConfig,
+    LDApiClient,
+    OptimizationResultPayload,
 )
 from ldai_optimization.prompts import (
     build_message_history_text,
@@ -37,6 +44,19 @@ from ldai_optimization.util import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Maps SDK status strings to the API status/activity values expected by
+# agent_optimization_result records. Defined at module level to avoid
+# allocating the dict on every on_status_update invocation.
+_OPTIMIZATION_STATUS_MAP: Dict[str, Dict[str, str]] = {
+    "init": {"status": "RUNNING", "activity": "PENDING"},
+    "generating": {"status": "RUNNING", "activity": "GENERATING"},
+    "evaluating": {"status": "RUNNING", "activity": "EVALUATING"},
+    "generating variation": {"status": "RUNNING", "activity": "GENERATING_VARIATION"},
+    "turn completed": {"status": "RUNNING", "activity": "COMPLETED"},
+    "success": {"status": "PASSED", "activity": "COMPLETED"},
+    "failure": {"status": "FAILED", "activity": "COMPLETED"},
+}
 
 
 class OptimizationClient:
@@ -883,21 +903,149 @@ class OptimizationClient:
         )
 
     async def optimize_from_config(
-        self, agent_key: str, optimization_config_key: str
+        self, optimization_config_key: str, options: OptimizationFromConfigOptions
     ) -> Any:
-        """Optimize an agent from a configuration.
+        """Optimize an agent using a configuration fetched from the LaunchDarkly API.
 
-        :param agent_key: Identifier of the agent to optimize.
-        :param optimization_config_key: Identifier of the optimization configuration to use.
-        :return: Optimization result.
+        The agent key, judge configuration, model choices, and other optimization
+        parameters are all sourced from the remote agent optimization config. The
+        caller only needs to provide the execution callbacks and evaluation contexts.
+
+        Iteration results are automatically persisted to the LaunchDarkly API so
+        the UI can display live run progress.
+
+        :param optimization_config_key: Key of the agent optimization config to fetch.
+        :param options: User-provided callbacks and evaluation contexts.
+        :return: Optimization result (OptimizationContext from the final iteration).
         """
         if not self._has_api_key:
             raise ValueError(
                 "LAUNCHDARKLY_API_KEY is not set, so optimize_from_config is not available"
             )
 
-        self._agent_key = agent_key
-        raise NotImplementedError
+        assert self._api_key is not None
+        api_client = LDApiClient(
+            self._api_key,
+            **({"base_url": options.base_url} if options.base_url else {}),
+        )
+        config = api_client.get_agent_optimization(options.project_key, optimization_config_key)
+
+        self._agent_key = config["aiConfigKey"]
+        optimization_id: str = config["id"]
+        run_id = str(uuid.uuid4())
+
+        context = random.choice(options.context_choices)
+        # _get_agent_config calls _initialize_class_members_from_config internally;
+        # _run_optimization calls it again to reset history before the loop starts.
+        agent_config = await self._get_agent_config(self._agent_key, context)
+
+        optimization_options = self._build_options_from_config(
+            config, options, api_client, optimization_id, run_id
+        )
+        return await self._run_optimization(agent_config, optimization_options)
+
+    def _build_options_from_config(
+        self,
+        config: AgentOptimizationConfig,
+        options: OptimizationFromConfigOptions,
+        api_client: LDApiClient,
+        optimization_id: str,
+        run_id: str,
+    ) -> OptimizationOptions:
+        """Map a fetched AgentOptimization config + user options into OptimizationOptions.
+
+        Acceptance statements and judge configs from the API are merged into a single
+        judges dict. An on_status_update closure is injected to persist each iteration
+        result to the LaunchDarkly API; any user-supplied on_status_update is chained
+        after the persistence call.
+
+        :param config: Validated AgentOptimizationConfig from the API.
+        :param options: User-provided options from optimize_from_config.
+        :param api_client: Initialised LDApiClient for result persistence.
+        :param optimization_id: UUID id of the parent agent_optimization record.
+        :param run_id: UUID that groups all result records for this run.
+        :return: A fully populated OptimizationOptions ready for _run_optimization.
+        """
+        judges: Dict[str, OptimizationJudge] = {}
+
+        for i, stmt in enumerate(config["acceptanceStatements"]):
+            key = f"acceptance-statement-{i}"
+            judges[key] = OptimizationJudge(
+                threshold=float(stmt.get("threshold", 0.95)),
+                acceptance_statement=stmt["statement"],
+            )
+
+        for judge in config["judges"]:
+            judges[judge["key"]] = OptimizationJudge(
+                threshold=float(judge.get("threshold", 0.95)),
+                judge_key=judge["key"],
+            )
+
+        if not judges and options.on_turn is None:
+            raise ValueError(
+                "The optimization config has no acceptance statements or judges, "
+                "and no on_turn callback was provided. At least one is required."
+            )
+
+        variable_choices: List[Dict[str, Any]] = config["variableChoices"] or [{}]
+        user_input_options: Optional[List[str]] = config["userInputOptions"] or None
+
+        project_key = options.project_key
+        config_version: int = config["version"]
+
+        def _persist_and_forward(
+            status: Literal[
+                "init",
+                "generating",
+                "evaluating",
+                "generating variation",
+                "turn completed",
+                "success",
+                "failure",
+            ],
+            ctx: OptimizationContext,
+        ) -> None:
+            # _safe_status_update (the caller) already wraps this entire function in
+            # a try/except, so errors here are caught and logged without aborting the run.
+            mapped = _OPTIMIZATION_STATUS_MAP.get(
+                status, {"status": "RUNNING", "activity": "PENDING"}
+            )
+            snapshot = ctx.copy_without_history()
+            payload: OptimizationResultPayload = {
+                "run_id": run_id,
+                "config_optimization_version": config_version,
+                "status": mapped["status"],
+                "activity": mapped["activity"],
+                "iteration": snapshot.iteration,
+                "instructions": snapshot.current_instructions,
+                "parameters": snapshot.current_parameters,
+                "completion_response": snapshot.completion_response,
+                "scores": {k: v.to_json() for k, v in snapshot.scores.items()},
+                "user_input": snapshot.user_input,
+            }
+            api_client.post_agent_optimization_result(project_key, optimization_id, payload)
+
+            if options.on_status_update:
+                try:
+                    options.on_status_update(status, ctx)
+                except Exception:
+                    logger.exception("User on_status_update callback failed for status=%s", status)
+
+        return OptimizationOptions(
+            context_choices=options.context_choices,
+            max_attempts=config["maxAttempts"],
+            model_choices=config["modelChoices"],
+            judge_model=config["judgeModel"],
+            variable_choices=variable_choices,
+            handle_agent_call=options.handle_agent_call,
+            handle_judge_call=options.handle_judge_call,
+            judges=judges or None,
+            user_input_options=user_input_options,
+            on_turn=options.on_turn,
+            on_passing_result=options.on_passing_result,
+            on_failing_result=options.on_failing_result,
+            on_status_update=_persist_and_forward,
+        )
 
     async def _execute_agent_turn(
         self,

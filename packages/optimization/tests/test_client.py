@@ -14,6 +14,7 @@ from ldai_optimization.dataclasses import (
     AIJudgeCallConfig,
     JudgeResult,
     OptimizationContext,
+    OptimizationFromConfigOptions,
     OptimizationJudge,
     OptimizationJudgeContext,
     OptimizationOptions,
@@ -1006,3 +1007,367 @@ class TestVariationPromptAcceptanceCriteria:
         )
         assert "Facts only." in prompt
         assert "ACCEPTANCE CRITERIA" in prompt
+
+
+# ---------------------------------------------------------------------------
+# _build_options_from_config helpers
+# ---------------------------------------------------------------------------
+
+_API_CONFIG: Dict[str, Any] = {
+    "id": "opt-uuid-123",
+    "key": "my-optimization",
+    "aiConfigKey": "my-agent",
+    "maxAttempts": 3,
+    "modelChoices": ["gpt-4o", "gpt-4o-mini"],
+    "judgeModel": "gpt-4o",
+    "variableChoices": [{"language": "English"}],
+    "acceptanceStatements": [{"statement": "Be accurate.", "threshold": 0.9}],
+    "judges": [],
+    "userInputOptions": ["What is 2+2?"],
+    "version": 2,
+    "createdAt": 1700000000,
+}
+
+
+def _make_from_config_options(**overrides: Any) -> OptimizationFromConfigOptions:
+    defaults: Dict[str, Any] = dict(
+        project_key="my-project",
+        context_choices=[LD_CONTEXT],
+        handle_agent_call=AsyncMock(return_value="The answer is 4."),
+        handle_judge_call=AsyncMock(return_value=JUDGE_PASS_RESPONSE),
+    )
+    defaults.update(overrides)
+    return OptimizationFromConfigOptions(**defaults)
+
+
+def _make_mock_api_client() -> MagicMock:
+    mock = MagicMock()
+    mock.post_agent_optimization_result = MagicMock()
+    return mock
+
+
+# ---------------------------------------------------------------------------
+# _build_options_from_config
+# ---------------------------------------------------------------------------
+
+
+class TestBuildOptionsFromConfig:
+    def setup_method(self):
+        self.client = _make_client()
+        self.client._agent_key = "my-agent"
+        self.client._initialize_class_members_from_config(_make_agent_config())
+        self.client._options = _make_options()
+        self.api_client = _make_mock_api_client()
+
+    def _build(self, config=None, options=None) -> OptimizationOptions:
+        return self.client._build_options_from_config(
+            config or dict(_API_CONFIG),
+            options or _make_from_config_options(),
+            self.api_client,
+            optimization_id="opt-uuid-123",
+            run_id="run-uuid-456",
+        )
+
+    def test_acceptance_statements_mapped_to_judges(self):
+        result = self._build()
+        assert "acceptance-statement-0" in result.judges
+        judge = result.judges["acceptance-statement-0"]
+        assert judge.acceptance_statement == "Be accurate."
+        assert judge.threshold == 0.9
+
+    def test_multiple_acceptance_statements_get_indexed_keys(self):
+        config = dict(_API_CONFIG, acceptanceStatements=[
+            {"statement": "First.", "threshold": 0.8},
+            {"statement": "Second.", "threshold": 0.7},
+        ])
+        result = self._build(config=config)
+        assert "acceptance-statement-0" in result.judges
+        assert "acceptance-statement-1" in result.judges
+        assert result.judges["acceptance-statement-0"].acceptance_statement == "First."
+        assert result.judges["acceptance-statement-1"].acceptance_statement == "Second."
+
+    def test_judges_mapped_by_key(self):
+        config = dict(_API_CONFIG, acceptanceStatements=[], judges=[
+            {"key": "accuracy", "threshold": 0.85},
+        ])
+        result = self._build(config=config)
+        assert "accuracy" in result.judges
+        judge = result.judges["accuracy"]
+        assert judge.judge_key == "accuracy"
+        assert judge.threshold == 0.85
+
+    def test_acceptance_statements_and_judges_merged(self):
+        config = dict(_API_CONFIG,
+            acceptanceStatements=[{"statement": "Be brief.", "threshold": 0.8}],
+            judges=[{"key": "accuracy", "threshold": 0.9}],
+        )
+        result = self._build(config=config)
+        assert "acceptance-statement-0" in result.judges
+        assert "accuracy" in result.judges
+
+    def test_raises_when_no_judges_and_no_on_turn(self):
+        config = dict(_API_CONFIG, acceptanceStatements=[], judges=[])
+        with pytest.raises(ValueError, match="no acceptance statements or judges"):
+            self._build(config=config)
+
+    def test_on_turn_satisfies_no_judges_requirement(self):
+        config = dict(_API_CONFIG, acceptanceStatements=[], judges=[])
+        options = _make_from_config_options(on_turn=lambda ctx: True)
+        result = self._build(config=config, options=options)
+        assert result.on_turn is not None
+
+    def test_empty_variable_choices_defaults_to_single_empty_dict(self):
+        config = dict(_API_CONFIG, variableChoices=[])
+        result = self._build(config=config)
+        assert result.variable_choices == [{}]
+
+    def test_non_empty_variable_choices_passed_through(self):
+        result = self._build()
+        assert result.variable_choices == [{"language": "English"}]
+
+    def test_empty_user_input_options_becomes_none(self):
+        config = dict(_API_CONFIG, userInputOptions=[])
+        result = self._build(config=config)
+        assert result.user_input_options is None
+
+    def test_non_empty_user_input_options_passed_through(self):
+        result = self._build()
+        assert result.user_input_options == ["What is 2+2?"]
+
+    def test_max_attempts_from_config(self):
+        result = self._build()
+        assert result.max_attempts == 3
+
+    def test_model_choices_from_config(self):
+        result = self._build()
+        assert result.model_choices == ["gpt-4o", "gpt-4o-mini"]
+
+    def test_judge_model_from_config(self):
+        result = self._build()
+        assert result.judge_model == "gpt-4o"
+
+    def test_callbacks_forwarded_from_options(self):
+        handle_agent = AsyncMock(return_value="ok")
+        handle_judge = AsyncMock(return_value=JUDGE_PASS_RESPONSE)
+        options = _make_from_config_options(
+            handle_agent_call=handle_agent,
+            handle_judge_call=handle_judge,
+            on_passing_result=MagicMock(),
+            on_failing_result=MagicMock(),
+        )
+        result = self._build(options=options)
+        assert result.handle_agent_call is handle_agent
+        assert result.handle_judge_call is handle_judge
+        assert result.on_passing_result is options.on_passing_result
+        assert result.on_failing_result is options.on_failing_result
+
+    def test_persist_and_forward_posts_result_on_status_update(self):
+        result = self._build()
+        ctx = OptimizationContext(
+            scores={},
+            completion_response="The answer is 4.",
+            current_instructions="Be helpful.",
+            current_parameters={"temperature": 0.7},
+            current_variables={"language": "English"},
+            current_model="gpt-4o",
+            user_input="What is 2+2?",
+            iteration=1,
+        )
+        result.on_status_update("generating", ctx)
+        self.api_client.post_agent_optimization_result.assert_called_once()
+        call_args = self.api_client.post_agent_optimization_result.call_args
+        assert call_args[0][0] == "my-project"
+        assert call_args[0][1] == "opt-uuid-123"
+
+    def test_persist_and_forward_payload_has_correct_field_names(self):
+        result = self._build()
+        ctx = OptimizationContext(
+            scores={"j": JudgeResult(score=0.9, rationale="Good.")},
+            completion_response="Paris.",
+            current_instructions="Be helpful.",
+            current_parameters={"temperature": 0.5},
+            current_variables={},
+            current_model="gpt-4o",
+            user_input="Capital of France?",
+            iteration=2,
+        )
+        result.on_status_update("evaluating", ctx)
+        payload = self.api_client.post_agent_optimization_result.call_args[0][2]
+        assert payload["instructions"] == "Be helpful."
+        assert payload["parameters"] == {"temperature": 0.5}
+        assert payload["completion_response"] == "Paris."
+        assert payload["user_input"] == "Capital of France?"
+        assert payload["iteration"] == 2
+        assert "j" in payload["scores"]
+
+    def test_persist_and_forward_includes_run_id_and_version(self):
+        result = self._build()
+        ctx = OptimizationContext(
+            scores={}, completion_response="", current_instructions="",
+            current_parameters={}, current_variables={}, iteration=1,
+        )
+        result.on_status_update("generating", ctx)
+        payload = self.api_client.post_agent_optimization_result.call_args[0][2]
+        assert payload["run_id"] == "run-uuid-456"
+        assert payload["config_optimization_version"] == 2
+
+    @pytest.mark.parametrize("sdk_status,expected_status,expected_activity", [
+        ("init", "RUNNING", "PENDING"),
+        ("generating", "RUNNING", "GENERATING"),
+        ("evaluating", "RUNNING", "EVALUATING"),
+        ("generating variation", "RUNNING", "GENERATING_VARIATION"),
+        ("turn completed", "RUNNING", "COMPLETED"),
+        ("success", "PASSED", "COMPLETED"),
+        ("failure", "FAILED", "COMPLETED"),
+    ])
+    def test_status_mapping(self, sdk_status, expected_status, expected_activity):
+        result = self._build()
+        ctx = OptimizationContext(
+            scores={}, completion_response="", current_instructions="",
+            current_parameters={}, current_variables={}, iteration=1,
+        )
+        result.on_status_update(sdk_status, ctx)
+        payload = self.api_client.post_agent_optimization_result.call_args[0][2]
+        assert payload["status"] == expected_status
+        assert payload["activity"] == expected_activity
+
+    def test_user_on_status_update_chained_after_post(self):
+        call_order = []
+        self.api_client.post_agent_optimization_result.side_effect = (
+            lambda *a, **kw: call_order.append("post")
+        )
+        user_cb = MagicMock(side_effect=lambda s, c: call_order.append("user"))
+        options = _make_from_config_options(on_status_update=user_cb)
+        result = self._build(options=options)
+        ctx = OptimizationContext(
+            scores={}, completion_response="", current_instructions="",
+            current_parameters={}, current_variables={}, iteration=1,
+        )
+        result.on_status_update("generating", ctx)
+        assert call_order == ["post", "user"]
+
+    def test_user_on_status_update_exception_does_not_propagate(self):
+        options = _make_from_config_options(
+            on_status_update=MagicMock(side_effect=RuntimeError("cb boom"))
+        )
+        result = self._build(options=options)
+        ctx = OptimizationContext(
+            scores={}, completion_response="", current_instructions="",
+            current_parameters={}, current_variables={}, iteration=1,
+        )
+        result.on_status_update("generating", ctx)  # must not raise
+
+    def test_payload_history_not_included(self):
+        result = self._build()
+        ctx = OptimizationContext(
+            scores={}, completion_response="", current_instructions="",
+            current_parameters={}, current_variables={}, iteration=1,
+        )
+        result.on_status_update("generating", ctx)
+        payload = self.api_client.post_agent_optimization_result.call_args[0][2]
+        assert "history" not in payload
+
+
+# ---------------------------------------------------------------------------
+# optimize_from_config
+# ---------------------------------------------------------------------------
+
+
+class TestOptimizeFromConfig:
+    def setup_method(self):
+        self.mock_ldai = _make_ldai_client()
+
+    def _make_client_with_key(self) -> OptimizationClient:
+        with patch.dict("os.environ", {"LAUNCHDARKLY_API_KEY": "test-api-key"}):
+            return _make_client(self.mock_ldai)
+
+    def _make_client_without_key(self) -> OptimizationClient:
+        with patch.dict("os.environ", {}, clear=True):
+            import os
+            os.environ.pop("LAUNCHDARKLY_API_KEY", None)
+            client = OptimizationClient(self.mock_ldai)
+            client._has_api_key = False
+            client._api_key = None
+            return client
+
+    async def test_raises_without_api_key(self):
+        client = self._make_client_without_key()
+        options = _make_from_config_options()
+        with pytest.raises(ValueError, match="LAUNCHDARKLY_API_KEY is not set"):
+            await client.optimize_from_config("my-opt", options)
+
+    async def test_fetches_config_and_uses_ai_config_key(self):
+        client = self._make_client_with_key()
+        mock_api = _make_mock_api_client()
+        mock_api.get_agent_optimization = MagicMock(return_value=dict(_API_CONFIG))
+
+        with patch("ldai_optimization.client.LDApiClient", return_value=mock_api):
+            options = _make_from_config_options()
+            await client.optimize_from_config("my-opt", options)
+
+        mock_api.get_agent_optimization.assert_called_once_with("my-project", "my-opt")
+        assert client._agent_key == "my-agent"
+
+    async def test_posts_result_on_each_status_event(self):
+        client = self._make_client_with_key()
+        mock_api = _make_mock_api_client()
+        mock_api.get_agent_optimization = MagicMock(return_value=dict(_API_CONFIG))
+
+        with patch("ldai_optimization.client.LDApiClient", return_value=mock_api):
+            options = _make_from_config_options()
+            await client.optimize_from_config("my-opt", options)
+
+        assert mock_api.post_agent_optimization_result.call_count >= 1
+
+    async def test_user_on_status_update_called_during_run(self):
+        client = self._make_client_with_key()
+        mock_api = _make_mock_api_client()
+        mock_api.get_agent_optimization = MagicMock(return_value=dict(_API_CONFIG))
+        statuses = []
+
+        with patch("ldai_optimization.client.LDApiClient", return_value=mock_api):
+            options = _make_from_config_options(
+                on_status_update=lambda status, ctx: statuses.append(status)
+            )
+            await client.optimize_from_config("my-opt", options)
+
+        assert "generating" in statuses
+        assert "success" in statuses
+
+    async def test_custom_base_url_passed_to_api_client(self):
+        client = self._make_client_with_key()
+
+        with patch("ldai_optimization.client.LDApiClient") as MockLDApiClient:
+            instance = _make_mock_api_client()
+            instance.get_agent_optimization = MagicMock(return_value=dict(_API_CONFIG))
+            MockLDApiClient.return_value = instance
+            options = _make_from_config_options(base_url="https://staging.launchdarkly.com")
+            await client.optimize_from_config("my-opt", options)
+
+        MockLDApiClient.assert_called_once_with(
+            "test-api-key", base_url="https://staging.launchdarkly.com"
+        )
+
+    async def test_no_base_url_does_not_pass_kwarg(self):
+        client = self._make_client_with_key()
+
+        with patch("ldai_optimization.client.LDApiClient") as MockLDApiClient:
+            instance = _make_mock_api_client()
+            instance.get_agent_optimization = MagicMock(return_value=dict(_API_CONFIG))
+            MockLDApiClient.return_value = instance
+            options = _make_from_config_options()
+            await client.optimize_from_config("my-opt", options)
+
+        MockLDApiClient.assert_called_once_with("test-api-key")
+
+    async def test_returns_optimization_context_on_success(self):
+        client = self._make_client_with_key()
+        mock_api = _make_mock_api_client()
+        mock_api.get_agent_optimization = MagicMock(return_value=dict(_API_CONFIG))
+
+        with patch("ldai_optimization.client.LDApiClient", return_value=mock_api):
+            options = _make_from_config_options()
+            result = await client.optimize_from_config("my-opt", options)
+
+        assert isinstance(result, OptimizationContext)
+        assert result.completion_response == "The answer is 4."
