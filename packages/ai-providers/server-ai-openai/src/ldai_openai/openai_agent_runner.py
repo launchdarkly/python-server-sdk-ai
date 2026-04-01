@@ -1,6 +1,5 @@
 """OpenAI agent runner for LaunchDarkly AI SDK."""
 
-import json
 from typing import Any, Dict, List
 
 from ldai import log
@@ -85,8 +84,7 @@ class OpenAIAgentRunner(AgentRunner):
 
     def _build_agent_tools(self) -> List[Any]:
         """Build tool instances from LD tool definitions and registry."""
-        from agents import FunctionTool
-        from agents.tool_context import ToolContext
+        from agents import function_tool
 
         tools = []
         for td in self._tool_definitions:
@@ -98,28 +96,7 @@ class OpenAIAgentRunner(AgentRunner):
 
             tool_fn = self._tools.get(name)
             if tool_fn:
-                def _make_invoker(fn: Any, tool_name: str) -> Any:
-                    async def on_invoke_tool(tool_ctx: ToolContext, args_json: str) -> str:
-                        try:
-                            args = json.loads(args_json) if args_json else {}
-                        except Exception:
-                            args = {}
-                        try:
-                            res = fn(**args)
-                            if hasattr(res, "__await__"):
-                                res = await res
-                            return str(res)
-                        except Exception as e:
-                            log.warning(f"Tool '{tool_name}' execution failed: {e}")
-                            return f"Tool execution failed: {e}"
-                    return on_invoke_tool
-
-                tools.append(FunctionTool(
-                    name=name,
-                    description=td.get("description", ""),
-                    params_json_schema=td.get("parameters", {}),
-                    on_invoke_tool=_make_invoker(tool_fn, name),
-                ))
+                tools.append(function_tool(tool_fn))
                 continue
 
             # No callable in registry — try native OpenAI tool (exact name match required).

@@ -1,6 +1,5 @@
 """OpenAI agent graph runner for LaunchDarkly AI SDK."""
 
-import json
 import time
 from typing import Any, List, Optional
 
@@ -121,9 +120,9 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
         try:
             from agents import (
                 Agent,
-                FunctionTool,
                 Handoff,
                 Tool,
+                function_tool,
                 handoff,
             )
             from agents.extensions.handoff_prompt import RECOMMENDED_PROMPT_PREFIX
@@ -177,41 +176,7 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
                 if not tool_fn:
                     continue
 
-                def _make_tool(
-                    name: str,
-                    fn: Any,
-                    description: str,
-                    params_schema: dict,
-                ) -> FunctionTool:
-                    async def wrapped(tool_ctx: Any, tool_args: str) -> str:
-                        try:
-                            args = json.loads(tool_args) if tool_args else {}
-                        except Exception:
-                            args = {}
-                        try:
-                            res = fn(**args)
-                            if hasattr(res, "__await__"):
-                                res = await res
-                            return str(res)
-                        except Exception as e:
-                            log.warning(f"Tool '{name}' execution failed: {e}")
-                            return f"Tool execution failed: {e}"
-
-                    return FunctionTool(
-                        name=name,
-                        description=description,
-                        params_json_schema=params_schema,
-                        on_invoke_tool=wrapped,
-                    )
-
-                agent_tools.append(
-                    _make_tool(
-                        tool_name,
-                        tool_fn,
-                        tool_def.get('description', ''),
-                        tool_def.get('parameters', {}),
-                    )
-                )
+                agent_tools.append(function_tool(tool_fn))
 
             return Agent(
                 name=node_config.key,
