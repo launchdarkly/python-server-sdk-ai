@@ -185,7 +185,7 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
                 # Map runtime tool name → LD config key for metrics (function __name__
                 # for callables; identity for native tool instances — see get_tool_calls_from_run_items).
                 if is_agent_tool_instance(tool_fn):
-                    tool_name_map[f'{tool_fn.name}_call'] = tool_name
+                    tool_name_map[tool_fn.name] = tool_name
                 else:
                     tool_name_map[tool_fn.__name__] = tool_name
                 agent_tools.append(registry_value_to_agent_tool(tool_fn))
@@ -290,10 +290,11 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
         """Track all tool calls from the run result, attributed to the node that called them."""
         gk = tracker.graph_key if tracker is not None else None
         for agent_name, tool_fn_name in get_tool_calls_from_run_items(result.new_items):
-            log.info(f"Tracking tool call: agent_name={agent_name}, tool_fn_name={tool_fn_name}")
-            original_key = self._agent_name_map.get(agent_name, agent_name)
-            tool_name = self._tool_name_map.get(tool_fn_name, '')
-            node = self._graph.get_node(original_key)
+            agent_key = self._agent_name_map.get(agent_name, agent_name)
+            tool_name = self._tool_name_map.get(tool_fn_name)
+            if tool_name is None:
+                continue
+            node = self._graph.get_node(agent_key)
             if node is None:
                 continue
             config_tracker = node.get_config().tracker

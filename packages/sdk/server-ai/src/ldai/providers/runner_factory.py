@@ -3,9 +3,9 @@ from typing import Any, Callable, List, Optional, TypeVar
 
 from ldai import log
 from ldai.models import AIConfigKind
-from ldai.providers.ai_provider import AIProvider
 from ldai.providers.agent_graph_runner import AgentGraphRunner
 from ldai.providers.agent_runner import AgentRunner
+from ldai.providers.ai_provider import AIProvider
 from ldai.providers.model_runner import ModelRunner
 
 T = TypeVar('T')

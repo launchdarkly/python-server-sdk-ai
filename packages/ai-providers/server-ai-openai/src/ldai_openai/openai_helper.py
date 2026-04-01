@@ -1,11 +1,9 @@
-import typing
 from typing import Any, Dict, Iterable, List, Optional, Tuple, cast
 
 from ldai import LDMessage
 from ldai.providers.types import LDAIMetrics
 from ldai.tracker import TokenUsage
 from openai.types.chat import ChatCompletionMessageParam
-
 
 
 def convert_messages_to_openai(messages: List[LDMessage]) -> Iterable[ChatCompletionMessageParam]:
@@ -109,43 +107,9 @@ def normalize_tool_types(tool_definitions: List[Any]) -> List[Dict[str, Any]]:
     return result
 
 
-# Native tool raw_item type names don't always match the LD config key convention.
-_NATIVE_TOOL_TYPE_TO_CONFIG_KEY = {
-    'web_search': 'web_search_tool',
-}
-
-# ``agents.Tool`` is a typing.Union of concrete tool classes, not a runtime class.
-# Using ``isinstance(x, Tool)`` raises TypeError (subscripted generics / union checks).
-_AGENT_TOOL_TYPES: Optional[Tuple[type, ...]] = None
-
-
-def _concrete_agent_tool_types() -> Tuple[type, ...]:
-    """Resolve concrete classes behind ``agents.Tool`` (a Union alias)."""
-    try:
-        from agents import Tool as ToolUnion
-    except ImportError:
-        return ()
-    args = typing.get_args(ToolUnion)
-    if not args:
-        return ()
-    out: List[type] = []
-    for a in args:
-        origin = getattr(a, '__origin__', None)
-        if origin is not None and isinstance(origin, type):
-            out.append(origin)
-        elif isinstance(a, type):
-            out.append(a)
-    return tuple(out)
-
-
 def is_agent_tool_instance(value: Any) -> bool:
     """True if ``value`` is already an openai-agents tool object (not a plain callable)."""
-    global _AGENT_TOOL_TYPES
-    if _AGENT_TOOL_TYPES is None:
-        _AGENT_TOOL_TYPES = _concrete_agent_tool_types()
-    if not _AGENT_TOOL_TYPES:
-        return False
-    return isinstance(value, _AGENT_TOOL_TYPES)
+    return not callable(value)
 
 
 def registry_value_to_agent_tool(value: Any) -> Any:
@@ -156,6 +120,8 @@ def registry_value_to_agent_tool(value: Any) -> Any:
     tool instances (e.g. ``WebSearchTool()``, ``FileSearchTool(...)``) are
     returned unchanged so they are not double-wrapped.
     """
+    if is_agent_tool_instance(value):
+        return value
     try:
         from agents import function_tool
     except ImportError as exc:
@@ -163,10 +129,16 @@ def registry_value_to_agent_tool(value: Any) -> Any:
             "openai-agents is required for agent tools. "
             "Install it with: pip install openai-agents"
         ) from exc
-
-    if is_agent_tool_instance(value):
-        return value
     return function_tool(value)
+
+
+# Native tool response types do not match the SDK or LD tool name; this map aligns them.
+# Function tools are omitted—they already arrive as ``ResponseFunctionToolCall.name``.
+_RESPONSE_TYPE_TO_TOOL_NAME: Dict[str, str] = {
+    'web_search_call': 'web_search',
+    'file_search_call': 'file_search',
+    'code_interpreter_call': 'code_interpreter',
+}
 
 
 def get_tool_calls_from_run_items(new_items: List[Any]) -> List[Tuple[str, str]]:
@@ -197,9 +169,9 @@ def get_tool_calls_from_run_items(new_items: List[Any]) -> List[Tuple[str, str]]
             tool_name = raw.name
         else:
             raw_type = getattr(raw, 'type', None) or (raw.get('type') if isinstance(raw, dict) else None)
-            if not raw_type:
+            if not isinstance(raw_type, str):
                 continue
-            tool_name = _NATIVE_TOOL_TYPE_TO_CONFIG_KEY.get(raw_type, raw_type)
+            tool_name = _RESPONSE_TYPE_TO_TOOL_NAME.get(raw_type, raw_type)
         if tool_name:
             result.append((agent_name, tool_name))
     return result

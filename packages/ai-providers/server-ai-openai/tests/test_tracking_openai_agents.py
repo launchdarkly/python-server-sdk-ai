@@ -109,6 +109,19 @@ def _make_run_result(
     return result
 
 
+def _tool_registry(*config_names: str) -> dict:
+    """Registry entries whose callable __name__ matches runtime tool names from the SDK."""
+
+    def _stub(name: str):
+        def fn():
+            pass
+
+        fn.__name__ = name
+        return fn
+
+    return {n: _stub(n) for n in config_names}
+
+
 def _make_tool_call_item(agent_name: str, tool_name: str) -> MagicMock:
     """
     Create a mock ToolCallItem with a ResponseFunctionToolCall raw item so that
@@ -300,15 +313,15 @@ async def test_tracks_graph_key_on_node_events():
 
 @pytest.mark.asyncio
 async def test_tracks_tool_calls_from_run_items():
-    """A tool_call event fires for each tool found in RunResult.new_items."""
+    """A tool_call event fires for tools registered on the graph and in the tool registry."""
     mock_ld_client = MagicMock()
-    graph = _make_graph(mock_ld_client, node_key='root-agent')
+    graph = _make_graph(mock_ld_client, node_key='root-agent', tool_names=['get_weather'])
 
     tool_item = _make_tool_call_item('root-agent', 'get_weather')
     run_result = _make_run_result(output='done', tool_call_items=[tool_item])
 
     with patch.dict('sys.modules', _make_agents_modules(run_result)):
-        runner = OpenAIAgentGraphRunner(graph, {})
+        runner = OpenAIAgentGraphRunner(graph, _tool_registry('get_weather'))
         await runner.run('What is the weather?')
 
     ev = _events(mock_ld_client)
@@ -319,9 +332,11 @@ async def test_tracks_tool_calls_from_run_items():
 
 @pytest.mark.asyncio
 async def test_tracks_multiple_tool_calls():
-    """One tool_call event fires per tool in RunResult.new_items."""
+    """One tool_call event fires per registered tool in RunResult.new_items."""
     mock_ld_client = MagicMock()
-    graph = _make_graph(mock_ld_client, node_key='root-agent')
+    graph = _make_graph(
+        mock_ld_client, node_key='root-agent', tool_names=['search', 'summarize']
+    )
 
     items = [
         _make_tool_call_item('root-agent', 'search'),
@@ -330,12 +345,29 @@ async def test_tracks_multiple_tool_calls():
     run_result = _make_run_result(output='done', tool_call_items=items)
 
     with patch.dict('sys.modules', _make_agents_modules(run_result)):
-        runner = OpenAIAgentGraphRunner(graph, {})
+        runner = OpenAIAgentGraphRunner(graph, _tool_registry('search', 'summarize'))
         await runner.run('Search and summarize.')
 
     ev = _events(mock_ld_client)
     tool_keys = [data['toolKey'] for data, _ in ev.get('$ld:ai:tool_call', [])]
     assert sorted(tool_keys) == ['search', 'summarize']
+
+
+@pytest.mark.asyncio
+async def test_does_not_track_tool_calls_without_graph_and_registry_config():
+    """RunResult tool items that are not backed by graph + registry tools are ignored."""
+    mock_ld_client = MagicMock()
+    graph = _make_graph(mock_ld_client, node_key='root-agent')
+
+    tool_item = _make_tool_call_item('root-agent', 'orphan_tool')
+    run_result = _make_run_result(output='done', tool_call_items=[tool_item])
+
+    with patch.dict('sys.modules', _make_agents_modules(run_result)):
+        runner = OpenAIAgentGraphRunner(graph, {})
+        await runner.run('prompt')
+
+    ev = _events(mock_ld_client)
+    assert ev.get('$ld:ai:tool_call', []) == []
 
 
 @pytest.mark.asyncio

@@ -6,7 +6,10 @@ from ldai import log
 from ldai.providers import AgentResult, AgentRunner, ToolRegistry
 from ldai.providers.types import LDAIMetrics
 
-from ldai_openai.openai_helper import get_ai_usage_from_response, registry_value_to_agent_tool
+from ldai_openai.openai_helper import (
+    get_ai_usage_from_response,
+    registry_value_to_agent_tool,
+)
 
 
 class OpenAIAgentRunner(AgentRunner):
