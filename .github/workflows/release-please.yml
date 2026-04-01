@@ -59,12 +59,9 @@ jobs:
     permissions:
       id-token: write # Needed for OIDC to get release secrets from AWS.
       attestations: write # Needed for actions/attest.
-      contents: write # Needed for creating tags.
     if: ${{ needs.release-please.outputs.package-server-ai-released == 'true' }}
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - uses: ./.github/actions/ci
         with:
@@ -98,12 +95,9 @@ jobs:
     permissions:
       id-token: write # Needed for OIDC to get release secrets from AWS.
       attestations: write # Needed for actions/attest.
-      contents: write # Needed for creating tags.
     if: ${{ needs.release-please.outputs.package-server-ai-langchain-released == 'true' }}
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - uses: ./.github/actions/ci
         with:
@@ -169,12 +163,9 @@ jobs:
     permissions:
       id-token: write # Needed for OIDC to get release secrets from AWS.
       attestations: write # Needed for actions/attest.
-      contents: write # Needed for creating tags.
     if: ${{ needs.release-please.outputs.package-server-ai-openai-released == 'true' }}
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - uses: ./.github/actions/ci
         with:
@@ -208,12 +199,9 @@ jobs:
     permissions:
       id-token: write # Needed for OIDC to get release secrets from AWS.
       attestations: write # Needed for actions/attest.
-      contents: write # Needed for creating tags.
     if: ${{ needs.release-please.outputs.package-server-ai-optimization-released == 'true' }}
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - uses: ./.github/actions/ci
         with:
