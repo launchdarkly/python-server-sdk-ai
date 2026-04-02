@@ -25,7 +25,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-graph = ["langgraph>=0.1.0"]
+graph = ["langgraph>=1.0.0"]
 
 [project.urls]
 Homepage = "https://docs.launchdarkly.com/sdk/ai/python"
@@ -39,7 +39,7 @@ dev = [
     "mypy==1.18.2",
     "pycodestyle>=2.11.0",
     "isort>=5.12.0",
-    "langgraph>=0.1.0",
+    "langgraph>=1.0.0",
 ]
 
 [build-system]

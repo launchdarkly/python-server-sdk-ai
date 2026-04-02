@@ -1,5 +1,3 @@
-"""OpenAI agent graph runner for LaunchDarkly AI SDK."""
-
 import re
 import time
 from typing import Any, Dict, List, Optional
@@ -34,6 +32,11 @@ class _RunState:
 
 class OpenAIAgentGraphRunner(AgentGraphRunner):
     """
+    CAUTION:
+    This feature is experimental and should NOT be considered ready for production use. 
+    It may change or be removed without notice and is not subject to backwards 
+    compatibility guarantees.
+
     AgentGraphRunner implementation for the OpenAI Agents SDK.
 
     Runs the agent graph with the OpenAI Agents SDK and automatically records

@@ -390,6 +390,11 @@ class LDAIClient:
         default_ai_provider: Optional[str] = None,
     ) -> Optional[ManagedAgent]:
         """
+        CAUTION:
+        This feature is experimental and should NOT be considered ready for production use. 
+        It may change or be removed without notice and is not subject to backwards 
+        compatibility guarantees.
+
         Creates and returns a new ManagedAgent for AI agent invocations.
 
         :param key: The key identifying the AI agent configuration to use
@@ -675,6 +680,11 @@ class LDAIClient:
         default_ai_provider: Optional[str] = None,
     ) -> Optional[ManagedAgentGraph]:
         """
+        CAUTION:
+        This feature is experimental and should NOT be considered ready for production use. 
+        It may change or be removed without notice and is not subject to backwards 
+        compatibility guarantees.
+
         Creates and returns a new ManagedAgentGraph for AI agent graph execution.
 
         Resolves the graph configuration via ``agent_graph()``, creates a

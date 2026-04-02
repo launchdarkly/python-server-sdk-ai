@@ -1,5 +1,3 @@
-"""LangChain agent runner for LaunchDarkly AI SDK."""
-
 from typing import Any
 
 from ldai import log
@@ -14,6 +12,11 @@ from ldai_langchain.langchain_helper import (
 
 class LangChainAgentRunner(AgentRunner):
     """
+    CAUTION:
+    This feature is experimental and should NOT be considered ready for production use. 
+    It may change or be removed without notice and is not subject to backwards 
+    compatibility guarantees.
+
     AgentRunner implementation for LangChain.
 
     Wraps a compiled LangChain agent graph (from ``langchain.agents.create_agent``)

@@ -14,8 +14,38 @@ from ldai_langchain.langchain_model_runner import LangChainModelRunner
 class LangChainRunnerFactory(AIProvider):
     """LangChain ``AIProvider`` implementation for the LaunchDarkly AI SDK."""
 
+    def create_agent(self, config: Any, tools: Optional[ToolRegistry] = None) -> LangChainAgentRunner:
+        """
+        CAUTION:
+        This feature is experimental and should NOT be considered ready for production use. 
+        It may change or be removed without notice and is not subject to backwards 
+        compatibility guarantees.
+
+        Create a configured LangChainAgentRunner for the given AI agent config.
+
+        :param config: The LaunchDarkly AI agent configuration
+        :param tools: ToolRegistry mapping tool names to callables
+        :return: LangChainAgentRunner ready to run the agent
+        """
+        from langchain.agents import create_agent as lc_create_agent
+        instructions = (config.instructions or '') if hasattr(config, 'instructions') else ''
+        llm = create_langchain_model(config)
+        lc_tools = build_tools(config, tools or {})
+
+        agent = lc_create_agent(
+            llm,
+            tools=lc_tools or None,
+            system_prompt=instructions or None,
+        )
+        return LangChainAgentRunner(agent)
+
     def create_agent_graph(self, graph_def: Any, tools: ToolRegistry) -> Any:
         """
+        CAUTION:
+        This feature is experimental and should NOT be considered ready for production use. 
+        It may change or be removed without notice and is not subject to backwards 
+        compatibility guarantees.
+
         Create a configured LangGraphAgentGraphRunner for the given graph definition.
 
         :param graph_def: The AgentGraphDefinition to execute
@@ -36,23 +66,3 @@ class LangChainRunnerFactory(AIProvider):
         """
         llm = create_langchain_model(config)
         return LangChainModelRunner(llm)
-
-    def create_agent(self, config: Any, tools: Optional[ToolRegistry] = None) -> LangChainAgentRunner:
-        """
-        Create a configured LangChainAgentRunner for the given AI agent config.
-
-        :param config: The LaunchDarkly AI agent configuration
-        :param tools: ToolRegistry mapping tool names to callables
-        :return: LangChainAgentRunner ready to run the agent
-        """
-        from langchain.agents import create_agent as lc_create_agent
-        instructions = (config.instructions or '') if hasattr(config, 'instructions') else ''
-        llm = create_langchain_model(config)
-        lc_tools = build_tools(config, tools or {})
-
-        agent = lc_create_agent(
-            llm,
-            tools=lc_tools or None,
-            system_prompt=instructions or None,
-        )
-        return LangChainAgentRunner(agent)

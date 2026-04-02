@@ -1,5 +1,3 @@
-"""OpenAI agent runner for LaunchDarkly AI SDK."""
-
 from typing import Any, Dict, List
 
 from ldai import log
@@ -14,6 +12,11 @@ from ldai_openai.openai_helper import (
 
 class OpenAIAgentRunner(AgentRunner):
     """
+    CAUTION:
+    This feature is experimental and should NOT be considered ready for production use. 
+    It may change or be removed without notice and is not subject to backwards 
+    compatibility guarantees.
+
     AgentRunner implementation for OpenAI.
 
     Executes a single agent using the OpenAI Agents SDK (``openai-agents``).
