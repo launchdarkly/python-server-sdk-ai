@@ -1,5 +1,3 @@
-"""LangGraph agent graph runner for LaunchDarkly AI SDK."""
-
 import operator
 import time
 from typing import Annotated, Any, List
@@ -22,6 +20,11 @@ from ldai_langchain.langchain_helper import (
 
 class LangGraphAgentGraphRunner(AgentGraphRunner):
     """
+    CAUTION:
+    This feature is experimental and should NOT be considered ready for production use. 
+    It may change or be removed without notice and is not subject to backwards 
+    compatibility guarantees.
+
     AgentGraphRunner implementation for LangGraph.
 
     Compiles and runs the agent graph with LangGraph and automatically records
