@@ -78,10 +78,12 @@ def get_ai_metrics_from_response(response: Any) -> LDAIMetrics:
     return LDAIMetrics(success=True, usage=get_ai_usage_from_response(response))
 
 
-# Tool ``name`` values that map to OpenAI hosted-tool ``type`` (same string as ``name``).
-_NATIVE_API_TOOL_NAMES = frozenset({
+# Canonical names for OpenAI hosted tools (LD config / Chat Completions ``type``).
+# Agent run items use ``raw_item.type`` with a ``_call`` suffix (e.g. ``web_search_call``).
+_OPENAI_HOSTED_TOOL_NAMES = frozenset({
     'web_search',
     'file_search',
+    'code_interpreter',
     'tool_search',
 })
 
@@ -103,7 +105,7 @@ def normalize_tool_types(tool_definitions: List[Any]) -> List[Dict[str, Any]]:
         if not isinstance(td, dict):
             continue
         name = td.get('name', '')
-        if name in _NATIVE_API_TOOL_NAMES:
+        if name in _OPENAI_HOSTED_TOOL_NAMES:
             result.append({**td, 'type': name})
         else:
             result.append(td)
@@ -135,19 +137,9 @@ def registry_value_to_agent_tool(value: Any) -> Any:
     return function_tool(value)
 
 
-# Native tool response types do not match the SDK or LD tool name; this map aligns them.
-# Function tools are omitted—they already arrive as ``ResponseFunctionToolCall.name``.
-_RESPONSE_TYPE_TO_TOOL_NAME: Dict[str, str] = {
-    'web_search_call': 'web_search',
-    'file_search_call': 'file_search',
-    'code_interpreter_call': 'code_interpreter',
-}
-
-
 def get_tool_calls_from_run_items(new_items: List[Any]) -> List[Tuple[str, str]]:
     """
     Extract (agent_name, tool_name) pairs from RunResult.new_items.
-
     Covers both custom FunctionTools (tracked by their config key) and native
     hosted tools (web search, file search, code interpreter, image generation).
 
@@ -174,7 +166,11 @@ def get_tool_calls_from_run_items(new_items: List[Any]) -> List[Tuple[str, str]]
             raw_type = getattr(raw, 'type', None) or (raw.get('type') if isinstance(raw, dict) else None)
             if not isinstance(raw_type, str):
                 continue
-            tool_name = _RESPONSE_TYPE_TO_TOOL_NAME.get(raw_type, raw_type)
+            if raw_type.endswith('_call'):
+                base = raw_type.removesuffix('_call')
+                tool_name = base if base in _OPENAI_HOSTED_TOOL_NAMES else raw_type
+            else:
+                tool_name = raw_type
         if tool_name:
             result.append((agent_name, tool_name))
     return result
