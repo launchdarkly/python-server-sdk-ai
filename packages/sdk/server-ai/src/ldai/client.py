@@ -391,8 +391,8 @@ class LDAIClient:
     ) -> Optional[ManagedAgent]:
         """
         CAUTION:
-        This feature is experimental and should NOT be considered ready for production use. 
-        It may change or be removed without notice and is not subject to backwards 
+        This feature is experimental and should NOT be considered ready for production use.
+        It may change or be removed without notice and is not subject to backwards
         compatibility guarantees.
 
         Creates and returns a new ManagedAgent for AI agent invocations.
@@ -681,8 +681,8 @@ class LDAIClient:
     ) -> Optional[ManagedAgentGraph]:
         """
         CAUTION:
-        This feature is experimental and should NOT be considered ready for production use. 
-        It may change or be removed without notice and is not subject to backwards 
+        This feature is experimental and should NOT be considered ready for production use.
+        It may change or be removed without notice and is not subject to backwards
         compatibility guarantees.
 
         Creates and returns a new ManagedAgentGraph for AI agent graph execution.
