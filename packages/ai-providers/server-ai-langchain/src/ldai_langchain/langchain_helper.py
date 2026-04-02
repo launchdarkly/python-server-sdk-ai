@@ -172,12 +172,12 @@ def extract_last_message_content(messages: List[Any]) -> str:
     Extract the string content of the last message in a list.
 
     :param messages: List of LangChain message objects
-    :return: String content of the last message, or empty string if none
+    :return: String content of the last message, or empty string if none or content is not a str
     """
     if messages:
         last = messages[-1]
-        if hasattr(last, 'content'):
-            return str(last.content)
+        if hasattr(last, 'content') and isinstance(last.content, str):
+            return last.content
     return ''
 
 

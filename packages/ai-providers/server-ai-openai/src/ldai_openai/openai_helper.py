@@ -81,9 +81,9 @@ def get_ai_metrics_from_response(response: Any) -> LDAIMetrics:
 # Tool names that require their own API type in the Chat Completions API.
 # LD stores all tools as type="function"; these are converted to their correct type.
 _NATIVE_API_TOOL_NAMES = frozenset({
-    'web_search_tool',
+    'web_search',
     'file_search',
-    'computer_use_preview',
+    'tool_search',
 })
 
 
