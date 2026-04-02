@@ -85,8 +85,8 @@ class OpenAIRunnerFactory(AIProvider):
         Create a configured OpenAIModelRunner for the given AI config.
 
         Reuses the underlying AsyncOpenAI client so connection pooling is preserved.
-        Tool definitions are converted from LD's flat format to the Chat Completions
-        API format, with native tools mapped to their correct API type.
+        Hosted tool definitions have ``type`` adjusted from LD's placeholder when
+        needed; all other fields are passed through from the config.
 
         :param config: The LaunchDarkly AI configuration
         :return: OpenAIModelRunner ready to invoke the model
