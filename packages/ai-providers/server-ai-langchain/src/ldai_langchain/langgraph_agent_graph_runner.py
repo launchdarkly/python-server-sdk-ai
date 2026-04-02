@@ -1,5 +1,3 @@
-"""LangGraph agent graph runner for LaunchDarkly AI SDK."""
-
 import operator
 import time
 from typing import Annotated, Any, List
@@ -10,7 +8,9 @@ from ldai.providers import AgentGraphResult, AgentGraphRunner, ToolRegistry
 from ldai.providers.types import LDAIMetrics
 
 from ldai_langchain.langchain_helper import (
+    build_tools,
     create_langchain_model,
+    extract_last_message_content,
     get_ai_metrics_from_response,
     get_ai_usage_from_response,
     get_tool_calls_from_response,
@@ -20,6 +20,11 @@ from ldai_langchain.langchain_helper import (
 
 class LangGraphAgentGraphRunner(AgentGraphRunner):
     """
+    CAUTION:
+    This feature is experimental and should NOT be considered ready for production use.
+    It may change or be removed without notice and is not subject to backwards
+    compatibility guarantees.
+
     AgentGraphRunner implementation for LangGraph.
 
     Compiles and runs the agent graph with LangGraph and automatically records
@@ -73,12 +78,7 @@ class LangGraphAgentGraphRunner(AgentGraphRunner):
                 model = None
                 if node_config.model:
                     lc_model = create_langchain_model(node_config)
-                    tool_defs = node_config.model.get_parameter('tools') or []
-                    tool_fns = [
-                        tools_ref[t.get('name', '')]
-                        for t in tool_defs
-                        if t.get('name', '') in tools_ref
-                    ]
+                    tool_fns = build_tools(node_config, tools_ref)
                     model = lc_model.bind_tools(tool_fns) if tool_fns else lc_model
 
                 def invoke(state: WorkflowState) -> WorkflowState:
@@ -124,12 +124,8 @@ class LangGraphAgentGraphRunner(AgentGraphRunner):
             )
             duration = (time.perf_counter_ns() - start_ns) // 1_000_000
 
-            output = ''
             messages = result.get('messages', [])
-            if messages:
-                last = messages[-1]
-                if hasattr(last, 'content'):
-                    output = str(last.content)
+            output = extract_last_message_content(messages)
 
             if tracker:
                 tracker.track_path(exec_path)

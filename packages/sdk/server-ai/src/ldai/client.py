@@ -32,14 +32,15 @@ from ldai.sdk_info import AI_SDK_LANGUAGE, AI_SDK_NAME, AI_SDK_VERSION
 from ldai.tracker import AIGraphTracker, LDAIConfigTracker
 
 _TRACK_SDK_INFO = '$ld:ai:sdk:info'
-_TRACK_USAGE_COMPLETION_CONFIG = '$ld:ai:usage:completion-config'
-_TRACK_USAGE_CREATE_MODEL = '$ld:ai:usage:create-model'
-_TRACK_USAGE_CREATE_AGENT = '$ld:ai:usage:create-agent'
-_TRACK_USAGE_JUDGE_CONFIG = '$ld:ai:usage:judge-config'
-_TRACK_USAGE_CREATE_JUDGE = '$ld:ai:usage:create-judge'
+
 _TRACK_USAGE_AGENT_CONFIG = '$ld:ai:usage:agent-config'
 _TRACK_USAGE_AGENT_CONFIGS = '$ld:ai:usage:agent-configs'
+_TRACK_USAGE_COMPLETION_CONFIG = '$ld:ai:usage:completion-config'
+_TRACK_USAGE_CREATE_AGENT = '$ld:ai:usage:create-agent'
 _TRACK_USAGE_CREATE_AGENT_GRAPH = '$ld:ai:usage:create-agent-graph'
+_TRACK_USAGE_CREATE_JUDGE = '$ld:ai:usage:create-judge'
+_TRACK_USAGE_CREATE_MODEL = '$ld:ai:usage:create-model'
+_TRACK_USAGE_JUDGE_CONFIG = '$ld:ai:usage:judge-config'
 
 _INIT_TRACK_CONTEXT = Context.builder('ld-internal-tracking').kind('ld_ai').anonymous(True).build()
 
@@ -389,6 +390,11 @@ class LDAIClient:
         default_ai_provider: Optional[str] = None,
     ) -> Optional[ManagedAgent]:
         """
+        CAUTION:
+        This feature is experimental and should NOT be considered ready for production use.
+        It may change or be removed without notice and is not subject to backwards
+        compatibility guarantees.
+
         Creates and returns a new ManagedAgent for AI agent invocations.
 
         :param key: The key identifying the AI agent configuration to use
@@ -674,6 +680,11 @@ class LDAIClient:
         default_ai_provider: Optional[str] = None,
     ) -> Optional[ManagedAgentGraph]:
         """
+        CAUTION:
+        This feature is experimental and should NOT be considered ready for production use.
+        It may change or be removed without notice and is not subject to backwards
+        compatibility guarantees.
+
         Creates and returns a new ManagedAgentGraph for AI agent graph execution.
 
         Resolves the graph configuration via ``agent_graph()``, creates a
