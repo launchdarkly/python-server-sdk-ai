@@ -2,6 +2,35 @@
 
 All notable changes to the LaunchDarkly Python AI package will be documented in this file. This project adheres to [Semantic Versioning](http://semver.org).
 
+## [0.17.0](https://github.com/launchdarkly/python-server-sdk-ai/compare/launchdarkly-server-sdk-ai-0.16.1...launchdarkly-server-sdk-ai-0.17.0) (2026-04-02)
+
+
+### ⚠ BREAKING CHANGES
+
+* Restructure provider factory and support additional create methods ([#102](https://github.com/launchdarkly/python-server-sdk-ai/issues/102))
+* Split track_metrics_of into sync and async variants ([#112](https://github.com/launchdarkly/python-server-sdk-ai/issues/112))
+* Remove node-scoped methods from AIGraphTracker (track_node_invocation, track_tool_call, track_node_judge_response), use related AIConfigTracker methods instead
+
+### Features
+
+* Introduce ManagedModel and ModelRunner ([#104](https://github.com/launchdarkly/python-server-sdk-ai/issues/104)) ([453c71c](https://github.com/launchdarkly/python-server-sdk-ai/commit/453c71c84adcc6b8a3e316a98907dcb511bc9d41))
+* Introduce ManagedAgent and AgentRunner implementations ([#110](https://github.com/launchdarkly/python-server-sdk-ai/issues/110)) ([53fd95e](https://github.com/launchdarkly/python-server-sdk-ai/commit/53fd95e2cfb66f4c53c6844cc41170077e6eee8c))
+* Add LDAIClient.create_agent() returning ManagedAgent ([53fd95e](https://github.com/launchdarkly/python-server-sdk-ai/commit/53fd95e2cfb66f4c53c6844cc41170077e6eee8c))
+* Add ManagedAgentGraph support ([#111](https://github.com/launchdarkly/python-server-sdk-ai/issues/111)) ([56ce0fd](https://github.com/launchdarkly/python-server-sdk-ai/commit/56ce0fd63b4301b58f33c17c55c4ecd47e9f8559))
+* Add ModelRunner protocol with invoke_model() and invoke_structured_model() ([453c71c](https://github.com/launchdarkly/python-server-sdk-ai/commit/453c71c84adcc6b8a3e316a98907dcb511bc9d41))
+* Add optional graph_key to all LDAIConfigTracker track_* methods for graph correlation ([4fab18f](https://github.com/launchdarkly/python-server-sdk-ai/commit/4fab18fa62375b6c97cb12a89225805c81ca4ee8))
+* Add track_tool_call/track_tool_calls to LDAIConfigTracker ([4fab18f](https://github.com/launchdarkly/python-server-sdk-ai/commit/4fab18fa62375b6c97cb12a89225805c81ca4ee8))
+* Deprecated Chat object in favor of ManagedModel ([453c71c](https://github.com/launchdarkly/python-server-sdk-ai/commit/453c71c84adcc6b8a3e316a98907dcb511bc9d41))
+* Deprecated create_chat(), use create_model() on the LDAIClient ([453c71c](https://github.com/launchdarkly/python-server-sdk-ai/commit/453c71c84adcc6b8a3e316a98907dcb511bc9d41))
+* Drop support for python 3.9 ([#114](https://github.com/launchdarkly/python-server-sdk-ai/issues/114)) ([dc592c5](https://github.com/launchdarkly/python-server-sdk-ai/commit/dc592c5a2e2bf3bf679af14a9aa63e81678a69ab))
+
+
+### Bug Fixes
+
+* Make AIGraphTracker.track_total_tokens accept Optional[TokenUsage], skip when None or total &lt;= 0 ([4fab18f](https://github.com/launchdarkly/python-server-sdk-ai/commit/4fab18fa62375b6c97cb12a89225805c81ca4ee8))
+* Remove node-scoped methods from AIGraphTracker (track_node_invocation, track_tool_call, track_node_judge_response), use related AIConfigTracker methods instead ([4fab18f](https://github.com/launchdarkly/python-server-sdk-ai/commit/4fab18fa62375b6c97cb12a89225805c81ca4ee8))
+* Use time.perf_counter_ns() for sub-millisecond precision in duration calculations ([4fab18f](https://github.com/launchdarkly/python-server-sdk-ai/commit/4fab18fa62375b6c97cb12a89225805c81ca4ee8))
+
 ## [0.16.1](https://github.com/launchdarkly/python-server-sdk-ai/compare/launchdarkly-server-sdk-ai-0.16.0...launchdarkly-server-sdk-ai-0.16.1) (2026-03-16)
 
 
