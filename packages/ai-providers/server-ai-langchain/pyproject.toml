@@ -19,7 +19,7 @@ classifiers = [
     "Topic :: Software Development :: Libraries",
 ]
 dependencies = [
-    "launchdarkly-server-sdk-ai>=0.16.0",
+    "launchdarkly-server-sdk-ai>=0.17.0",
     "langchain-core>=1.0.0",
     "langchain>=1.0.0",
 ]
