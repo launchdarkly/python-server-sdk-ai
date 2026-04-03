@@ -12,6 +12,8 @@ from ldclient import Context
 from ldai_optimization.client import OptimizationClient
 from ldai_optimization.dataclasses import (
     AIJudgeCallConfig,
+    GroundTruthOptimizationOptions,
+    GroundTruthSample,
     JudgeResult,
     OptimizationContext,
     OptimizationFromConfigOptions,
@@ -1393,3 +1395,414 @@ class TestOptimizeFromConfig:
 
         assert isinstance(result, OptimizationContext)
         assert result.completion_response == "The answer is 4."
+
+
+# ---------------------------------------------------------------------------
+# GroundTruthSample / GroundTruthOptimizationOptions dataclass validation
+# ---------------------------------------------------------------------------
+
+
+class TestGroundTruthSampleDataclass:
+    def test_required_fields(self):
+        s = GroundTruthSample(user_input="hi", expected_response="hello")
+        assert s.user_input == "hi"
+        assert s.expected_response == "hello"
+        assert s.variables == {}
+
+    def test_variables_populated(self):
+        s = GroundTruthSample(user_input="hi", expected_response="hello", variables={"lang": "en"})
+        assert s.variables == {"lang": "en"}
+
+
+class TestGroundTruthOptimizationOptionsValidation:
+    def _make(self, **overrides) -> GroundTruthOptimizationOptions:
+        defaults = dict(
+            context_choices=[LD_CONTEXT],
+            ground_truth_responses=[
+                GroundTruthSample(user_input="q1", expected_response="a1"),
+            ],
+            max_attempts=3,
+            model_choices=["gpt-4o"],
+            judge_model="gpt-4o",
+            handle_agent_call=AsyncMock(return_value="ans"),
+            handle_judge_call=AsyncMock(return_value=JUDGE_PASS_RESPONSE),
+            judges={
+                "acc": OptimizationJudge(threshold=0.8, acceptance_statement="Be accurate.")
+            },
+        )
+        defaults.update(overrides)
+        return GroundTruthOptimizationOptions(**defaults)
+
+    def test_valid_options_created(self):
+        opts = self._make()
+        assert len(opts.ground_truth_responses) == 1
+
+    def test_raises_empty_context_choices(self):
+        with pytest.raises(ValueError, match="context_choices"):
+            self._make(context_choices=[])
+
+    def test_raises_empty_model_choices(self):
+        with pytest.raises(ValueError, match="model_choices"):
+            self._make(model_choices=[])
+
+    def test_raises_empty_ground_truth_responses(self):
+        with pytest.raises(ValueError, match="ground_truth_responses"):
+            self._make(ground_truth_responses=[])
+
+    def test_raises_no_judges_and_no_on_turn(self):
+        with pytest.raises(ValueError, match="judges or on_turn"):
+            self._make(judges=None, on_turn=None)
+
+    def test_on_turn_satisfies_criteria_requirement(self):
+        opts = self._make(judges=None, on_turn=lambda ctx: True)
+        assert opts.on_turn is not None
+
+
+# ---------------------------------------------------------------------------
+# _run_ground_truth_optimization / optimize_from_ground_truth_options
+# ---------------------------------------------------------------------------
+
+
+def _make_gt_options(**overrides) -> GroundTruthOptimizationOptions:
+    defaults = dict(
+        context_choices=[LD_CONTEXT],
+        ground_truth_responses=[
+            GroundTruthSample(user_input="What is 2+2?", expected_response="4", variables={"lang": "English"}),
+            GroundTruthSample(user_input="What is 3+3?", expected_response="6", variables={"lang": "English"}),
+        ],
+        max_attempts=3,
+        model_choices=["gpt-4o", "gpt-4o-mini"],
+        judge_model="gpt-4o",
+        handle_agent_call=AsyncMock(return_value="The answer is correct."),
+        handle_judge_call=AsyncMock(return_value=JUDGE_PASS_RESPONSE),
+        judges={
+            "acc": OptimizationJudge(threshold=0.8, acceptance_statement="Be accurate.")
+        },
+    )
+    defaults.update(overrides)
+    return GroundTruthOptimizationOptions(**defaults)
+
+
+class TestRunGroundTruthOptimization:
+    def setup_method(self):
+        self.mock_ldai = _make_ldai_client()
+
+    def _make_client(self) -> OptimizationClient:
+        return _make_client(self.mock_ldai)
+
+    async def test_returns_list_of_contexts_on_success(self):
+        client = self._make_client()
+        opts = _make_gt_options()
+        results = await client.optimize_from_ground_truth_options("test-agent", opts)
+        assert isinstance(results, list)
+        assert len(results) == 2
+        for ctx in results:
+            assert isinstance(ctx, OptimizationContext)
+
+    async def test_each_context_has_correct_user_input(self):
+        client = self._make_client()
+        opts = _make_gt_options()
+        results = await client.optimize_from_ground_truth_options("test-agent", opts)
+        assert results[0].user_input == "What is 2+2?"
+        assert results[1].user_input == "What is 3+3?"
+
+    async def test_completion_response_set_on_each_context(self):
+        client = self._make_client()
+        opts = _make_gt_options(handle_agent_call=AsyncMock(return_value="42"))
+        results = await client.optimize_from_ground_truth_options("test-agent", opts)
+        for ctx in results:
+            assert ctx.completion_response == "42"
+
+    async def test_on_sample_result_called_per_sample(self):
+        client = self._make_client()
+        sample_results = []
+        opts = _make_gt_options(on_sample_result=lambda ctx: sample_results.append(ctx))
+        await client.optimize_from_ground_truth_options("test-agent", opts)
+        assert len(sample_results) == 2
+
+    async def test_on_passing_result_called_once_on_success(self):
+        client = self._make_client()
+        passing_calls = []
+        opts = _make_gt_options(on_passing_result=lambda ctx: passing_calls.append(ctx))
+        await client.optimize_from_ground_truth_options("test-agent", opts)
+        assert len(passing_calls) == 1
+
+    async def test_on_failing_result_called_when_max_attempts_exceeded(self):
+        client = self._make_client()
+        failing_calls = []
+        opts = _make_gt_options(
+            handle_judge_call=AsyncMock(return_value=JUDGE_FAIL_RESPONSE),
+            max_attempts=2,
+            on_failing_result=lambda ctx: failing_calls.append(ctx),
+        )
+        results = await client.optimize_from_ground_truth_options("test-agent", opts)
+        assert isinstance(results, list)
+        assert len(failing_calls) == 1
+
+    async def test_generates_variation_when_any_sample_fails(self):
+        client = self._make_client()
+        judge_responses = [
+            JUDGE_PASS_RESPONSE,       # sample 1 attempt 1 — pass
+            JUDGE_FAIL_RESPONSE,       # sample 2 attempt 1 — fail → trigger variation
+            JUDGE_PASS_RESPONSE,       # sample 1 attempt 2 — pass
+            JUDGE_PASS_RESPONSE,       # sample 2 attempt 2 — pass
+        ]
+        call_count = 0
+        async def side_effect(*args, **kwargs):
+            nonlocal call_count
+            resp = judge_responses[call_count]
+            call_count += 1
+            return resp
+
+        opts = _make_gt_options(
+            handle_judge_call=side_effect,
+            handle_agent_call=AsyncMock(side_effect=[
+                "ans1", "ans2",           # attempt 1 samples
+                VARIATION_RESPONSE,       # variation generation
+                "ans3", "ans4",           # attempt 2 samples
+            ]),
+            max_attempts=3,
+        )
+        results = await client.optimize_from_ground_truth_options("test-agent", opts)
+        assert isinstance(results, list)
+        assert len(results) == 2
+
+    async def test_iteration_numbers_are_linear_and_unique(self):
+        client = self._make_client()
+        opts = _make_gt_options()
+        results = await client.optimize_from_ground_truth_options("test-agent", opts)
+        iterations = [ctx.iteration for ctx in results]
+        assert len(set(iterations)) == len(iterations)
+
+    async def test_on_sample_result_exception_does_not_abort(self):
+        client = self._make_client()
+
+        def bad_callback(ctx):
+            raise RuntimeError("boom")
+
+        opts = _make_gt_options(on_sample_result=bad_callback)
+        results = await client.optimize_from_ground_truth_options("test-agent", opts)
+        assert len(results) == 2
+
+    async def test_variables_from_samples_used_per_evaluation(self):
+        client = self._make_client()
+        received_contexts = []
+        async def capture_agent_call(key, config, ctx, tools):
+            received_contexts.append(ctx)
+            return "response"
+
+        opts = _make_gt_options(
+            ground_truth_responses=[
+                GroundTruthSample(user_input="q1", expected_response="a1", variables={"lang": "English"}),
+                GroundTruthSample(user_input="q2", expected_response="a2", variables={"lang": "French"}),
+            ],
+            handle_agent_call=capture_agent_call,
+        )
+        await client.optimize_from_ground_truth_options("test-agent", opts)
+        assert received_contexts[0].current_variables == {"lang": "English"}
+        assert received_contexts[1].current_variables == {"lang": "French"}
+
+    async def test_model_falls_back_to_first_model_choice_when_agent_config_has_no_model(self):
+        """When the LD agent config has no model name the first model_choices entry is used."""
+        config_without_model = _make_agent_config(model_name="")
+        mock_ldai = _make_ldai_client(agent_config=config_without_model)
+        client = _make_client(mock_ldai)
+
+        observed_models = []
+        async def capture(key, config, ctx, tools):
+            observed_models.append(config.model.name if config.model else None)
+            return "answer"
+
+        opts = _make_gt_options(
+            handle_agent_call=capture,
+            model_choices=["gpt-4o", "gpt-4o-mini"],
+        )
+        await client.optimize_from_ground_truth_options("test-agent", opts)
+        assert all(m == "gpt-4o" for m in observed_models), (
+            f"Expected all agent calls to use 'gpt-4o' (fallback), got: {observed_models}"
+        )
+
+    async def test_missing_instructions_raises_value_error(self):
+        """An agent config with no instructions raises ValueError before the loop starts."""
+        config_no_instructions = _make_agent_config(instructions="")
+        mock_ldai = _make_ldai_client(agent_config=config_no_instructions)
+        # variation() also needs to return no instructions so the fallback doesn't hide the gap.
+        mock_ldai._client.variation.return_value = {"instructions": ""}
+        client = _make_client(mock_ldai)
+
+        opts = _make_gt_options()
+        with pytest.raises(ValueError, match="has no instructions configured"):
+            await client.optimize_from_ground_truth_options("test-agent", opts)
+
+
+# ---------------------------------------------------------------------------
+# expected_response in judge evaluation
+# ---------------------------------------------------------------------------
+
+
+class TestExpectedResponseInJudges:
+    def setup_method(self):
+        self.client = _make_client()
+        self.client._agent_key = "test-agent"
+        self.client._options = _make_options()
+        self.client._agent_config = _make_agent_config()
+        self.client._initialize_class_members_from_config(_make_agent_config())
+
+    async def test_expected_response_included_in_acceptance_judge_user_message(self):
+        captured_configs = []
+
+        async def capture_judge_call(key, config, ctx, tools):
+            captured_configs.append(config)
+            return JUDGE_PASS_RESPONSE
+
+        self.client._options = _make_options(
+            judges={
+                "acc": OptimizationJudge(threshold=0.8, acceptance_statement="Be accurate.")
+            },
+            handle_judge_call=capture_judge_call,
+        )
+        await self.client._execute_agent_turn(
+            self.client._create_optimization_context(iteration=1, variables={}),
+            1,
+            expected_response="The expected answer is 42.",
+        )
+        assert len(captured_configs) == 1
+        user_msg = captured_configs[0].messages[-1].content
+        assert "The expected answer is 42." in user_msg
+
+    async def test_expected_response_in_acceptance_judge_user_message(self):
+        captured_configs = []
+
+        async def capture_judge_call(key, config, ctx, tools):
+            captured_configs.append(config)
+            return JUDGE_PASS_RESPONSE
+
+        self.client._options = _make_options(
+            judges={
+                "acc": OptimizationJudge(threshold=0.8, acceptance_statement="Be accurate.")
+            },
+            handle_judge_call=capture_judge_call,
+        )
+        await self.client._execute_agent_turn(
+            self.client._create_optimization_context(iteration=1, variables={}),
+            1,
+            expected_response="gold standard",
+        )
+        user_msg = captured_configs[0].messages[1].content
+        assert "gold standard" in user_msg
+        assert "expected response" in user_msg.lower()
+        # Scoring instructions should now live in the user message, not the system prompt
+        system_msg = captured_configs[0].messages[0].content
+        assert "gold standard" not in system_msg
+
+    async def test_no_expected_response_leaves_judge_messages_unchanged(self):
+        captured_configs = []
+
+        async def capture_judge_call(key, config, ctx, tools):
+            captured_configs.append(config)
+            return JUDGE_PASS_RESPONSE
+
+        self.client._options = _make_options(
+            judges={
+                "acc": OptimizationJudge(threshold=0.8, acceptance_statement="Be accurate.")
+            },
+            handle_judge_call=capture_judge_call,
+        )
+        await self.client._execute_agent_turn(
+            self.client._create_optimization_context(iteration=1, variables={}),
+            1,
+        )
+        user_msg = captured_configs[0].messages[-1].content
+        assert "expected response" not in user_msg.lower()
+
+
+# ---------------------------------------------------------------------------
+# _build_options_from_config — ground truth path
+# ---------------------------------------------------------------------------
+
+
+_API_CONFIG_WITH_GT: Dict[str, Any] = {
+    "id": "opt-gt-uuid",
+    "key": "my-gt-optimization",
+    "aiConfigKey": "my-agent",
+    "maxAttempts": 3,
+    "modelChoices": ["gpt-4o"],
+    "judgeModel": "gpt-4o",
+    "variableChoices": [{"lang": "English"}, {"lang": "French"}],
+    "acceptanceStatements": [{"statement": "Be accurate.", "threshold": 0.9}],
+    "judges": [],
+    "userInputOptions": ["What is 2+2?", "What is 3+3?"],
+    "groundTruthResponses": ["4", "6"],
+    "version": 1,
+    "createdAt": 1700000000,
+}
+
+
+class TestBuildOptionsFromConfigGroundTruth:
+    def setup_method(self):
+        self.client = _make_client()
+        self.client._agent_key = "my-agent"
+        self.client._initialize_class_members_from_config(_make_agent_config())
+        self.client._options = _make_options()
+        self.api_client = _make_mock_api_client()
+
+    def _build(self, config=None, options=None):
+        return self.client._build_options_from_config(
+            config or dict(_API_CONFIG_WITH_GT),
+            options or _make_from_config_options(),
+            self.api_client,
+            optimization_id="opt-gt-uuid",
+            run_id="run-uuid-789",
+        )
+
+    def test_returns_ground_truth_options_when_gt_present(self):
+        result = self._build()
+        assert isinstance(result, GroundTruthOptimizationOptions)
+
+    def test_samples_zipped_by_index(self):
+        result = self._build()
+        assert isinstance(result, GroundTruthOptimizationOptions)
+        assert len(result.ground_truth_responses) == 2
+        s0 = result.ground_truth_responses[0]
+        assert s0.user_input == "What is 2+2?"
+        assert s0.expected_response == "4"
+        assert s0.variables == {"lang": "English"}
+        s1 = result.ground_truth_responses[1]
+        assert s1.user_input == "What is 3+3?"
+        assert s1.expected_response == "6"
+        assert s1.variables == {"lang": "French"}
+
+    def test_model_choices_have_prefix_stripped(self):
+        config = dict(_API_CONFIG_WITH_GT)
+        config["modelChoices"] = ["OpenAI.gpt-4o"]
+        result = self._build(config=config)
+        assert isinstance(result, GroundTruthOptimizationOptions)
+        assert result.model_choices == ["gpt-4o"]
+
+    def test_raises_on_mismatched_lengths(self):
+        config = dict(_API_CONFIG_WITH_GT)
+        config["userInputOptions"] = ["only one input"]
+        with pytest.raises(ValueError, match="same length"):
+            self._build(config=config)
+
+    def test_returns_standard_options_when_no_gt(self):
+        config = dict(_API_CONFIG)  # no groundTruthResponses
+        result = self._build(config=config)
+        assert isinstance(result, OptimizationOptions)
+
+    async def test_optimize_from_config_dispatches_to_gt_run(self):
+        mock_ldai = _make_ldai_client()
+        with patch.dict("os.environ", {"LAUNCHDARKLY_API_KEY": "test-key"}):
+            client = _make_client(mock_ldai)
+        mock_api = _make_mock_api_client()
+        mock_api.get_agent_optimization = MagicMock(return_value=dict(_API_CONFIG_WITH_GT))
+
+        with patch("ldai_optimization.client.LDApiClient", return_value=mock_api):
+            options = _make_from_config_options(
+                handle_agent_call=AsyncMock(return_value="correct answer"),
+                handle_judge_call=AsyncMock(return_value=JUDGE_PASS_RESPONSE),
+            )
+            result = await client.optimize_from_config("my-gt-opt", options)
+
+        assert isinstance(result, list)
+        assert len(result) == 2
