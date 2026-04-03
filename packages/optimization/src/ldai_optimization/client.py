@@ -6,7 +6,7 @@ import logging
 import os
 import random
 import uuid
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional, Union
 
 from ldai import AIAgentConfig, AIJudgeConfig, AIJudgeConfigDefault, LDAIClient
 from ldai.models import LDMessage, ModelConfig
@@ -15,6 +15,8 @@ from ldclient import Context
 from ldai_optimization.dataclasses import (
     AIJudgeCallConfig,
     AutoCommitConfig,
+    GroundTruthOptimizationOptions,
+    GroundTruthSample,
     JudgeResult,
     OptimizationContext,
     OptimizationFromConfigOptions,
@@ -99,7 +101,12 @@ class OptimizationClient:
     def _initialize_class_members_from_config(
         self, agent_config: AIAgentConfig
     ) -> None:
-        self._current_instructions = agent_config.instructions or ""
+        if not agent_config.instructions:
+            raise ValueError(
+                f"Agent '{agent_config.key}' has no instructions configured. "
+                "Ensure the agent flag has instructions set before running an optimization."
+            )
+        self._current_instructions = agent_config.instructions
         self._current_parameters: Dict[str, Any] = (
             agent_config.model._parameters if agent_config.model else None
         ) or {}
@@ -193,7 +200,7 @@ class OptimizationClient:
         if self._options.on_status_update:
             try:
                 self._options.on_status_update(status, context.copy_without_history())
-            except Exception as e:
+            except Exception:
                 logger.exception(
                     "[Iteration %d] -> on_status_update callback failed", iteration
                 )
@@ -333,6 +340,7 @@ class OptimizationClient:
         user_input: str,
         variables: Optional[Dict[str, Any]] = None,
         agent_tools: Optional[List[ToolDefinition]] = None,
+        expected_response: Optional[str] = None,
     ) -> Dict[str, JudgeResult]:
         """
         Call all judges in parallel (auto-path).
@@ -347,6 +355,8 @@ class OptimizationClient:
             self._history when judges run)
         :param variables: The variable set that was used during the agent generation
         :param agent_tools: Normalised list of tool dicts that were available to the agent
+        :param expected_response: Optional ground truth expected response. When provided,
+            judges are instructed to factor it into their scoring alongside acceptance criteria.
         :return: Dictionary of judge results (score and rationale)
         """
         if not self._options.judges:
@@ -385,6 +395,7 @@ class OptimizationClient:
                         user_input=user_input,
                         variables=resolved_variables,
                         agent_tools=resolved_agent_tools,
+                        expected_response=expected_response,
                     )
                     judge_results[judge_key] = result
                 else:
@@ -397,6 +408,7 @@ class OptimizationClient:
                         user_input=user_input,
                         variables=resolved_variables,
                         agent_tools=resolved_agent_tools,
+                        expected_response=expected_response,
                     )
                     judge_results[judge_key] = result
 
@@ -415,7 +427,7 @@ class OptimizationClient:
                     "PASSED" if passed else "FAILED",
                     f" | {result.rationale}" if result.rationale else "",
                 )
-            except Exception as e:
+            except Exception:
                 logger.exception(
                     "[Iteration %d] -> Judge %s evaluation failed", iteration, judge_key
                 )
@@ -439,6 +451,7 @@ class OptimizationClient:
         user_input: str,
         variables: Optional[Dict[str, Any]] = None,
         agent_tools: Optional[List[ToolDefinition]] = None,
+        expected_response: Optional[str] = None,
     ) -> JudgeResult:
         """
         Evaluate using a config-type judge (with judge_key).
@@ -451,6 +464,8 @@ class OptimizationClient:
         :param user_input: The user's question for this turn
         :param variables: The variable set that was used during agent generation
         :param agent_tools: Normalised list of tool dicts that were available to the agent
+        :param expected_response: Optional ground truth expected response. When provided,
+            injected into template variables and judge messages.
         :return: The judge result with score and rationale
         """
         # Config-type judge: fetch judge config on-demand from LaunchDarkly SDK
@@ -467,6 +482,8 @@ class OptimizationClient:
             "message_history": message_history_text,
             "response_to_evaluate": completion_response,
         }
+        if expected_response is not None:
+            template_variables["expected_response"] = expected_response
 
         assert optimization_judge.judge_key is not None
         judge_config = self._judge_config(
@@ -513,6 +530,13 @@ class OptimizationClient:
             if user_parts
             else f"Here is the response to evaluate: {completion_response}"
         )
+
+        if expected_response is not None:
+            judge_user_input += (
+                f"\n\nHere is the expected response: {expected_response}"
+                "\n\nEvaluate the actual response against both the acceptance criteria AND "
+                "how closely it matches the expected response. Factor both into your score."
+            )
 
         # Rebuild the message list with the updated system content so completions users
         # receive the same scoring instructions that are baked into `instructions`.
@@ -600,6 +624,7 @@ class OptimizationClient:
         user_input: str,
         variables: Optional[Dict[str, Any]] = None,
         agent_tools: Optional[List[ToolDefinition]] = None,
+        expected_response: Optional[str] = None,
     ) -> JudgeResult:
         """
         Evaluate using an acceptance statement judge.
@@ -612,6 +637,8 @@ class OptimizationClient:
         :param user_input: The user's question for this turn
         :param variables: The variable set that was used during agent generation
         :param agent_tools: Normalised list of tool dicts that were available to the agent
+        :param expected_response: Optional ground truth expected response. When provided,
+            injected into instructions and judge message so the judge can score actual vs. expected.
         :return: The judge result with score and rationale
         """
         if not optimization_judge.acceptance_statement:
@@ -668,6 +695,12 @@ class OptimizationClient:
         ]
 
         judge_user_input = f"Here is the response to evaluate: {completion_response}"
+        if expected_response is not None:
+            judge_user_input += (
+                f"\n\nHere is the expected response: {expected_response}"
+                "\n\nEvaluate the actual response against both the acceptance statement AND "
+                "how closely it matches the expected response. Factor both into your score."
+            )
 
         judge_call_config = AIJudgeCallConfig(
             key=judge_key,
@@ -728,6 +761,11 @@ class OptimizationClient:
             raw_instructions = raw_variation.get(
                 "instructions", agent_config.instructions
             )
+            if not raw_instructions:
+                raise ValueError(
+                    f"Agent '{agent_key}' has no instructions configured. "
+                    "Ensure the agent flag has instructions set before running an optimization."
+                )
             self._initial_instructions = raw_instructions
 
             agent_config = dataclasses.replace(
@@ -752,6 +790,233 @@ class OptimizationClient:
         context = random.choice(options.context_choices)
         agent_config = await self._get_agent_config(agent_key, context)
         return await self._run_optimization(agent_config, options)
+
+    async def optimize_from_ground_truth_options(
+        self, agent_key: str, options: GroundTruthOptimizationOptions
+    ) -> List[OptimizationContext]:
+        """Execute a ground truth optimization on the given agent.
+
+        Unlike optimize_from_options (which tests random choices until one passes),
+        this path evaluates all N ground truth samples in each attempt and only
+        succeeds when every sample passes its judges. A new variation is generated
+        whenever any sample fails, and all N samples are re-evaluated from scratch
+        with the updated configuration, up to max_attempts.
+
+        :param agent_key: Identifier of the agent to optimize.
+        :param options: Ground truth optimization options including the ordered sample list.
+        :return: List of OptimizationContexts from the final attempt (one per sample).
+        """
+        self._agent_key = agent_key
+        context = random.choice(options.context_choices)
+        agent_config = await self._get_agent_config(agent_key, context)
+        return await self._run_ground_truth_optimization(agent_config, options)
+
+    async def _run_ground_truth_optimization(
+        self,
+        agent_config: AIAgentConfig,
+        gt_options: GroundTruthOptimizationOptions,
+    ) -> List[OptimizationContext]:
+        """Run the ground truth optimization loop.
+
+        Uses the "bridge" pattern to reuse existing internal methods (judge evaluation,
+        variation generation, status callbacks) for the ground truth optimization.
+
+        :param agent_config: Agent configuration from LaunchDarkly.
+        :param gt_options: Ground truth options supplied by the caller.
+        :return: List of OptimizationContexts from the final attempt (one per sample).
+        """
+        bridge = OptimizationOptions(
+            context_choices=gt_options.context_choices,
+            max_attempts=gt_options.max_attempts,
+            model_choices=gt_options.model_choices,
+            judge_model=gt_options.judge_model,
+            variable_choices=[s.variables for s in gt_options.ground_truth_responses],
+            handle_agent_call=gt_options.handle_agent_call,
+            handle_judge_call=gt_options.handle_judge_call,
+            judges=gt_options.judges,
+            on_turn=gt_options.on_turn,
+            on_passing_result=gt_options.on_passing_result,
+            on_failing_result=gt_options.on_failing_result,
+            on_status_update=gt_options.on_status_update,
+        )
+        self._options = bridge
+        self._agent_config = agent_config
+        self._initialize_class_members_from_config(agent_config)
+
+        # Seed from the first model choice on the first iteration
+        # so agent calls never receive an empty model string.
+        if not self._current_model and bridge.model_choices:
+            self._current_model = bridge.model_choices[0]
+            logger.debug(
+                "[GT] -> No model in agent config; defaulting to first model choice: %s",
+                self._current_model,
+            )
+
+        samples = gt_options.ground_truth_responses
+        n = len(samples)
+
+        initial_context = self._create_optimization_context(
+            iteration=0,
+            variables=samples[0].variables,
+        )
+        self._safe_status_update("init", initial_context, 0)
+
+        # Attempt tracks the current "batch" loop that runs
+        # through all N samples. Iteration in this context refers to the
+        # total number of batch runs so far.
+        attempt = 0
+        while True:
+            attempt += 1
+            logger.info(
+                "[GT Attempt %d/%d] -> Starting ground truth run (%d samples, model=%s)",
+                attempt,
+                gt_options.max_attempts,
+                n,
+                self._current_model,
+            )
+
+            attempt_results: List[OptimizationContext] = []
+            all_passed = True
+            failed_count = 0
+
+            # Now iterate through each individual sample in the batch,
+            # creating a new context for each sample + running judges etc.
+            for i, sample in enumerate(samples):
+                linear_iter = (attempt - 1) * n + i + 1
+                truncated = len(sample.user_input) > 100
+                logger.info(
+                    "[GT Attempt %d] -> Sample %d/%d (user_input=%.100s%s)",
+                    attempt,
+                    i + 1,
+                    n,
+                    sample.user_input,
+                    "..." if truncated else "",
+                )
+
+                optimize_context = self._create_optimization_context(
+                    iteration=linear_iter,
+                    user_input=sample.user_input,
+                    variables=sample.variables,
+                )
+
+                self._safe_status_update("generating", optimize_context, linear_iter)
+                optimize_context = await self._execute_agent_turn(
+                    optimize_context,
+                    linear_iter,
+                    expected_response=sample.expected_response,
+                )
+
+                # Per-sample pass/fail check
+                if self._options.on_turn is not None:
+                    try:
+                        sample_passed = self._options.on_turn(optimize_context)
+                    except Exception:
+                        logger.exception(
+                            "[GT Attempt %d] -> Sample %d on_turn evaluation failed",
+                            attempt,
+                            i + 1,
+                        )
+                        sample_passed = False
+                else:
+                    sample_passed = self._evaluate_response(optimize_context)
+
+                if not sample_passed:
+                    logger.info(
+                        "[GT Attempt %d] -> Sample %d/%d FAILED",
+                        attempt,
+                        i + 1,
+                        n,
+                    )
+                    all_passed = False
+                    failed_count += 1
+                else:
+                    logger.debug(
+                        "[GT Attempt %d] -> Sample %d/%d passed",
+                        attempt,
+                        i + 1,
+                        n,
+                    )
+
+                attempt_results.append(optimize_context)
+
+                if gt_options.on_sample_result is not None:
+                    try:
+                        gt_options.on_sample_result(optimize_context)
+                    except Exception:
+                        logger.exception(
+                            "[GT Attempt %d] -> on_sample_result callback failed for sample %d",
+                            attempt,
+                            i + 1,
+                        )
+
+            last_ctx = attempt_results[-1]
+
+            if all_passed:
+                logger.info(
+                    "[GT Attempt %d] -> All %d samples passed — optimization succeeded",
+                    attempt,
+                    n,
+                )
+                self._safe_status_update("success", last_ctx, last_ctx.iteration)
+                if self._options.on_passing_result:
+                    try:
+                        self._options.on_passing_result(last_ctx)
+                    except Exception:
+                        logger.exception(
+                            "[GT Attempt %d] -> on_passing_result callback failed", attempt
+                        )
+                return attempt_results
+
+            # We've hit max attempts for the batches, bail at this point
+            if attempt >= gt_options.max_attempts:
+                logger.warning(
+                    "[GT Optimization] -> Failed after %d attempt(s) — not all samples passed",
+                    attempt,
+                )
+                self._safe_status_update("failure", last_ctx, last_ctx.iteration)
+                if self._options.on_failing_result:
+                    try:
+                        self._options.on_failing_result(last_ctx)
+                    except Exception:
+                        logger.exception(
+                            "[GT Attempt %d] -> on_failing_result callback failed", attempt
+                        )
+                return attempt_results
+
+            # Append all N results to history so the variation generator has full context
+            # from all of the previous samples
+            self._history.extend(attempt_results)
+
+            logger.info(
+                "[GT Attempt %d] -> %d/%d samples failed — generating new variation",
+                attempt,
+                failed_count,
+                n,
+            )
+            try:
+                await self._generate_new_variation(last_ctx.iteration, last_ctx.current_variables)
+            except Exception:
+                logger.exception(
+                    "[GT Attempt %d] -> Variation generation failed", attempt
+                )
+                self._safe_status_update("failure", last_ctx, last_ctx.iteration)
+                if self._options.on_failing_result:
+                    try:
+                        self._options.on_failing_result(last_ctx)
+                    except Exception:
+                        logger.exception(
+                            "[GT Attempt %d] -> on_failing_result callback failed", attempt
+                        )
+                return attempt_results
+
+            self._safe_status_update("turn completed", last_ctx, last_ctx.iteration)
+
+        # Every branch inside the while True loop returns explicitly (success, max-attempts
+        # exhaustion, or variation-generation failure). This line is structurally unreachable,
+        # but without it type checkers infer the return type as List[OptimizationContext] | None
+        # because they don't always treat `while True` as exhaustive. The RuntimeError makes
+        # the intent unambiguous and causes a loud failure if that invariant is ever broken.
+        raise RuntimeError("unreachable: ground truth loop exited without returning")
 
     def _apply_new_variation_response(
         self,
@@ -820,12 +1085,22 @@ class OptimizationClient:
         else:
             old_model = self._current_model
             self._current_model = model_value
-            logger.info(
-                "[Iteration %d] -> Model updated from '%s' to '%s'",
-                iteration,
-                old_model,
-                self._current_model,
-            )
+
+            # Log regardless of whether we change the model so that logs
+            # are consistently structured
+            if old_model != self._current_model:
+                logger.info(
+                    "[Iteration %d] -> Model updated from '%s' to '%s'",
+                    iteration,
+                    old_model,
+                    self._current_model,
+                )
+            else:
+                logger.debug(
+                    "[Iteration %d] -> Keeping model '%s'",
+                    iteration,
+                    self._current_model,
+                )
 
         logger.debug(
             "[Iteration %d] -> New variation generated: instructions='%s', model=%s, parameters=%s",
@@ -957,6 +1232,8 @@ class OptimizationClient:
         optimization_options = self._build_options_from_config(
             config, options, api_client, optimization_id, run_id
         )
+        if isinstance(optimization_options, GroundTruthOptimizationOptions):
+            return await self._run_ground_truth_optimization(agent_config, optimization_options)
         return await self._run_optimization(agent_config, optimization_options)
 
     def _build_options_from_config(
@@ -966,8 +1243,13 @@ class OptimizationClient:
         api_client: LDApiClient,
         optimization_id: str,
         run_id: str,
-    ) -> OptimizationOptions:
-        """Map a fetched AgentOptimization config + user options into OptimizationOptions.
+    ) -> "Union[OptimizationOptions, GroundTruthOptimizationOptions]":
+        """Map a fetched AgentOptimization config + user options into the appropriate options type.
+
+        When the config contains groundTruthResponses, the three lists (groundTruthResponses,
+        userInputOptions, variableChoices) are zipped by index into GroundTruthSample objects
+        and a GroundTruthOptimizationOptions is returned. Otherwise a standard OptimizationOptions
+        is returned.
 
         Acceptance statements and judge configs from the API are merged into a single
         judges dict. An on_status_update closure is injected to persist each iteration
@@ -979,7 +1261,7 @@ class OptimizationClient:
         :param api_client: Initialised LDApiClient for result persistence.
         :param optimization_id: UUID id of the parent agent_optimization record.
         :param run_id: UUID that groups all result records for this run.
-        :return: A fully populated OptimizationOptions ready for _run_optimization.
+        :return: OptimizationOptions or GroundTruthOptimizationOptions.
         """
         judges: Dict[str, OptimizationJudge] = {}
 
@@ -996,16 +1278,14 @@ class OptimizationClient:
                 judge_key=judge["key"],
             )
 
-        has_ground_truth = bool(config.get("groundTruthResponses"))
+        raw_ground_truth: List[str] = config.get("groundTruthResponses") or []
+        has_ground_truth = bool(raw_ground_truth)
         if not judges and not has_ground_truth and options.on_turn is None:
             raise ValueError(
                 "The optimization config has no acceptance statements, judges, or ground truth "
                 "responses, and no on_turn callback was provided. At least one is required to "
                 "evaluate optimization results."
             )
-
-        variable_choices: List[Dict[str, Any]] = config["variableChoices"] or [{}]
-        user_input_options: Optional[List[str]] = config["userInputOptions"] or None
 
         project_key = options.project_key
         config_version: int = config["version"]
@@ -1048,6 +1328,48 @@ class OptimizationClient:
                 except Exception:
                     logger.exception("User on_status_update callback failed for status=%s", status)
 
+        # If we have ground truth responses, we provide a different
+        # configuration options type that contains the bundled GroundTruthSamples
+        # so that the ultimate output is correctly formatted.
+        if has_ground_truth:
+            user_inputs: List[str] = config["userInputOptions"] or []
+            variable_choices_raw: List[Dict[str, Any]] = config["variableChoices"] or []
+
+            if len(raw_ground_truth) != len(user_inputs) or len(raw_ground_truth) != len(variable_choices_raw):
+                raise ValueError(
+                    f"groundTruthResponses ({len(raw_ground_truth)}), userInputOptions "
+                    f"({len(user_inputs)}), and variableChoices ({len(variable_choices_raw)}) "
+                    "must all have the same length when groundTruthResponses is provided."
+                )
+
+            gt_samples = [
+                GroundTruthSample(
+                    user_input=user_inputs[idx],
+                    expected_response=raw_ground_truth[idx],
+                    variables=variable_choices_raw[idx],
+                )
+                for idx in range(len(raw_ground_truth))
+            ]
+
+            return GroundTruthOptimizationOptions(
+                context_choices=options.context_choices,
+                ground_truth_responses=gt_samples,
+                max_attempts=config["maxAttempts"],
+                model_choices=[_strip_provider_prefix(m) for m in config["modelChoices"]],
+                judge_model=_strip_provider_prefix(config["judgeModel"]),
+                handle_agent_call=options.handle_agent_call,
+                handle_judge_call=options.handle_judge_call,
+                judges=judges or None,
+                on_turn=options.on_turn,
+                on_sample_result=options.on_sample_result,
+                on_passing_result=options.on_passing_result,
+                on_failing_result=options.on_failing_result,
+                on_status_update=_persist_and_forward,
+            )
+
+        variable_choices: List[Dict[str, Any]] = config["variableChoices"] or [{}]
+        user_input_options: Optional[List[str]] = config["userInputOptions"] or None
+
         return OptimizationOptions(
             context_choices=options.context_choices,
             max_attempts=config["maxAttempts"],
@@ -1068,6 +1390,7 @@ class OptimizationClient:
         self,
         optimize_context: OptimizationContext,
         iteration: int,
+        expected_response: Optional[str] = None,
     ) -> OptimizationContext:
         """
         Run the agent call and judge scoring for one optimization turn.
@@ -1079,6 +1402,8 @@ class OptimizationClient:
 
         :param optimize_context: The context for this turn (instructions, model, history, etc.)
         :param iteration: Current iteration number for logging and status callbacks
+        :param expected_response: Optional ground truth expected response. When provided,
+            injected into judge context so judges can score actual vs. expected.
         :return: Updated context with completion_response and scores filled in
         """
         logger.info(
@@ -1116,6 +1441,7 @@ class OptimizationClient:
                 user_input=optimize_context.user_input or "",
                 variables=optimize_context.current_variables,
                 agent_tools=agent_tools,
+                expected_response=expected_response,
             )
 
         return dataclasses.replace(
@@ -1213,6 +1539,15 @@ class OptimizationClient:
         self._options = options
         self._agent_config = agent_config
         self._initialize_class_members_from_config(agent_config)
+
+        # If the LD flag doesn't carry a model name, seed from the first model choice
+        # so agent calls never receive an empty model string.
+        if not self._current_model and options.model_choices:
+            self._current_model = options.model_choices[0]
+            logger.debug(
+                "[Optimization] -> No model in agent config; defaulting to first model choice: %s",
+                self._current_model,
+            )
 
         initial_context = self._create_optimization_context(
             iteration=0,

@@ -217,6 +217,16 @@ HandleJudgeCall = Union[
     Callable[[str, AIJudgeCallConfig, OptimizationJudgeContext, Dict[str, Callable[..., Any]]], Awaitable[str]],
 ]
 
+_StatusLiteral = Literal[
+    "init",
+    "generating",
+    "evaluating",
+    "generating variation",
+    "turn completed",
+    "success",
+    "failure",
+]
+
 
 @dataclass
 class OptimizationOptions:
@@ -250,23 +260,8 @@ class OptimizationOptions:
     )
     on_passing_result: Optional[Callable[[OptimizationContext], None]] = None
     on_failing_result: Optional[Callable[[OptimizationContext], None]] = None
-    on_status_update: Optional[
-        Callable[
-            [
-                Literal[
-                    "init",
-                    "generating",
-                    "evaluating",
-                    "generating variation",
-                    "turn completed",
-                    "success",
-                    "failure",
-                ],
-                OptimizationContext,
-            ],
-            None,
-        ]
-    ] = None  # called to provide status updates during the optimization flow
+    # called to provide status updates during the optimization flow
+    on_status_update: Optional[Callable[[_StatusLiteral, OptimizationContext], None]] = None
 
     def __post_init__(self):
         """Validate required options."""
@@ -278,6 +273,86 @@ class OptimizationOptions:
             raise ValueError("Either judges or on_turn must be provided")
         if self.judge_model is None:
             raise ValueError("judge_model must be provided")
+
+
+@dataclass
+class GroundTruthSample:
+    """A single ground truth evaluation sample for use with optimize_from_ground_truth_options.
+
+    Each sample ties together the user input, expected response, and variable set for one
+    evaluation. Samples are evaluated in order; the optimization only passes if all samples
+    pass their judges in the same attempt.
+
+    :param user_input: The user message to send to the agent for this evaluation.
+    :param expected_response: The ideal response the agent should produce. Injected into
+        judge context so judges can score actual vs. expected.
+    :param variables: Variable set interpolated into the agent instructions for this sample.
+        Defaults to an empty dict if no placeholders are used.
+    """
+
+    user_input: str
+    expected_response: str
+    variables: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class GroundTruthOptimizationOptions:
+    """Options for optimize_from_ground_truth_options.
+
+    Mirrors OptimizationOptions but replaces variable_choices / user_input_options with
+    ground_truth_responses. Each GroundTruthSample bundles the user input, expected
+    response, and variable set for one evaluation. All N samples must pass their judges
+    in the same attempt for the optimization to succeed.
+
+    :param context_choices: One or more LD evaluation contexts to use.
+    :param ground_truth_responses: Ordered list of ground truth samples to evaluate.
+        At least 1 required. All samples share the same instructions and model being optimized.
+    :param max_attempts: Maximum number of variation attempts before the run is marked failed.
+    :param model_choices: Model IDs the variation generator may select from. At least 1 required.
+    :param judge_model: Model used for judge evaluation. Should remain consistent across attempts.
+    :param handle_agent_call: Callback that invokes the agent and returns its response.
+    :param handle_judge_call: Callback that invokes a judge LLM and returns its response.
+    :param judges: Auto-judges (config judges and/or acceptance statements) to score each response.
+    :param on_turn: Optional manual pass/fail callback applied per sample; skips judge scoring when provided.
+    :param on_sample_result: Called with each sample's OptimizationContext as results arrive,
+        before the overall pass/fail decision is made for the attempt.
+    :param on_passing_result: Called once with the last context when all N samples pass.
+    :param on_failing_result: Called once with the last context when max attempts are exhausted.
+    :param on_status_update: Called on each status transition during the run.
+    """
+
+    context_choices: List[Context]
+    ground_truth_responses: List[GroundTruthSample]
+    max_attempts: int
+    model_choices: List[str]
+    judge_model: str
+    handle_agent_call: HandleAgentCall
+    handle_judge_call: HandleJudgeCall
+    judges: Optional[Dict[str, OptimizationJudge]] = None
+    on_turn: Optional[Callable[[OptimizationContext], bool]] = None
+    on_sample_result: Optional[Callable[[OptimizationContext], None]] = None
+    on_passing_result: Optional[Callable[[OptimizationContext], None]] = None
+    on_failing_result: Optional[Callable[[OptimizationContext], None]] = None
+    on_status_update: Optional[
+        Callable[
+            [
+                _StatusLiteral,
+                OptimizationContext,
+            ],
+            None,
+        ]
+    ] = None
+
+    def __post_init__(self):
+        """Validate required options."""
+        if len(self.context_choices) < 1:
+            raise ValueError("context_choices must have at least 1 context")
+        if len(self.model_choices) < 1:
+            raise ValueError("model_choices must have at least 1 model")
+        if len(self.ground_truth_responses) < 1:
+            raise ValueError("ground_truth_responses must have at least 1 sample")
+        if self.judges is None and self.on_turn is None:
+            raise ValueError("Either judges or on_turn must be provided")
 
 
 @dataclass
@@ -293,6 +368,8 @@ class OptimizationFromConfigOptions:
     :param handle_agent_call: Callback that invokes the agent and returns its response.
     :param handle_judge_call: Callback that invokes a judge and returns its response.
     :param on_turn: Optional manual pass/fail callback; when provided, judge scoring is skipped.
+    :param on_sample_result: Ground truth path only. Called with each sample's
+        OptimizationContext as results arrive during a ground truth run.
     :param on_passing_result: Called with the winning OptimizationContext on success.
     :param on_failing_result: Called with the final OptimizationContext on failure.
     :param on_status_update: Called on each status transition; chained after the
@@ -306,25 +383,10 @@ class OptimizationFromConfigOptions:
     handle_agent_call: HandleAgentCall
     handle_judge_call: HandleJudgeCall
     on_turn: Optional[Callable[["OptimizationContext"], bool]] = None
+    on_sample_result: Optional[Callable[["OptimizationContext"], None]] = None
     on_passing_result: Optional[Callable[["OptimizationContext"], None]] = None
     on_failing_result: Optional[Callable[["OptimizationContext"], None]] = None
-    on_status_update: Optional[
-        Callable[
-            [
-                Literal[
-                    "init",
-                    "generating",
-                    "evaluating",
-                    "generating variation",
-                    "turn completed",
-                    "success",
-                    "failure",
-                ],
-                "OptimizationContext",
-            ],
-            None,
-        ]
-    ] = None
+    on_status_update: Optional[Callable[[_StatusLiteral, "OptimizationContext"], None]] = None
     base_url: Optional[str] = None
 
     def __post_init__(self):
