@@ -2,7 +2,7 @@ import pytest
 from ldclient import Config, Context, LDClient
 from ldclient.integrations.test_data import TestData
 
-from ldai import LDAIClient, LDMessage, ModelConfig
+from ldai import LDAIClient, LDMessage, ModelConfig, ToolDefinition
 from ldai.models import (AIAgentConfigDefault, AICompletionConfigDefault,
                          AIConfigDefault, AIJudgeConfigDefault)
 
@@ -100,6 +100,42 @@ def td() -> TestData:
             }
         )
         .variation_for_all(1)
+    )
+
+    td.update(
+        td.flag('config-with-tools')
+        .variations(
+            {
+                'model': {
+                    'name': 'gpt-4',
+                    'parameters': {
+                        'temperature': 0.7,
+                        'tools': [
+                            {'name': 'web_search', 'parameters': {'maxResults': 10, 'region': 'us'}},
+                            {'name': 'get_weather', 'parameters': {'units': 'celsius'}},
+                            {'name': 'calculator'},
+                        ],
+                    },
+                },
+                'provider': {'name': 'openai'},
+                'messages': [{'role': 'system', 'content': 'You are a helpful assistant.'}],
+                '_ldMeta': {'enabled': True, 'variationKey': 'tools-v1', 'version': 1},
+            }
+        )
+        .variation_for_all(0)
+    )
+
+    td.update(
+        td.flag('config-no-tools')
+        .variations(
+            {
+                'model': {'name': 'gpt-4', 'parameters': {'temperature': 0.5}},
+                'provider': {'name': 'openai'},
+                'messages': [{'role': 'system', 'content': 'Hello'}],
+                '_ldMeta': {'enabled': True, 'variationKey': 'no-tools-v1', 'version': 1},
+            }
+        )
+        .variation_for_all(0)
     )
 
     return td
@@ -404,3 +440,88 @@ def test_completion_config_without_default_uses_disabled(ldai_client: LDAIClient
     config = ldai_client.completion_config('missing-flag', context)
 
     assert config.enabled is False
+
+
+# ============================================================================
+# ToolDefinition tests
+# ============================================================================
+
+def test_tool_definition_basic():
+    tool = ToolDefinition('web_search')
+    assert tool.name == 'web_search'
+    assert tool.get_parameter('anything') is None
+
+
+def test_tool_definition_with_parameters():
+    tool = ToolDefinition('web_search', parameters={'maxResults': 10, 'region': 'us'})
+    assert tool.name == 'web_search'
+    assert tool.get_parameter('maxResults') == 10
+    assert tool.get_parameter('region') == 'us'
+    assert tool.get_parameter('nonexistent') is None
+
+
+def test_tool_definition_to_dict():
+    tool = ToolDefinition('web_search', parameters={'maxResults': 10})
+    d = tool.to_dict()
+    assert d == {'name': 'web_search', 'parameters': {'maxResults': 10}}
+
+
+def test_tool_definition_to_dict_no_parameters():
+    tool = ToolDefinition('calculator')
+    d = tool.to_dict()
+    assert d == {'name': 'calculator'}
+
+
+def test_completion_config_has_tools(ldai_client: LDAIClient):
+    """Test that tools with custom parameters are parsed from flag variations."""
+    context = Context.create('user-key')
+    default = AICompletionConfigDefault(enabled=False, model=ModelConfig('fallback'), messages=[])
+
+    config = ldai_client.completion_config('config-with-tools', context, default)
+
+    assert config.tools is not None
+    assert len(config.tools) == 3
+
+    web_search = config.tools[0]
+    assert web_search.name == 'web_search'
+    assert web_search.get_parameter('maxResults') == 10
+    assert web_search.get_parameter('region') == 'us'
+
+    get_weather = config.tools[1]
+    assert get_weather.name == 'get_weather'
+    assert get_weather.get_parameter('units') == 'celsius'
+
+    calculator = config.tools[2]
+    assert calculator.name == 'calculator'
+    assert calculator.get_parameter('anything') is None
+
+
+def test_completion_config_no_tools(ldai_client: LDAIClient):
+    """Test that tools is None when no tools are defined."""
+    context = Context.create('user-key')
+    default = AICompletionConfigDefault(enabled=False, model=ModelConfig('fallback'), messages=[])
+
+    config = ldai_client.completion_config('config-no-tools', context, default)
+
+    assert config.tools is None
+
+
+def test_completion_config_tools_missing_flag(ldai_client: LDAIClient):
+    """Test that tools from default are not used for completion configs."""
+    context = Context.create('user-key')
+    default = AICompletionConfigDefault(
+        enabled=True,
+        model=ModelConfig('fallback'),
+        messages=[],
+        tools=[ToolDefinition('default_tool', parameters={'key': 'value'})],
+    )
+
+    config = ldai_client.completion_config('missing-flag', context, default)
+
+    # The default is serialized into the variation dict, so the SDK evaluates
+    # against it; completion_config does not fall back to default.tools
+    # separately — the variation itself carries the tool definitions.
+    assert config.tools is not None
+    assert len(config.tools) == 1
+    assert config.tools[0].name == 'default_tool'
+    assert config.tools[0].get_parameter('key') == 'value'

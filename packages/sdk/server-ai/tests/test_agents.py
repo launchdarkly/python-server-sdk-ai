@@ -3,7 +3,7 @@ from ldclient import Config, Context, LDClient
 from ldclient.integrations.test_data import TestData
 
 from ldai import (LDAIAgentConfig, LDAIAgentDefaults, LDAIClient, ModelConfig,
-                  ProviderConfig)
+                  ProviderConfig, ToolDefinition)
 
 
 @pytest.fixture
@@ -98,6 +98,30 @@ def td() -> TestData:
                 'provider': {'name': 'openai'},
                 'instructions': 'You are a research assistant specializing in {{topic}}. Your expertise level should match {{ldctx.expertise}}.',
                 '_ldMeta': {'enabled': True, 'variationKey': 'research-v1', 'version': 1, 'mode': 'agent'},
+            }
+        )
+        .variation_for_all(0)
+    )
+
+    # Agent with tools and custom parameters
+    td.update(
+        td.flag('agent-with-tools')
+        .variations(
+            {
+                'model': {
+                    'name': 'gpt-4',
+                    'parameters': {
+                        'temperature': 0.3,
+                        'tools': [
+                            {'name': 'get-order', 'parameters': {'includeHistory': True, 'maxItems': 5}},
+                            {'name': 'search-products', 'parameters': {'category': 'electronics'}},
+                            {'name': 'send-email'},
+                        ],
+                    },
+                },
+                'provider': {'name': 'openai'},
+                'instructions': 'You are a support agent with tools.',
+                '_ldMeta': {'enabled': True, 'variationKey': 'tools-v1', 'version': 1, 'mode': 'agent'},
             }
         )
         .variation_for_all(0)
@@ -363,3 +387,58 @@ def test_agents_request_without_default_uses_disabled(ldai_client: LDAIClient):
 
     assert 'missing-agent' in agents
     assert agents['missing-agent'].enabled is False
+
+
+def test_agent_config_has_tools(ldai_client: LDAIClient):
+    """Test that agent configs parse tools with custom parameters from flag variations."""
+    context = Context.create('user-key')
+
+    agent = ldai_client.agent_config('agent-with-tools', context)
+
+    assert agent.enabled is True
+    assert agent.tools is not None
+    assert len(agent.tools) == 3
+
+    get_order = agent.tools[0]
+    assert get_order.name == 'get-order'
+    assert get_order.get_parameter('includeHistory') is True
+    assert get_order.get_parameter('maxItems') == 5
+
+    search = agent.tools[1]
+    assert search.name == 'search-products'
+    assert search.get_parameter('category') == 'electronics'
+
+    send_email = agent.tools[2]
+    assert send_email.name == 'send-email'
+    assert send_email.get_parameter('anything') is None
+
+
+def test_agent_config_tools_fallback_to_default(ldai_client: LDAIClient):
+    """Test that agent config falls back to default tools when flag has no tools."""
+    context = Context.create('user-key')
+    default_tools = [ToolDefinition('default-tool', parameters={'timeout': 30})]
+    default = LDAIAgentDefaults(
+        enabled=False,
+        model=ModelConfig('fallback-model'),
+        instructions='Default instructions',
+        tools=default_tools,
+    )
+
+    agent = ldai_client.agent_config('customer-support-agent', context, default)
+
+    assert agent.enabled is True
+    # customer-support-agent has no tools in the flag, so falls back to default
+    assert agent.tools is not None
+    assert len(agent.tools) == 1
+    assert agent.tools[0].name == 'default-tool'
+    assert agent.tools[0].get_parameter('timeout') == 30
+
+
+def test_agent_config_no_tools(ldai_client: LDAIClient):
+    """Test that agent tools is None when neither flag nor default has tools."""
+    context = Context.create('user-key')
+
+    agent = ldai_client.agent_config('customer-support-agent', context)
+
+    assert agent.enabled is True
+    assert agent.tools is None
