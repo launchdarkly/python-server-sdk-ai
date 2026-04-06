@@ -77,57 +77,6 @@ class ModelConfig:
         }
 
 
-class ToolDefinition:
-    """
-    Definition of a tool available to an AI configuration.
-
-    Each tool has a name used to match against the tool registry,
-    and optional custom parameters that can be configured via the
-    LaunchDarkly dashboard.
-    """
-
-    def __init__(
-        self,
-        name: str,
-        custom_parameters: Optional[Dict[str, Any]] = None,
-    ):
-        """
-        :param name: The name of the tool.
-        :param custom_parameters: Optional custom parameters for
-            the tool, configured via the LaunchDarkly dashboard.
-        """
-        self._name = name
-        self._custom_parameters = custom_parameters
-
-    @property
-    def name(self) -> str:
-        """
-        The name of the tool.
-        """
-        return self._name
-
-    def get_custom_parameter(self, key: str) -> Any:
-        """
-        Retrieve a custom parameter by key.
-
-        :param key: The custom parameter key to look up.
-        :return: The parameter value, or None if not found.
-        """
-        if self._custom_parameters is None:
-            return None
-
-        return self._custom_parameters.get(key)
-
-    def to_dict(self) -> dict:
-        """
-        Render the tool definition as a dictionary object.
-        """
-        result: Dict[str, Any] = {'name': self._name}
-        if self._custom_parameters is not None:
-            result['customParameters'] = self._custom_parameters
-        return result
-
-
 class ProviderConfig:
     """
     Configuration related to the provider.
@@ -259,7 +208,22 @@ class AICompletionConfigDefault(AIConfigDefault):
     """
     messages: Optional[List[LDMessage]] = None
     judge_configuration: Optional[JudgeConfiguration] = None
-    tools: Optional[List[ToolDefinition]] = None
+    tool_custom_parameters: Optional[Dict[str, Dict[str, Any]]] = None
+
+    def get_tool_custom_parameter(self, tool_name: str, key: str) -> Any:
+        """
+        Retrieve a custom parameter for a specific tool.
+
+        :param tool_name: The name of the tool.
+        :param key: The custom parameter key to look up.
+        :return: The parameter value, or None if not found.
+        """
+        if self.tool_custom_parameters is None:
+            return None
+        tool_params = self.tool_custom_parameters.get(tool_name)
+        if tool_params is None:
+            return None
+        return tool_params.get(key)
 
     def to_dict(self) -> dict:
         """
@@ -269,10 +233,16 @@ class AICompletionConfigDefault(AIConfigDefault):
         result['messages'] = [message.to_dict() for message in self.messages] if self.messages else None
         if self.judge_configuration is not None:
             result['judgeConfiguration'] = self.judge_configuration.to_dict()
-        if self.tools is not None:
+        if self.tool_custom_parameters is not None:
             model = result.get('model') or {}
             params = model.get('parameters') or {}
-            params['tools'] = [tool.to_dict() for tool in self.tools]
+            tools_list = []
+            for name, custom_params in self.tool_custom_parameters.items():
+                tool_entry: Dict[str, Any] = {'name': name}
+                if custom_params:
+                    tool_entry['customParameters'] = custom_params
+                tools_list.append(tool_entry)
+            params['tools'] = tools_list
             model['parameters'] = params
             result['model'] = model
         return result
@@ -285,7 +255,22 @@ class AICompletionConfig(AIConfig):
     """
     messages: Optional[List[LDMessage]] = None
     judge_configuration: Optional[JudgeConfiguration] = None
-    tools: Optional[List[ToolDefinition]] = None
+    tool_custom_parameters: Optional[Dict[str, Dict[str, Any]]] = None
+
+    def get_tool_custom_parameter(self, tool_name: str, key: str) -> Any:
+        """
+        Retrieve a custom parameter for a specific tool.
+
+        :param tool_name: The name of the tool.
+        :param key: The custom parameter key to look up.
+        :return: The parameter value, or None if not found.
+        """
+        if self.tool_custom_parameters is None:
+            return None
+        tool_params = self.tool_custom_parameters.get(tool_name)
+        if tool_params is None:
+            return None
+        return tool_params.get(key)
 
     def to_dict(self) -> dict:
         """
@@ -309,7 +294,22 @@ class AIAgentConfigDefault(AIConfigDefault):
     """
     instructions: Optional[str] = None
     judge_configuration: Optional[JudgeConfiguration] = None
-    tools: Optional[List[ToolDefinition]] = None
+    tool_custom_parameters: Optional[Dict[str, Dict[str, Any]]] = None
+
+    def get_tool_custom_parameter(self, tool_name: str, key: str) -> Any:
+        """
+        Retrieve a custom parameter for a specific tool.
+
+        :param tool_name: The name of the tool.
+        :param key: The custom parameter key to look up.
+        :return: The parameter value, or None if not found.
+        """
+        if self.tool_custom_parameters is None:
+            return None
+        tool_params = self.tool_custom_parameters.get(tool_name)
+        if tool_params is None:
+            return None
+        return tool_params.get(key)
 
     def to_dict(self) -> Dict[str, Any]:
         """
@@ -320,10 +320,16 @@ class AIAgentConfigDefault(AIConfigDefault):
             result['instructions'] = self.instructions
         if self.judge_configuration is not None:
             result['judgeConfiguration'] = self.judge_configuration.to_dict()
-        if self.tools is not None:
+        if self.tool_custom_parameters is not None:
             model = result.get('model') or {}
             params = model.get('parameters') or {}
-            params['tools'] = [tool.to_dict() for tool in self.tools]
+            tools_list = []
+            for name, custom_params in self.tool_custom_parameters.items():
+                tool_entry: Dict[str, Any] = {'name': name}
+                if custom_params:
+                    tool_entry['customParameters'] = custom_params
+                tools_list.append(tool_entry)
+            params['tools'] = tools_list
             model['parameters'] = params
             result['model'] = model
         return result
@@ -336,7 +342,22 @@ class AIAgentConfig(AIConfig):
     """
     instructions: Optional[str] = None
     judge_configuration: Optional[JudgeConfiguration] = None
-    tools: Optional[List[ToolDefinition]] = None
+    tool_custom_parameters: Optional[Dict[str, Dict[str, Any]]] = None
+
+    def get_tool_custom_parameter(self, tool_name: str, key: str) -> Any:
+        """
+        Retrieve a custom parameter for a specific tool.
+
+        :param tool_name: The name of the tool.
+        :param key: The custom parameter key to look up.
+        :return: The parameter value, or None if not found.
+        """
+        if self.tool_custom_parameters is None:
+            return None
+        tool_params = self.tool_custom_parameters.get(tool_name)
+        if tool_params is None:
+            return None
+        return tool_params.get(key)
 
     def to_dict(self) -> Dict[str, Any]:
         """

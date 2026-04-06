@@ -25,7 +25,6 @@ from ldai.models import (
     LDMessage,
     ModelConfig,
     ProviderConfig,
-    ToolDefinition,
 )
 from ldai.providers import ToolRegistry
 from ldai.providers.runner_factory import RunnerFactory
@@ -69,7 +68,9 @@ class LDAIClient:
         default: AICompletionConfigDefault,
         variables: Optional[Dict[str, Any]] = None,
     ) -> AICompletionConfig:
-        model, provider, messages, instructions, tracker, enabled, judge_configuration, _, tools = self.__evaluate(
+        (model, provider, messages, instructions,
+         tracker, enabled, judge_configuration,
+         _, tool_custom_parameters) = self.__evaluate(
             key, context, default.to_dict(), variables
         )
 
@@ -81,7 +82,7 @@ class LDAIClient:
             provider=provider,
             tracker=tracker,
             judge_configuration=judge_configuration,
-            tools=tools,
+            tool_custom_parameters=tool_custom_parameters,
         )
 
         return config
@@ -138,7 +139,7 @@ class LDAIClient:
     ) -> AIJudgeConfig:
         (model, provider, messages, instructions,
          tracker, enabled, judge_configuration,
-         variation, tools) = self.__evaluate(
+         variation, _) = self.__evaluate(
             key, context, default.to_dict(), variables
         )
 
@@ -755,7 +756,7 @@ class LDAIClient:
     ) -> Tuple[
         Optional[ModelConfig], Optional[ProviderConfig], Optional[List[LDMessage]],
         Optional[str], LDAIConfigTracker, bool, Optional[Any], Dict[str, Any],
-        Optional[List[ToolDefinition]]
+        Optional[Dict[str, Dict[str, Any]]]
     ]:
         """
         Internal method to evaluate a configuration and extract components.
@@ -833,23 +834,21 @@ class LDAIClient:
                 if judges:
                     judge_configuration = JudgeConfiguration(judges=judges)
 
-        tools = None
+        tool_custom_parameters = None
         model_raw = variation.get('model')
         params_raw = model_raw.get('parameters') if isinstance(model_raw, dict) else None
         tool_defs_raw = params_raw.get('tools') if isinstance(params_raw, dict) else None
         if isinstance(tool_defs_raw, list):
-            tools = [
-                ToolDefinition(
-                    name=t.get('name', ''),
-                    custom_parameters=t.get('customParameters', None)
-                )
-                for t in tool_defs_raw
-                if isinstance(t, dict) and t.get('name')
-            ]
-            if not tools:
-                tools = None
+            parsed: Dict[str, Dict[str, Any]] = {}
+            for t in tool_defs_raw:
+                if isinstance(t, dict) and t.get('name'):
+                    parsed[t['name']] = t.get('customParameters') or {}
+            if parsed:
+                tool_custom_parameters = parsed
 
-        return model, provider_config, messages, instructions, tracker, enabled, judge_configuration, variation, tools
+        return (model, provider_config, messages, instructions,
+                tracker, enabled, judge_configuration,
+                variation, tool_custom_parameters)
 
     def __evaluate_agent(
         self,
@@ -867,7 +866,9 @@ class LDAIClient:
         :param variables: Variables for interpolation.
         :return: Configured AIAgentConfig instance.
         """
-        model, provider, messages, instructions, tracker, enabled, judge_configuration, _, tools = self.__evaluate(
+        (model, provider, messages, instructions,
+         tracker, enabled, judge_configuration,
+         _, tool_custom_parameters) = self.__evaluate(
             key, context, default.to_dict(), variables
         )
 
@@ -882,7 +883,7 @@ class LDAIClient:
             instructions=final_instructions,
             tracker=tracker,
             judge_configuration=judge_configuration or default.judge_configuration,
-            tools=tools or default.tools,
+            tool_custom_parameters=tool_custom_parameters or default.tool_custom_parameters,
         )
 
     def __interpolate_template(self, template: str, variables: Dict[str, Any]) -> str:

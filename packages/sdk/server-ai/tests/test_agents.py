@@ -3,7 +3,7 @@ from ldclient import Config, Context, LDClient
 from ldclient.integrations.test_data import TestData
 
 from ldai import (LDAIAgentConfig, LDAIAgentDefaults, LDAIClient, ModelConfig,
-                  ProviderConfig, ToolDefinition)
+                  ProviderConfig)
 
 
 @pytest.fixture
@@ -396,49 +396,40 @@ def test_agent_config_has_tools(ldai_client: LDAIClient):
     agent = ldai_client.agent_config('agent-with-tools', context)
 
     assert agent.enabled is True
-    assert agent.tools is not None
-    assert len(agent.tools) == 3
+    assert agent.tool_custom_parameters is not None
+    assert len(agent.tool_custom_parameters) == 3
 
-    get_order = agent.tools[0]
-    assert get_order.name == 'get-order'
-    assert get_order.get_custom_parameter('includeHistory') is True
-    assert get_order.get_custom_parameter('maxItems') == 5
-
-    search = agent.tools[1]
-    assert search.name == 'search-products'
-    assert search.get_custom_parameter('category') == 'electronics'
-
-    send_email = agent.tools[2]
-    assert send_email.name == 'send-email'
-    assert send_email.get_custom_parameter('anything') is None
+    assert agent.get_tool_custom_parameter('get-order', 'includeHistory') is True
+    assert agent.get_tool_custom_parameter('get-order', 'maxItems') == 5
+    assert agent.get_tool_custom_parameter('search-products', 'category') == 'electronics'
+    assert agent.get_tool_custom_parameter('send-email', 'anything') is None
+    assert 'send-email' in agent.tool_custom_parameters
 
 
 def test_agent_config_tools_fallback_to_default(ldai_client: LDAIClient):
     """Test that agent config falls back to default tools when flag has no tools."""
     context = Context.create('user-key')
-    default_tools = [ToolDefinition('default-tool', custom_parameters={'timeout': 30})]
     default = LDAIAgentDefaults(
         enabled=False,
         model=ModelConfig('fallback-model'),
         instructions='Default instructions',
-        tools=default_tools,
+        tool_custom_parameters={'default-tool': {'timeout': 30}},
     )
 
     agent = ldai_client.agent_config('customer-support-agent', context, default)
 
     assert agent.enabled is True
     # customer-support-agent has no tools in the flag, so falls back to default
-    assert agent.tools is not None
-    assert len(agent.tools) == 1
-    assert agent.tools[0].name == 'default-tool'
-    assert agent.tools[0].get_custom_parameter('timeout') == 30
+    assert agent.tool_custom_parameters is not None
+    assert len(agent.tool_custom_parameters) == 1
+    assert agent.get_tool_custom_parameter('default-tool', 'timeout') == 30
 
 
 def test_agent_config_no_tools(ldai_client: LDAIClient):
-    """Test that agent tools is None when neither flag nor default has tools."""
+    """Test that tool_custom_parameters is None when neither flag nor default has tools."""
     context = Context.create('user-key')
 
     agent = ldai_client.agent_config('customer-support-agent', context)
 
     assert agent.enabled is True
-    assert agent.tools is None
+    assert agent.tool_custom_parameters is None

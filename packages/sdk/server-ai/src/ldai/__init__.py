@@ -28,7 +28,6 @@ from ldai.models import (  # Deprecated aliases for backward compatibility
     LDMessage,
     ModelConfig,
     ProviderConfig,
-    ToolDefinition,
 )
 from ldai.providers import (
     AgentGraphResult,
@@ -69,7 +68,6 @@ __all__ = [
     'LDMessage',
     'ModelConfig',
     'ProviderConfig',
-    'ToolDefinition',
     'log',
     # Deprecated exports
     'AIConfig',
