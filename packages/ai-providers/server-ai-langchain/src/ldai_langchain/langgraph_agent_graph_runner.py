@@ -201,8 +201,10 @@ class LangGraphAgentGraphRunner(AgentGraphRunner):
                     )
                 else:
                     # Handoff tools use Command(goto=child_key) — LangGraph routes to the
-                    # target directly without any extra edge.  The ToolNode does NOT loop
-                    # back here.  tools_condition exits to END when no tool is called.
+                    # target directly without any extra edge.  Functional tools (if any)
+                    # return normal ToolMessages and must loop back so the LLM sees the result.
+                    if tool_fns:
+                        agent_builder.add_edge(tools_node_key, node_key)
                     agent_builder.add_conditional_edges(
                         node_key,
                         tools_condition,

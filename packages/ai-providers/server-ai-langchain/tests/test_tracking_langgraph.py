@@ -612,3 +612,128 @@ async def test_multi_child_routes_via_handoff_not_fan_out():
     assert 'Agent A' in result.output
     # Agent B's model must never have been invoked — no fan-out
     agent_b_model.ainvoke.assert_not_called()
+
+
+def _make_multi_child_graph_with_tools(mock_ld_client: MagicMock, tool_names: list) -> 'AgentGraphDefinition':
+    """Build a 3-node graph where the orchestrator also has functional tools."""
+    context = MagicMock()
+
+    def _node_tracker(key: str) -> LDAIConfigTracker:
+        return LDAIConfigTracker(
+            ld_client=mock_ld_client,
+            variation_key='test-variation',
+            config_key=key,
+            version=1,
+            model_name='gpt-4',
+            provider_name='openai',
+            context=context,
+        )
+
+    graph_tracker = AIGraphTracker(
+        ld_client=mock_ld_client,
+        variation_key='test-variation',
+        graph_key='multi-child-tools-graph',
+        version=1,
+        context=context,
+    )
+
+    tool_defs = [{'name': n, 'type': 'function', 'description': '', 'parameters': {}} for n in tool_names]
+    configs = {
+        'orchestrator': AIAgentConfig(
+            key='orchestrator',
+            enabled=True,
+            model=ModelConfig(name='gpt-4', parameters={'tools': tool_defs}),
+            provider=ProviderConfig(name='openai'),
+            instructions='Route to a specialist after gathering info.',
+            tracker=_node_tracker('orchestrator'),
+        ),
+        'agent-a': AIAgentConfig(
+            key='agent-a',
+            enabled=True,
+            model=ModelConfig(name='gpt-4', parameters={}),
+            provider=ProviderConfig(name='openai'),
+            instructions='You handle topic A.',
+            tracker=_node_tracker('agent-a'),
+        ),
+        'agent-b': AIAgentConfig(
+            key='agent-b',
+            enabled=True,
+            model=ModelConfig(name='gpt-4', parameters={}),
+            provider=ProviderConfig(name='openai'),
+            instructions='You handle topic B.',
+            tracker=_node_tracker('agent-b'),
+        ),
+    }
+
+    edges = [
+        Edge(key='orch-to-a', source_config='orchestrator', target_config='agent-a'),
+        Edge(key='orch-to-b', source_config='orchestrator', target_config='agent-b'),
+    ]
+    graph_config = AIAgentGraphConfig(
+        key='multi-child-tools-graph',
+        root_config_key='orchestrator',
+        edges=edges,
+        enabled=True,
+    )
+    nodes = AgentGraphDefinition.build_nodes(graph_config, configs)
+    return AgentGraphDefinition(
+        agent_graph=graph_config,
+        nodes=nodes,
+        context=context,
+        enabled=True,
+        tracker=graph_tracker,
+    )
+
+
+@pytest.mark.asyncio
+async def test_functional_tool_loops_back_when_handoff_tools_present():
+    """When a node has both functional tools and handoff tools, calling a functional
+    tool must loop back to the node so the LLM sees the result — not silently terminate."""
+    from langchain_core.messages import AIMessage
+
+    mock_ld_client = MagicMock()
+    graph = _make_multi_child_graph_with_tools(mock_ld_client, tool_names=['search'])
+
+    # Step 1: orchestrator calls functional tool 'search'
+    tool_call_response = AIMessage(
+        content='',
+        tool_calls=[{'name': 'search', 'args': {'query': 'topic A'}, 'id': 'call_search_1', 'type': 'tool_call'}],
+    )
+    # Step 2: after seeing tool result, orchestrator hands off to agent-a
+    handoff_response = AIMessage(
+        content='',
+        tool_calls=[{'name': 'transfer_to_agent_a', 'args': {}, 'id': 'call_handoff_1', 'type': 'tool_call'}],
+    )
+    agent_a_response = _make_fake_response('Agent A handled it.')
+
+    orchestrator_model = MagicMock()
+    orchestrator_model.ainvoke = AsyncMock(side_effect=[tool_call_response, handoff_response])
+    orchestrator_model.bind_tools.return_value = orchestrator_model
+
+    agent_a_model = _mock_model(agent_a_response)
+    agent_b_model = _mock_model(_make_fake_response('Agent B handled it.'))
+
+    def search(query: str = '') -> str:
+        """Search for information."""
+        return f'results for {query}'
+
+    tool_registry = {'search': search}
+
+    def model_factory(node_config, **kwargs):
+        if node_config.key == 'orchestrator':
+            return orchestrator_model
+        if node_config.key == 'agent-a':
+            return agent_a_model
+        return agent_b_model
+
+    with patch('ldai_langchain.langgraph_agent_graph_runner.create_langchain_model',
+               side_effect=model_factory):
+        runner = LangGraphAgentGraphRunner(graph, tool_registry)
+        result = await runner.run('Find info and route to the right agent.')
+
+    assert result.metrics.success is True
+    assert 'Agent A' in result.output
+    # Orchestrator must have been called twice: once before tool result, once after
+    assert orchestrator_model.ainvoke.call_count == 2
+    # Agent B must never have been invoked
+    agent_b_model.ainvoke.assert_not_called()
