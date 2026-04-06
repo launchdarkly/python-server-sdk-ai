@@ -2,7 +2,7 @@ import inspect
 from typing import Any, Dict, List, Optional, Union
 
 from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from ldai import LDMessage, log
 from ldai.models import AIConfigKind
 from ldai.providers import ToolRegistry
@@ -52,18 +52,12 @@ def convert_messages_to_langchain(
     return result
 
 
-def create_langchain_model(ai_config: AIConfigKind, tool_registry: Optional[ToolRegistry] = None) -> BaseChatModel:
+def create_langchain_model(ai_config: AIConfigKind) -> BaseChatModel:
     """
     Create a LangChain BaseChatModel from a LaunchDarkly AI configuration.
 
-    If the config includes tool definitions and a tool_registry is provided, tools found
-    in the registry are bound to the model. Tools not found in the registry are skipped
-    with a warning. Built-in provider tools (e.g. code_interpreter) are not supported
-    via LangChain's bind_tools abstraction and are skipped with a warning.
-
     :param ai_config: The LaunchDarkly AI configuration
-    :param tool_registry: Optional registry mapping tool names to callable implementations
-    :return: A configured LangChain BaseChatModel, with tools bound if applicable
+    :return: A configured LangChain BaseChatModel
     """
     from langchain.chat_models import init_chat_model
 
@@ -74,7 +68,7 @@ def create_langchain_model(ai_config: AIConfigKind, tool_registry: Optional[Tool
     model_name = model_dict.get('name', '')
     provider = provider_dict.get('name', '')
     parameters = dict(model_dict.get('parameters') or {})
-    tool_definitions = parameters.pop('tools', []) or []
+    parameters.pop('tools', None)
     mapped_provider = map_provider(provider)
 
     # Bedrock requires the foundation provider (e.g. Bedrock:Anthropic) passed in
@@ -82,18 +76,11 @@ def create_langchain_model(ai_config: AIConfigKind, tool_registry: Optional[Tool
     if mapped_provider == 'bedrock_converse' and 'provider' not in parameters:
         parameters['provider'] = provider.removeprefix('bedrock:')
 
-    model = init_chat_model(
+    return init_chat_model(
         model_name,
         model_provider=mapped_provider,
         **parameters,
     )
-
-    if tool_definitions and tool_registry is not None:
-        bindable = _resolve_tools_for_langchain(tool_definitions, tool_registry)
-        if bindable:
-            model = model.bind_tools(bindable)
-
-    return model
 
 
 def _iter_valid_tools(
@@ -129,28 +116,6 @@ def _iter_valid_tools(
         valid.append((name, td))
 
     return valid
-
-
-def _resolve_tools_for_langchain(
-    tool_definitions: List[Dict[str, Any]],
-    tool_registry: ToolRegistry,
-) -> List[Dict[str, Any]]:
-    """
-    Match LD tool definitions against a registry, returning function-calling tool dicts
-    for tools that have a callable implementation. Built-in provider tools and tools
-    missing from the registry are skipped with a warning.
-    """
-    return [
-        {
-            'type': 'function',
-            'function': {
-                'name': name,
-                'description': td.get('description', ''),
-                'parameters': td.get('parameters', {'type': 'object', 'properties': {}}),
-            },
-        }
-        for name, td in _iter_valid_tools(tool_definitions, tool_registry)
-    ]
 
 
 def build_tools(ai_config: AIConfigKind, tool_registry: ToolRegistry) -> List[Any]:

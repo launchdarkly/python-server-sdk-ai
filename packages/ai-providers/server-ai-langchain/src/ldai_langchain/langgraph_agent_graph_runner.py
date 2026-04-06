@@ -110,7 +110,7 @@ class LangGraphAgentGraphRunner(AgentGraphRunner):
             tool_fns: list = []
             if node_config.model:
                 # We send an empty tool registry to avoid binding tools to the model.
-                lc_model = create_langchain_model(node_config, tool_registry=None)
+                lc_model = create_langchain_model(node_config)
 
                 tool_fns = build_structured_tools(node_config, tools_ref)
 
