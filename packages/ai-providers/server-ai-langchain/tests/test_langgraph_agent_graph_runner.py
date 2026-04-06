@@ -124,7 +124,7 @@ async def test_langgraph_runner_run_success():
     mock_model_response.tool_calls = None
 
     mock_llm = MagicMock()
-    mock_llm.invoke = MagicMock(return_value=mock_model_response)
+    mock_llm.ainvoke = AsyncMock(return_value=mock_model_response)
 
     mock_init_model = MagicMock()
     mock_init_model.return_value = mock_llm

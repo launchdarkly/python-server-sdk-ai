@@ -515,3 +515,52 @@ class TestLangChainAgentRunner:
 
         assert result.output == ""
         assert result.metrics.success is False
+
+
+class TestBuildTools:
+    """Tests for build_structured_tools (sync vs async registry callables)."""
+
+    def test_registers_sync_callable_as_structured_tool_func(self):
+        from ldai.models import AIAgentConfig, ModelConfig, ProviderConfig
+        from ldai_langchain.langchain_helper import build_structured_tools
+
+        def sync_tool(x: str = '') -> str:
+            return 'ok'
+
+        cfg = AIAgentConfig(
+            key='n',
+            enabled=True,
+            model=ModelConfig(
+                name='gpt-4',
+                parameters={'tools': [{'name': 'my_tool', 'type': 'function', 'parameters': {}}]},
+            ),
+            provider=ProviderConfig(name='openai'),
+            instructions='',
+            tracker=MagicMock(),
+        )
+        tools = build_structured_tools(cfg, {'my_tool': sync_tool})
+        assert len(tools) == 1
+        assert tools[0].func is sync_tool
+        assert getattr(tools[0], 'coroutine', None) is None
+
+    def test_registers_async_callable_as_structured_tool_coroutine(self):
+        from ldai.models import AIAgentConfig, ModelConfig, ProviderConfig
+        from ldai_langchain.langchain_helper import build_structured_tools
+
+        async def async_tool(x: str = '') -> str:
+            return 'ok'
+
+        cfg = AIAgentConfig(
+            key='n',
+            enabled=True,
+            model=ModelConfig(
+                name='gpt-4',
+                parameters={'tools': [{'name': 'my_tool', 'type': 'function', 'parameters': {}}]},
+            ),
+            provider=ProviderConfig(name='openai'),
+            instructions='',
+            tracker=MagicMock(),
+        )
+        tools = build_structured_tools(cfg, {'my_tool': async_tool})
+        assert len(tools) == 1
+        assert tools[0].coroutine is async_tool

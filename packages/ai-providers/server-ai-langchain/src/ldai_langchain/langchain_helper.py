@@ -1,3 +1,4 @@
+import inspect
 from typing import Any, Dict, List, Optional, Union
 
 from langchain_core.language_models.chat_models import BaseChatModel
@@ -156,9 +157,10 @@ def build_structured_tools(ai_config: AIConfigKind, tool_registry: ToolRegistry)
     """
     Build a list of LangChain StructuredTool instances from LD tool definitions and a registry.
 
-    Tools found in the registry are wrapped as StructuredTool with the name and description
-    from the LD config. Built-in provider tools and tools missing from the registry are
-    skipped with a warning.
+    Tools found in the registry are wrapped as StructuredTool using the LD config key as the
+    tool name so the model's tool calls match ToolNode lookup. Async callables use ``coroutine=``
+    so LangGraph invokes them correctly. Built-in provider tools and tools missing from the
+    registry are skipped with a warning.
 
     :param ai_config: The LaunchDarkly AI configuration
     :param tool_registry: Registry mapping tool names to callable implementations
@@ -171,14 +173,17 @@ def build_structured_tools(ai_config: AIConfigKind, tool_registry: ToolRegistry)
     parameters = dict(model_dict.get('parameters') or {})
     tool_definitions = parameters.pop('tools', []) or []
 
-    return [
-        StructuredTool.from_function(
-            func=tool_registry[name],
-            name=name,
-            description=td.get('description', ''),
-        )
-        for name, td in _iter_valid_tools(tool_definitions, tool_registry)
-    ]
+    tools = []
+    for name, td in _iter_valid_tools(tool_definitions, tool_registry):
+        fn = tool_registry[name]
+        raw_desc = td.get('description') if isinstance(td.get('description'), str) else ''
+        description = raw_desc.strip() or (getattr(fn, '__doc__', None) or '').strip() or f'Tool {name}'
+        if inspect.iscoroutinefunction(fn):
+            tool = StructuredTool.from_function(coroutine=fn, name=name, description=description)
+        else:
+            tool = StructuredTool.from_function(fn, name=name, description=description)
+        tools.append(tool)
+    return tools
 
 
 def get_ai_usage_from_response(response: Any) -> Optional[TokenUsage]:
@@ -232,6 +237,20 @@ def get_tool_calls_from_response(response: Any) -> List[str]:
             if n:
                 names.append(str(n))
     return names
+
+
+def extract_last_message_content(messages: List[Any]) -> str:
+    """
+    Extract the string content of the last message in a list.
+
+    :param messages: List of LangChain message objects
+    :return: String content of the last message, or empty string if none or content is not a str
+    """
+    if messages:
+        last = messages[-1]
+        if hasattr(last, 'content') and isinstance(last.content, str):
+            return last.content
+    return ''
 
 
 def sum_token_usage_from_messages(messages: List[Any]) -> Optional[TokenUsage]:
