@@ -75,6 +75,11 @@ class AIProvider(ABC):
 
     def create_agent(self, config: Any, tools: Optional[ToolRegistry] = None) -> Optional[Any]:
         """
+        CAUTION:
+        This feature is experimental and should NOT be considered ready for production use.
+        It may change or be removed without notice and is not subject to backwards
+        compatibility guarantees.
+
         Create a configured agent executor for the given AI config and tool registry.
 
         Default implementation warns. Provider implementations should override this method.
@@ -88,6 +93,11 @@ class AIProvider(ABC):
 
     def create_agent_graph(self, graph_def: Any, tools: Any) -> Optional[Any]:
         """
+        CAUTION:
+        This feature is experimental and should NOT be considered ready for production use.
+        It may change or be removed without notice and is not subject to backwards
+        compatibility guarantees.
+
         Create a configured agent graph executor for the given graph definition and tools.
 
         Default implementation warns. Provider implementations should override this method.

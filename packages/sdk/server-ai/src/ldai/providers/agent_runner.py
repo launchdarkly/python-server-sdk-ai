@@ -6,6 +6,11 @@ from ldai.providers.types import AgentResult
 @runtime_checkable
 class AgentRunner(Protocol):
     """
+    CAUTION:
+    This feature is experimental and should NOT be considered ready for production use.
+    It may change or be removed without notice and is not subject to backwards
+    compatibility guarantees.
+
     Runtime capability interface for single-agent execution.
 
     An AgentRunner is a focused, configured object returned by

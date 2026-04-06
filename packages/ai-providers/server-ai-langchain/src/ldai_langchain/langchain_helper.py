@@ -153,6 +153,38 @@ def _resolve_tools_for_langchain(
     ]
 
 
+def build_tools(ai_config: AIConfigKind, tool_registry: ToolRegistry) -> List[Any]:
+    """
+    Return callables from the registry for each tool defined in the AI config.
+
+    Tools not found in the registry are skipped with a warning. The returned
+    callables can be passed directly to bind_tools or langchain.agents.create_agent.
+    Functions should have type-annotated parameters so LangChain can infer the schema.
+
+    :param ai_config: The LaunchDarkly AI configuration
+    :param tool_registry: Registry mapping tool names to callable implementations
+    :return: List of callables ready to pass to bind_tools or create_agent
+    """
+    config_dict = ai_config.to_dict()
+    model_dict = config_dict.get('model') or {}
+    parameters = dict(model_dict.get('parameters') or {})
+    tool_definitions = parameters.pop('tools', []) or []
+
+    tools = []
+    for td in tool_definitions:
+        if not isinstance(td, dict):
+            continue
+        name = td.get('name')
+        if not name:
+            continue
+        fn = tool_registry.get(name)
+        if fn is None:
+            log.warning(f"Tool '{name}' is defined in the AI config but was not found in the tool registry; skipping.")
+            continue
+        tools.append(fn)
+    return tools
+
+
 def build_structured_tools(ai_config: AIConfigKind, tool_registry: ToolRegistry) -> List[Any]:
     """
     Build a list of LangChain StructuredTool instances from LD tool definitions and a registry.
