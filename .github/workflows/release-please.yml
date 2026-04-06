@@ -50,71 +50,8 @@ jobs:
       package-server-ai-optimization-released: ${{ steps.release.outputs['packages/optimization--release_created'] }}
       package-server-ai-optimization-tag-name: ${{ steps.release.outputs['packages/optimization--tag_name'] }}
     steps:
-      # Create any releases first, then create tags, and then optionally create any new PRs.
-      - uses: googleapis/release-please-action@16a9c90856f42705d54a6fda1823352bdc62cf38 # v4.4.0
+      - uses: googleapis/release-please-action@16a9c90856f42705d54a6fda1823352bdc62cf38 # v4
         id: release
-        with:
-          skip-github-pull-request: true
-
-      # Need the repository content to be able to create and push tags.
-      - uses: actions/checkout@v4
-        if: >-
-          steps.release.outputs['packages/sdk/server-ai--release_created'] == 'true' ||
-          steps.release.outputs['packages/ai-providers/server-ai-langchain--release_created'] == 'true' ||
-          steps.release.outputs['packages/ai-providers/server-ai-openai--release_created'] == 'true' ||
-          steps.release.outputs['packages/optimization--release_created'] == 'true'
-
-      - name: Create release tags
-        if: >-
-          steps.release.outputs['packages/sdk/server-ai--release_created'] == 'true' ||
-          steps.release.outputs['packages/ai-providers/server-ai-langchain--release_created'] == 'true' ||
-          steps.release.outputs['packages/ai-providers/server-ai-openai--release_created'] == 'true' ||
-          steps.release.outputs['packages/optimization--release_created'] == 'true'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          SERVER_AI_TAG: ${{ steps.release.outputs['packages/sdk/server-ai--tag_name'] }}
-          LANGCHAIN_TAG: ${{ steps.release.outputs['packages/ai-providers/server-ai-langchain--tag_name'] }}
-          OPENAI_TAG: ${{ steps.release.outputs['packages/ai-providers/server-ai-openai--tag_name'] }}
-          OPTIMIZATION_TAG: ${{ steps.release.outputs['packages/optimization--tag_name'] }}
-          SERVER_AI_RELEASED: ${{ steps.release.outputs['packages/sdk/server-ai--release_created'] }}
-          LANGCHAIN_RELEASED: ${{ steps.release.outputs['packages/ai-providers/server-ai-langchain--release_created'] }}
-          OPENAI_RELEASED: ${{ steps.release.outputs['packages/ai-providers/server-ai-openai--release_created'] }}
-          OPTIMIZATION_RELEASED: ${{ steps.release.outputs['packages/optimization--release_created'] }}
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-
-          for pair in \
-            "${SERVER_AI_RELEASED}:${SERVER_AI_TAG}" \
-            "${LANGCHAIN_RELEASED}:${LANGCHAIN_TAG}" \
-            "${OPENAI_RELEASED}:${OPENAI_TAG}" \
-            "${OPTIMIZATION_RELEASED}:${OPTIMIZATION_TAG}"; do
-
-            RELEASED="${pair%%:*}"
-            TAG="${pair#*:}"
-
-            if [ "${RELEASED}" != "true" ] || [ -z "${TAG}" ]; then
-              continue
-            fi
-
-            if gh api "repos/${{ github.repository }}/git/ref/tags/${TAG}" >/dev/null 2>&1; then
-              echo "Tag ${TAG} already exists, skipping creation."
-            else
-              echo "Creating tag ${TAG}."
-              git tag "${TAG}"
-              git push origin "${TAG}"
-            fi
-          done
-
-      - uses: googleapis/release-please-action@16a9c90856f42705d54a6fda1823352bdc62cf38 # v4.4.0
-        if: >-
-          steps.release.outputs['packages/sdk/server-ai--release_created'] != 'true' &&
-          steps.release.outputs['packages/ai-providers/server-ai-langchain--release_created'] != 'true' &&
-          steps.release.outputs['packages/ai-providers/server-ai-openai--release_created'] != 'true' &&
-          steps.release.outputs['packages/optimization--release_created'] != 'true'
-        id: release-prs
-        with:
-          skip-github-release: true
 
   release-server-ai:
     runs-on: ubuntu-latest
