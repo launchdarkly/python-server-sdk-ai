@@ -36,6 +36,7 @@ from ldai.providers import (
     AgentRunner,
     ToolRegistry,
 )
+from ldai.observe import LDAIBaggageSpanProcessor, LDAIObserveConfig
 from ldai.providers.types import EvalScore, JudgeResponse
 from ldai.tracker import AIGraphTracker
 
@@ -68,6 +69,8 @@ __all__ = [
     'LDMessage',
     'ModelConfig',
     'ProviderConfig',
+    'LDAIObserveConfig',
+    'LDAIBaggageSpanProcessor',
     'log',
     # Deprecated exports
     'AIConfig',

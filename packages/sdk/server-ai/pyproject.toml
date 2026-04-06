@@ -23,6 +23,11 @@ dependencies = [
     "chevron==0.14.0",
 ]
 
+[project.optional-dependencies]
+otel = [
+    "opentelemetry-api>=1.0.0",
+]
+
 [project.urls]
 Homepage = "https://docs.launchdarkly.com/sdk/ai/python"
 Repository = "https://github.com/launchdarkly/python-server-sdk-ai"

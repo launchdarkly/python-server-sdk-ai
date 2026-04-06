@@ -5,6 +5,16 @@ from typing import Any, Callable, Dict, Iterable, List, Optional
 
 from ldclient import Context, LDClient
 
+from ldai.observe import (
+    LDAIObserveConfig,
+    annotate_span_success,
+    annotate_span_with_duration,
+    annotate_span_with_feedback,
+    annotate_span_with_judge_response,
+    annotate_span_with_tokens,
+    annotate_span_with_ttft,
+)
+
 
 class FeedbackKind(Enum):
     """
@@ -77,6 +87,7 @@ class LDAIConfigTracker:
         model_name: str,
         provider_name: str,
         context: Context,
+        observe_config: Optional[LDAIObserveConfig] = None,
     ):
         """
         Initialize an AI Config tracker.
@@ -88,6 +99,7 @@ class LDAIConfigTracker:
         :param model_name: Name of the model used.
         :param provider_name: Name of the provider used.
         :param context: Context for evaluation.
+        :param observe_config: Optional OpenTelemetry observation configuration.
         """
         self._ld_client = ld_client
         self._variation_key = variation_key
@@ -96,6 +108,7 @@ class LDAIConfigTracker:
         self._model_name = model_name
         self._provider_name = provider_name
         self._context = context
+        self._observe_config = observe_config or LDAIObserveConfig()
         self._summary = LDAIMetricSummary()
 
     def __get_track_data(self, graph_key: Optional[str] = None) -> dict:
@@ -125,6 +138,8 @@ class LDAIConfigTracker:
             (e.g. config-level metrics inside a graph).
         """
         self._summary._duration = duration
+        if self._observe_config.annotate_spans:
+            annotate_span_with_duration(duration)
         self._ld_client.track(
             "$ld:ai:duration:total", self._context, self.__get_track_data(graph_key), duration
         )
@@ -139,6 +154,8 @@ class LDAIConfigTracker:
         :param graph_key: When set, include ``graphKey`` in the event payload.
         """
         self._summary._time_to_first_token = time_to_first_token
+        if self._observe_config.annotate_spans:
+            annotate_span_with_ttft(time_to_first_token)
         self._ld_client.track(
             "$ld:ai:tokens:ttf",
             self._context,
@@ -275,6 +292,8 @@ class LDAIConfigTracker:
         from ldai.providers.types import EvalScore, JudgeResponse
 
         if isinstance(judge_response, JudgeResponse):
+            if self._observe_config.annotate_spans:
+                annotate_span_with_judge_response(judge_response)
             # Track evaluation scores with judge config key included in metadata
             if judge_response.evals:
                 track_data = self.__get_track_data(graph_key=graph_key)
@@ -298,6 +317,8 @@ class LDAIConfigTracker:
         :param graph_key: When set, include ``graphKey`` in the event payload.
         """
         self._summary._feedback = feedback
+        if self._observe_config.annotate_spans:
+            annotate_span_with_feedback(feedback["kind"].value if hasattr(feedback["kind"], "value") else str(feedback["kind"]))
         if feedback["kind"] == FeedbackKind.Positive:
             self._ld_client.track(
                 "$ld:ai:feedback:user:positive",
@@ -320,6 +341,8 @@ class LDAIConfigTracker:
         :param graph_key: When set, include ``graphKey`` in the event payload.
         """
         self._summary._success = True
+        if self._observe_config.annotate_spans:
+            annotate_span_success(True)
         self._ld_client.track(
             "$ld:ai:generation:success", self._context, self.__get_track_data(graph_key=graph_key), 1
         )
@@ -331,6 +354,8 @@ class LDAIConfigTracker:
         :param graph_key: When set, include ``graphKey`` in the event payload.
         """
         self._summary._success = False
+        if self._observe_config.annotate_spans:
+            annotate_span_success(False)
         self._ld_client.track(
             "$ld:ai:generation:error", self._context, self.__get_track_data(graph_key=graph_key), 1
         )
@@ -398,6 +423,8 @@ class LDAIConfigTracker:
         :param graph_key: When set, include ``graphKey`` in the event payload.
         """
         self._summary._usage = tokens
+        if self._observe_config.annotate_spans:
+            annotate_span_with_tokens(tokens.total, tokens.input, tokens.output)
         td = self.__get_track_data(graph_key=graph_key)
         if tokens.total > 0:
             self._ld_client.track(

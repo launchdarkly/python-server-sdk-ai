@@ -224,9 +224,39 @@ class AICompletionConfigDefault(AIConfigDefault):
 class AICompletionConfig(AIConfig):
     """
     Completion AI Config (default mode).
+
+    Can also be used as a context manager to set OpenTelemetry baggage for
+    the duration of a block, enabling auto-instrumented libraries to
+    automatically inherit AI Config metadata on their spans::
+
+        with client.completion_config(key, ctx, default) as config:
+            response = openai_client.chat.completions.create(...)
+            config.tracker.track_success()
     """
     messages: Optional[List[LDMessage]] = None
     judge_configuration: Optional[JudgeConfiguration] = None
+    # Mutable list inside a frozen dataclass — stores OTel context tokens.
+    # List mutation does not violate frozen semantics. repr/compare/hash excluded.
+    _baggage_tokens: list = field(default_factory=list, repr=False, compare=False, hash=False)
+
+    def __enter__(self) -> 'AICompletionConfig':
+        from ldai.observe import set_ai_config_baggage
+        if self.tracker is not None:
+            _, token = set_ai_config_baggage(
+                self.key,
+                self.tracker._variation_key,
+                self.model.name if self.model else "",
+                self.provider.name if self.provider else "",
+            )
+        else:
+            token = None
+        self._baggage_tokens.append(token)
+        return self
+
+    def __exit__(self, *_) -> None:
+        from ldai.observe import detach_ai_config_baggage
+        if self._baggage_tokens:
+            detach_ai_config_baggage(self._baggage_tokens.pop())
 
     def to_dict(self) -> dict:
         """

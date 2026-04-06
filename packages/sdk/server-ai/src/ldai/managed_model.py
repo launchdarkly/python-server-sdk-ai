@@ -4,6 +4,7 @@ from typing import Any, Dict, List, Optional
 from ldai import log
 from ldai.judge import Judge
 from ldai.models import AICompletionConfig, LDMessage
+from ldai.observe import SPAN_NAME_COMPLETION, annotate_span_with_ai_config_metadata, _span_scope
 from ldai.providers.model_runner import ModelRunner
 from ldai.providers.types import JudgeResponse, ModelResponse
 from ldai.tracker import LDAIConfigTracker
@@ -48,16 +49,30 @@ class ManagedModel:
         config_messages = self._ai_config.messages or []
         all_messages = config_messages + self._messages
 
-        response = await self._tracker.track_metrics_of_async(
-            lambda: self._model_runner.invoke_model(all_messages),
-            lambda result: result.metrics,
-        )
+        observe = self._tracker._observe_config
+        create_span = observe.create_span_if_none
+        annotate = observe.annotate_spans
 
-        if (
-            self._ai_config.judge_configuration
-            and self._ai_config.judge_configuration.judges
-        ):
-            response.evaluations = self._start_judge_evaluations(self._messages, response)
+        with _span_scope(SPAN_NAME_COMPLETION, create_if_none=create_span):
+            if annotate:
+                annotate_span_with_ai_config_metadata(
+                    self._tracker._config_key,
+                    self._tracker._variation_key,
+                    self._tracker._model_name,
+                    self._tracker._provider_name,
+                    version=self._tracker._version,
+                    context_key=self._tracker._context.key,
+                )
+            response = await self._tracker.track_metrics_of_async(
+                lambda: self._model_runner.invoke_model(all_messages),
+                lambda result: result.metrics,
+            )
+
+            if (
+                self._ai_config.judge_configuration
+                and self._ai_config.judge_configuration.judges
+            ):
+                response.evaluations = self._start_judge_evaluations(self._messages, response)
 
         self._messages.append(response.message)
         return response

@@ -2,6 +2,7 @@
 
 from typing import Any, Optional
 
+from ldai.observe import SPAN_NAME_AGENT_GRAPH, _span_scope
 from ldai.providers import AgentGraphResult, AgentGraphRunner
 from ldai.tracker import AIGraphTracker
 
@@ -41,7 +42,8 @@ class ManagedAgentGraph:
         :param input: The input prompt or structured input for the graph
         :return: AgentGraphResult containing the output, raw response, and metrics
         """
-        return await self._runner.run(input)
+        with _span_scope(SPAN_NAME_AGENT_GRAPH):
+            return await self._runner.run(input)
 
     def get_agent_graph_runner(self) -> AgentGraphRunner:
         """
