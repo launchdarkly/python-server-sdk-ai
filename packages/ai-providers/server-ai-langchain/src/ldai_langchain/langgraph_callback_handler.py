@@ -3,7 +3,7 @@ from typing import Any, Dict, List, Optional, Set
 from uuid import UUID
 
 from langchain_core.callbacks import BaseCallbackHandler
-from langchain_core.outputs import LLMResult
+from langchain_core.outputs import ChatGeneration, LLMResult
 from ldai.agent_graph import AgentGraphDefinition
 from ldai.tracker import TokenUsage
 
@@ -140,9 +140,12 @@ class LDMetricsCallbackHandler(BaseCallbackHandler):
             return
 
         try:
-            message = response.generations[0][0].message
-        except (IndexError, AttributeError, TypeError):
+            gen = response.generations[0][0]
+        except (IndexError, TypeError):
             return
+        if not isinstance(gen, ChatGeneration):
+            return
+        message = gen.message
         usage = get_ai_usage_from_response(message)
         if usage is None:
             return
@@ -215,4 +218,3 @@ class LDMetricsCallbackHandler(BaseCallbackHandler):
 
             for tool_key in self._node_tool_calls.get(node_key, []):
                 config_tracker.track_tool_call(tool_key, graph_key=gk)
-

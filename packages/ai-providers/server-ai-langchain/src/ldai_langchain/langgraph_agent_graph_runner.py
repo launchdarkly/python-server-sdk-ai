@@ -141,10 +141,11 @@ class LangGraphAgentGraphRunner(AgentGraphRunner):
                     handoff_fns.append(_make_handoff_tool(edge.target_config, description))
 
             all_tools = tool_fns + handoff_fns
+            model: Any
             if lc_model and all_tools:
                 # When handoff tools are present, disable parallel tool calls so the LLM
                 # picks exactly one destination rather than routing to multiple children.
-                bind_kwargs = {'parallel_tool_calls': False} if handoff_fns else {}
+                bind_kwargs: Dict[str, Any] = {'parallel_tool_calls': False} if handoff_fns else {}
                 model = lc_model.bind_tools(all_tools, **bind_kwargs)
             else:
                 model = lc_model
