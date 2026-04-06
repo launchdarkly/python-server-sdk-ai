@@ -113,8 +113,8 @@ def td() -> TestData:
                     'parameters': {
                         'temperature': 0.3,
                         'tools': [
-                            {'name': 'get-order', 'parameters': {'includeHistory': True, 'maxItems': 5}},
-                            {'name': 'search-products', 'parameters': {'category': 'electronics'}},
+                            {'name': 'get-order', 'customParameters': {'includeHistory': True, 'maxItems': 5}},
+                            {'name': 'search-products', 'customParameters': {'category': 'electronics'}},
                             {'name': 'send-email'},
                         ],
                     },
@@ -401,22 +401,22 @@ def test_agent_config_has_tools(ldai_client: LDAIClient):
 
     get_order = agent.tools[0]
     assert get_order.name == 'get-order'
-    assert get_order.get_parameter('includeHistory') is True
-    assert get_order.get_parameter('maxItems') == 5
+    assert get_order.get_custom_parameter('includeHistory') is True
+    assert get_order.get_custom_parameter('maxItems') == 5
 
     search = agent.tools[1]
     assert search.name == 'search-products'
-    assert search.get_parameter('category') == 'electronics'
+    assert search.get_custom_parameter('category') == 'electronics'
 
     send_email = agent.tools[2]
     assert send_email.name == 'send-email'
-    assert send_email.get_parameter('anything') is None
+    assert send_email.get_custom_parameter('anything') is None
 
 
 def test_agent_config_tools_fallback_to_default(ldai_client: LDAIClient):
     """Test that agent config falls back to default tools when flag has no tools."""
     context = Context.create('user-key')
-    default_tools = [ToolDefinition('default-tool', parameters={'timeout': 30})]
+    default_tools = [ToolDefinition('default-tool', custom_parameters={'timeout': 30})]
     default = LDAIAgentDefaults(
         enabled=False,
         model=ModelConfig('fallback-model'),
@@ -431,7 +431,7 @@ def test_agent_config_tools_fallback_to_default(ldai_client: LDAIClient):
     assert agent.tools is not None
     assert len(agent.tools) == 1
     assert agent.tools[0].name == 'default-tool'
-    assert agent.tools[0].get_parameter('timeout') == 30
+    assert agent.tools[0].get_custom_parameter('timeout') == 30
 
 
 def test_agent_config_no_tools(ldai_client: LDAIClient):

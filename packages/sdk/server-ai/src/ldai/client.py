@@ -841,7 +841,7 @@ class LDAIClient:
             tools = [
                 ToolDefinition(
                     name=t.get('name', ''),
-                    parameters=t.get('parameters', None)
+                    custom_parameters=t.get('customParameters', None)
                 )
                 for t in tool_defs_raw
                 if isinstance(t, dict) and t.get('name')

@@ -81,18 +81,23 @@ class ToolDefinition:
     """
     Definition of a tool available to an AI configuration.
 
-    Each tool has a name used to match against the tool registry, and
-    optional custom parameters that can be configured via the LaunchDarkly
-    dashboard.
+    Each tool has a name used to match against the tool registry,
+    and optional custom parameters that can be configured via the
+    LaunchDarkly dashboard.
     """
 
-    def __init__(self, name: str, parameters: Optional[Dict[str, Any]] = None):
+    def __init__(
+        self,
+        name: str,
+        custom_parameters: Optional[Dict[str, Any]] = None,
+    ):
         """
         :param name: The name of the tool.
-        :param parameters: Optional custom parameters for the tool.
+        :param custom_parameters: Optional custom parameters for
+            the tool, configured via the LaunchDarkly dashboard.
         """
         self._name = name
-        self._parameters = parameters
+        self._custom_parameters = custom_parameters
 
     @property
     def name(self) -> str:
@@ -101,25 +106,25 @@ class ToolDefinition:
         """
         return self._name
 
-    def get_parameter(self, key: str) -> Any:
+    def get_custom_parameter(self, key: str) -> Any:
         """
         Retrieve a custom parameter by key.
 
-        :param key: The parameter key to look up.
+        :param key: The custom parameter key to look up.
         :return: The parameter value, or None if not found.
         """
-        if self._parameters is None:
+        if self._custom_parameters is None:
             return None
 
-        return self._parameters.get(key)
+        return self._custom_parameters.get(key)
 
     def to_dict(self) -> dict:
         """
         Render the tool definition as a dictionary object.
         """
         result: Dict[str, Any] = {'name': self._name}
-        if self._parameters is not None:
-            result['parameters'] = self._parameters
+        if self._custom_parameters is not None:
+            result['customParameters'] = self._custom_parameters
         return result
 
 
