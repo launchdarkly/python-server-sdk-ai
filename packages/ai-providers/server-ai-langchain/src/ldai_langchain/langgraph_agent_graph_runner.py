@@ -184,9 +184,6 @@ class LangGraphAgentGraphRunner(AgentGraphRunner):
             graph_structure.append(node_desc)
 
             if all_tools:
-                # ToolNode handles Command returns from handoff tools, routing to the target
-                # node.  For functional tools it returns normal ToolMessages and we loop back.
-                # tools_condition exits to END when no tool is called.
                 tools_node_key = f"{node_key}__tools"
                 agent_builder.add_node(tools_node_key, ToolNode(all_tools))
 
@@ -199,12 +196,34 @@ class LangGraphAgentGraphRunner(AgentGraphRunner):
                         tools_condition,
                         {"tools": tools_node_key, END: after_loop},
                     )
+                elif not tool_fns:
+                    # Only handoff tools: no loop-back needed.
+                    # Command(goto=child_key) handles routing to the target.
+                    agent_builder.add_conditional_edges(
+                        node_key,
+                        tools_condition,
+                        {"tools": tools_node_key, END: END},
+                    )
                 else:
-                    # Handoff tools use Command(goto=child_key) — LangGraph routes to the
-                    # target directly without any extra edge.  Functional tools (if any)
-                    # return normal ToolMessages and must loop back so the LLM sees the result.
-                    if tool_fns:
-                        agent_builder.add_edge(tools_node_key, node_key)
+                    # Both functional and handoff tools. A static loop-back edge would
+                    # fan-out with Command(goto=child_key) from handoff tools, so use a
+                    # conditional edge that only loops back for functional tool results.
+                    handoff_names_set = frozenset(getattr(t, 'name', '') for t in handoff_fns)
+
+                    def make_after_tools_router(parent_key: str, ht_names: frozenset):
+                        def route(state: WorkflowState) -> str:
+                            for msg in reversed(state['messages']):
+                                if hasattr(msg, 'name') and msg.name:
+                                    return END if msg.name in ht_names else parent_key
+                                break
+                            return parent_key
+                        return route
+
+                    agent_builder.add_conditional_edges(
+                        tools_node_key,
+                        make_after_tools_router(node_key, handoff_names_set),
+                        {node_key: node_key, END: END},
+                    )
                     agent_builder.add_conditional_edges(
                         node_key,
                         tools_condition,
