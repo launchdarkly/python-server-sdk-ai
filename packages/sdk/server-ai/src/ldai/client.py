@@ -25,6 +25,7 @@ from ldai.models import (
     LDMessage,
     ModelConfig,
     ProviderConfig,
+    ToolCustomParametersMap,
 )
 from ldai.providers import ToolRegistry
 from ldai.providers.runner_factory import RunnerFactory
@@ -756,7 +757,7 @@ class LDAIClient:
     ) -> Tuple[
         Optional[ModelConfig], Optional[ProviderConfig], Optional[List[LDMessage]],
         Optional[str], LDAIConfigTracker, bool, Optional[Any], Dict[str, Any],
-        Optional[Dict[str, Dict[str, Any]]]
+        Optional[ToolCustomParametersMap]
     ]:
         """
         Internal method to evaluate a configuration and extract components.
@@ -836,13 +837,22 @@ class LDAIClient:
 
         tool_custom_parameters = None
         model_raw = variation.get('model')
-        params_raw = model_raw.get('parameters') if isinstance(model_raw, dict) else None
-        tool_defs_raw = params_raw.get('tools') if isinstance(params_raw, dict) else None
+        params_raw = (
+            model_raw.get('parameters')
+            if isinstance(model_raw, dict) else None
+        )
+        tool_defs_raw = (
+            params_raw.get('tools')
+            if isinstance(params_raw, dict) else None
+        )
         if isinstance(tool_defs_raw, list):
-            parsed: Dict[str, Dict[str, Any]] = {}
+            parsed: ToolCustomParametersMap = {}
             for t in tool_defs_raw:
-                if isinstance(t, dict) and t.get('name'):
-                    parsed[t['name']] = t.get('customParameters') or {}
+                if not isinstance(t, dict) or not t.get('name'):
+                    continue
+                cp = t.get('customParameters')
+                if isinstance(cp, dict) and cp:
+                    parsed[t['name']] = cp
             if parsed:
                 tool_custom_parameters = parsed
 

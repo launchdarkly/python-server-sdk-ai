@@ -397,13 +397,15 @@ def test_agent_config_has_tools(ldai_client: LDAIClient):
 
     assert agent.enabled is True
     assert agent.tool_custom_parameters is not None
-    assert len(agent.tool_custom_parameters) == 3
+    # Only tools with non-empty customParameters are included
+    assert len(agent.tool_custom_parameters) == 2
 
     assert agent.get_tool_custom_parameter('get-order', 'includeHistory') is True
     assert agent.get_tool_custom_parameter('get-order', 'maxItems') == 5
     assert agent.get_tool_custom_parameter('search-products', 'category') == 'electronics'
+    # 'send-email' has no customParameters, so it is not in the map
+    assert 'send-email' not in agent.tool_custom_parameters
     assert agent.get_tool_custom_parameter('send-email', 'anything') is None
-    assert 'send-email' in agent.tool_custom_parameters
 
 
 def test_agent_config_tools_fallback_to_default(ldai_client: LDAIClient):

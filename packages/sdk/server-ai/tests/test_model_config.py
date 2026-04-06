@@ -454,13 +454,15 @@ def test_completion_config_has_tools(ldai_client: LDAIClient):
     config = ldai_client.completion_config('config-with-tools', context, default)
 
     assert config.tool_custom_parameters is not None
-    assert len(config.tool_custom_parameters) == 3
+    # Only tools with non-empty customParameters are included
+    assert len(config.tool_custom_parameters) == 2
 
     assert config.get_tool_custom_parameter('web_search', 'maxResults') == 10
     assert config.get_tool_custom_parameter('web_search', 'region') == 'us'
     assert config.get_tool_custom_parameter('get_weather', 'units') == 'celsius'
+    # 'calculator' has no customParameters, so it is not in the map
+    assert 'calculator' not in config.tool_custom_parameters
     assert config.get_tool_custom_parameter('calculator', 'anything') is None
-    assert 'calculator' in config.tool_custom_parameters
 
 
 def test_completion_config_no_tools(ldai_client: LDAIClient):
