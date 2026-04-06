@@ -68,7 +68,6 @@ jobs:
           workspace_path: packages/sdk/server-ai
 
       - uses: ./.github/actions/build
-        id: build
         with:
           workspace_path: packages/sdk/server-ai
 
@@ -104,7 +103,6 @@ jobs:
           workspace_path: packages/ai-providers/server-ai-langchain
 
       - uses: ./.github/actions/build
-        id: build
         with:
           workspace_path: packages/ai-providers/server-ai-langchain
 
@@ -139,7 +137,6 @@ jobs:
           workspace_path: ${{ inputs.workspace_path }}
 
       - uses: ./.github/actions/build
-        id: build
         with:
           workspace_path: ${{ inputs.workspace_path }}
 
@@ -172,7 +169,6 @@ jobs:
           workspace_path: packages/ai-providers/server-ai-openai
 
       - uses: ./.github/actions/build
-        id: build
         with:
           workspace_path: packages/ai-providers/server-ai-openai
 
@@ -208,7 +204,6 @@ jobs:
           workspace_path: packages/optimization
 
       - uses: ./.github/actions/build
-        id: build
         with:
           workspace_path: packages/optimization
 
