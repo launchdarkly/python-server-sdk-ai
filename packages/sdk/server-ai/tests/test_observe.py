@@ -65,36 +65,50 @@ def patch_otel(monkeypatch):
 # annotate_span_with_ai_config_metadata
 # ---------------------------------------------------------------------------
 
+def _make_ai_config(key="my-config", variation_key="var-1", model_name="gpt-4",
+                    provider_name="openai", version=3, context_key="user-123"):
+    """Build a minimal duck-typed AIConfig for testing annotation helpers."""
+    from unittest.mock import MagicMock
+    tracker = MagicMock()
+    tracker._variation_key = variation_key
+    tracker._version = version
+    tracker._context.key = context_key
+    model = MagicMock()
+    model.name = model_name
+    provider = MagicMock()
+    provider.name = provider_name
+    config = MagicMock()
+    config.key = key
+    config.tracker = tracker
+    config.model = model if model_name else None
+    config.provider = provider if provider_name else None
+    return config
+
+
 def test_annotate_ai_config_metadata_sets_attributes(patch_otel):
     from ldai.observe import annotate_span_with_ai_config_metadata
     span = patch_otel["span"]
 
-    annotate_span_with_ai_config_metadata(
-        config_key="my-config",
-        variation_key="var-1",
-        model_name="gpt-4",
-        provider_name="openai",
-        version=3,
-        context_key="user-123",
-    )
+    annotate_span_with_ai_config_metadata(_make_ai_config())
 
-    span.set_attribute.assert_any_call("ld.ai_config.key", "my-config")
-    span.set_attribute.assert_any_call("ld.ai_config.variation_key", "var-1")
-    span.set_attribute.assert_any_call("ld.ai_config.version", 3)
-    span.set_attribute.assert_any_call("ld.ai_config.context_key", "user-123")
-    span.set_attribute.assert_any_call("ld.ai_config.model", "gpt-4")
-    span.set_attribute.assert_any_call("ld.ai_config.provider", "openai")
+    span.set_attribute.assert_any_call("ld_ai.ai_config.key", "my-config")
+    span.set_attribute.assert_any_call("ld_ai.ai_config.variation_key", "var-1")
+    span.set_attribute.assert_any_call("ld_ai.ai_config.version", 3)
+    span.set_attribute.assert_any_call("ld_ai.ai_config.context_key", "user-123")
+    span.set_attribute.assert_any_call("ld_ai.ai_config.model", "gpt-4")
+    span.set_attribute.assert_any_call("ld_ai.ai_config.provider", "openai")
 
 
 def test_annotate_ai_config_metadata_omits_empty_model_provider(patch_otel):
     from ldai.observe import annotate_span_with_ai_config_metadata
     span = patch_otel["span"]
 
-    annotate_span_with_ai_config_metadata("k", "v", "", "")
+    config = _make_ai_config(model_name="", provider_name="")
+    annotate_span_with_ai_config_metadata(config)
 
     attr_keys = [call.args[0] for call in span.set_attribute.call_args_list]
-    assert "ld.ai_config.model" not in attr_keys
-    assert "ld.ai_config.provider" not in attr_keys
+    assert "ld_ai.ai_config.model" not in attr_keys
+    assert "ld_ai.ai_config.provider" not in attr_keys
 
 
 def test_annotate_ai_config_no_op_when_no_recording_span(patch_otel):
@@ -102,7 +116,43 @@ def test_annotate_ai_config_no_op_when_no_recording_span(patch_otel):
     span = patch_otel["span"]
     span.is_recording.return_value = False
 
-    annotate_span_with_ai_config_metadata("k", "v", "m", "p")
+    annotate_span_with_ai_config_metadata(_make_ai_config())
+
+    span.set_attribute.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# annotate_span_with_graph_metadata
+# ---------------------------------------------------------------------------
+
+def _make_graph_tracker(graph_key="my-graph", variation_key="gvar-1", version=2, context_key="user-456"):
+    from unittest.mock import MagicMock
+    tracker = MagicMock()
+    tracker._graph_key = graph_key
+    tracker._variation_key = variation_key
+    tracker._version = version
+    tracker._context.key = context_key
+    return tracker
+
+
+def test_annotate_graph_metadata_sets_attributes(patch_otel):
+    from ldai.observe import annotate_span_with_graph_metadata
+    span = patch_otel["span"]
+
+    annotate_span_with_graph_metadata(_make_graph_tracker())
+
+    span.set_attribute.assert_any_call("ld_ai.ai_config.key", "my-graph")
+    span.set_attribute.assert_any_call("ld_ai.ai_config.variation_key", "gvar-1")
+    span.set_attribute.assert_any_call("ld_ai.ai_config.version", 2)
+    span.set_attribute.assert_any_call("ld_ai.ai_config.context_key", "user-456")
+
+
+def test_annotate_graph_metadata_noop_when_no_recording_span(patch_otel):
+    from ldai.observe import annotate_span_with_graph_metadata
+    span = patch_otel["span"]
+    span.is_recording.return_value = False
+
+    annotate_span_with_graph_metadata(_make_graph_tracker())
 
     span.set_attribute.assert_not_called()
 
@@ -117,9 +167,9 @@ def test_annotate_tokens(patch_otel):
 
     annotate_span_with_tokens(100, 60, 40)
 
-    span.set_attribute.assert_any_call("ld.ai.metrics.tokens.total", 100)
-    span.set_attribute.assert_any_call("ld.ai.metrics.tokens.input", 60)
-    span.set_attribute.assert_any_call("ld.ai.metrics.tokens.output", 40)
+    span.set_attribute.assert_any_call("ld_ai.metrics.tokens.total", 100)
+    span.set_attribute.assert_any_call("ld_ai.metrics.tokens.input", 60)
+    span.set_attribute.assert_any_call("ld_ai.metrics.tokens.output", 40)
 
 
 # ---------------------------------------------------------------------------
@@ -130,14 +180,14 @@ def test_annotate_duration(patch_otel):
     from ldai.observe import annotate_span_with_duration
     span = patch_otel["span"]
     annotate_span_with_duration(250)
-    span.set_attribute.assert_called_once_with("ld.ai.metrics.duration_ms", 250)
+    span.set_attribute.assert_called_once_with("ld_ai.metrics.duration_ms", 250)
 
 
 def test_annotate_ttft(patch_otel):
     from ldai.observe import annotate_span_with_ttft
     span = patch_otel["span"]
     annotate_span_with_ttft(80)
-    span.set_attribute.assert_called_once_with("ld.ai.metrics.time_to_first_token_ms", 80)
+    span.set_attribute.assert_called_once_with("ld_ai.metrics.time_to_first_token_ms", 80)
 
 
 # ---------------------------------------------------------------------------
@@ -168,7 +218,7 @@ def test_annotate_feedback(patch_otel):
     from ldai.observe import annotate_span_with_feedback
     span = patch_otel["span"]
     annotate_span_with_feedback("positive")
-    span.set_attribute.assert_called_once_with("ld.ai.metrics.feedback.kind", "positive")
+    span.set_attribute.assert_called_once_with("ld_ai.metrics.feedback.kind", "positive")
 
 
 # ---------------------------------------------------------------------------
@@ -188,10 +238,10 @@ def test_annotate_judge_response(patch_otel):
     )
     annotate_span_with_judge_response(response)
 
-    span.set_attribute.assert_any_call("ld.ai.judge.config_key", "my-judge")
-    span.set_attribute.assert_any_call("ld.ai.judge.success", True)
-    span.set_attribute.assert_any_call("ld.ai.judge.relevance.score", 0.9)
-    span.set_attribute.assert_any_call("ld.ai.judge.relevance.reasoning", "looks good")
+    span.set_attribute.assert_any_call("ld_ai.judge.config_key", "my-judge")
+    span.set_attribute.assert_any_call("ld_ai.judge.success", True)
+    span.set_attribute.assert_any_call("ld_ai.judge.relevance.score", 0.9)
+    span.set_attribute.assert_any_call("ld_ai.judge.relevance.reasoning", "looks good")
 
 
 def test_annotate_judge_response_error(patch_otel):
@@ -203,50 +253,25 @@ def test_annotate_judge_response_error(patch_otel):
     response = JudgeResponse(evals={}, success=False, error="timed out")
     annotate_span_with_judge_response(response)
 
-    span.set_attribute.assert_any_call("ld.ai.judge.success", False)
-    span.set_attribute.assert_any_call("ld.ai.judge.error", "timed out")
+    span.set_attribute.assert_any_call("ld_ai.judge.success", False)
+    span.set_attribute.assert_any_call("ld_ai.judge.error", "timed out")
 
 
 # ---------------------------------------------------------------------------
 # _span_scope
 # ---------------------------------------------------------------------------
 
-def test_span_scope_reuses_existing_span(patch_otel):
-    """If a recording span is already active, yield it without creating a new one."""
+def test_span_scope_always_creates_new_span(patch_otel):
+    """Always creates a new span, making it a child of any active span."""
     from ldai.observe import _span_scope
     trace_mod = patch_otel["trace"]
 
-    with _span_scope("ld.ai.test") as s:
-        assert s is patch_otel["span"]
-
-    trace_mod.get_tracer.assert_not_called()
-
-
-def test_span_scope_creates_span_when_none(patch_otel):
-    """When no span is active and create_if_none=True, a new internal span is created."""
-    from ldai.observe import _span_scope
-    trace_mod = patch_otel["trace"]
-
-    # Simulate no active span
-    trace_mod.get_current_span.return_value = None
-
-    with _span_scope("ld.ai.test", create_if_none=True):
+    with _span_scope("ld_ai.test"):
         pass
 
     trace_mod.get_tracer.assert_called_once_with("launchdarkly.ai")
     tracer = trace_mod.get_tracer.return_value
-    tracer.start_as_current_span.assert_called_once_with("ld.ai.test")
-
-
-def test_span_scope_yields_none_when_create_if_none_false(patch_otel):
-    """When no span is active and create_if_none=False, yield None."""
-    from ldai.observe import _span_scope
-    trace_mod = patch_otel["trace"]
-
-    trace_mod.get_current_span.return_value = None
-
-    with _span_scope("ld.ai.test", create_if_none=False) as s:
-        assert s is None
+    tracer.start_as_current_span.assert_called_once_with("ld_ai.test", context=None)
 
 
 def test_span_scope_yields_none_when_otel_unavailable(monkeypatch):
@@ -255,7 +280,7 @@ def test_span_scope_yields_none_when_otel_unavailable(monkeypatch):
     monkeypatch.setattr(obs, "_OTEL_AVAILABLE", False)
 
     from ldai.observe import _span_scope
-    with _span_scope("ld.ai.test") as s:
+    with _span_scope("ld_ai.test") as s:
         assert s is None
 
 
@@ -273,10 +298,10 @@ def test_set_ai_config_baggage(patch_otel):
     assert token is not None
     # Verify all four keys were set in baggage
     baggage_keys = [call.args[0] for call in baggage_mod.set_baggage.call_args_list]
-    assert "ld.ai_config.key" in baggage_keys
-    assert "ld.ai_config.variation_key" in baggage_keys
-    assert "ld.ai_config.model" in baggage_keys
-    assert "ld.ai_config.provider" in baggage_keys
+    assert "ld_ai.ai_config.key" in baggage_keys
+    assert "ld_ai.ai_config.variation_key" in baggage_keys
+    assert "ld_ai.ai_config.model" in baggage_keys
+    assert "ld_ai.ai_config.provider" in baggage_keys
     context_mod.attach.assert_called_once()
 
 
@@ -316,10 +341,10 @@ def test_baggage_span_processor_copies_baggage_to_span(patch_otel):
     baggage_mod = patch_otel["baggage"]
 
     baggage_values = {
-        "ld.ai_config.key": "my-config",
-        "ld.ai_config.variation_key": "v1",
-        "ld.ai_config.model": "gpt-4",
-        "ld.ai_config.provider": "openai",
+        "ld_ai.ai_config.key": "my-config",
+        "ld_ai.ai_config.variation_key": "v1",
+        "ld_ai.ai_config.model": "gpt-4",
+        "ld_ai.ai_config.provider": "openai",
     }
     baggage_mod.get_baggage.side_effect = lambda key, context=None: baggage_values.get(key)
 
@@ -327,10 +352,10 @@ def test_baggage_span_processor_copies_baggage_to_span(patch_otel):
     processor = LDAIBaggageSpanProcessor()
     processor.on_start(span)
 
-    span.set_attribute.assert_any_call("ld.ai_config.key", "my-config")
-    span.set_attribute.assert_any_call("ld.ai_config.variation_key", "v1")
-    span.set_attribute.assert_any_call("ld.ai_config.model", "gpt-4")
-    span.set_attribute.assert_any_call("ld.ai_config.provider", "openai")
+    span.set_attribute.assert_any_call("ld_ai.ai_config.key", "my-config")
+    span.set_attribute.assert_any_call("ld_ai.ai_config.variation_key", "v1")
+    span.set_attribute.assert_any_call("ld_ai.ai_config.model", "gpt-4")
+    span.set_attribute.assert_any_call("ld_ai.ai_config.provider", "openai")
 
 
 def test_baggage_span_processor_skips_empty_values(patch_otel):
@@ -349,30 +374,15 @@ def test_baggage_span_processor_skips_empty_values(patch_otel):
 # AICompletionConfig context-manager (baggage integration)
 # ---------------------------------------------------------------------------
 
-def test_completion_config_context_manager_sets_and_clears_baggage(patch_otel):
-    from ldai.observe import set_ai_config_baggage, detach_ai_config_baggage
-    import ldai.observe as obs
-
-    set_called_with = {}
-    detach_token = object()
-
-    def mock_set(cfg_key, var_key, model, provider):
-        set_called_with.update(
-            config_key=cfg_key, variation_key=var_key, model=model, provider=provider
-        )
-        return {}, detach_token
-
-    monkeypatch = pytest.MonkeyPatch()
-    monkeypatch.setattr(obs, "set_ai_config_baggage", mock_set)
-    detach_calls = []
-    monkeypatch.setattr(obs, "detach_ai_config_baggage", lambda t: detach_calls.append(t))
-
+def test_completion_config_context_manager_creates_span_annotates_and_sets_baggage(patch_otel):
     from ldai.models import AICompletionConfig, ModelConfig, ProviderConfig
     from ldai.tracker import LDAIConfigTracker
+    from ldclient import Context
     from unittest.mock import MagicMock
 
+    span = patch_otel["span"]
+
     mock_ld_client = MagicMock()
-    from ldclient import Context
     ctx = Context.create("user-1")
     tracker = LDAIConfigTracker(mock_ld_client, "var-key", "cfg-key", 1, "gpt-4", "openai", ctx)
 
@@ -386,11 +396,12 @@ def test_completion_config_context_manager_sets_and_clears_baggage(patch_otel):
 
     with config as c:
         assert c is config
-        assert set_called_with["config_key"] == "cfg-key"
-        assert set_called_with["model"] == "gpt-4"
+        # Span should be annotated with config metadata
+        span.set_attribute.assert_any_call("ld_ai.ai_config.key", "cfg-key")
+        span.set_attribute.assert_any_call("ld_ai.ai_config.model", "gpt-4")
 
-    assert detach_calls == [detach_token]
-    monkeypatch.undo()
+    # Baggage should have been detached on exit
+    patch_otel["context"].detach.assert_called_once()
 
 
 def test_completion_config_usable_without_with(patch_otel):
@@ -417,6 +428,7 @@ def test_completion_config_equality_ignores_baggage_tokens():
 # ---------------------------------------------------------------------------
 
 def test_all_helpers_noop_when_otel_unavailable(monkeypatch):
+    """All annotation helpers are no-ops when opentelemetry-api is not installed."""
     import ldai.observe as obs
     monkeypatch.setattr(obs, "_OTEL_AVAILABLE", False)
 
@@ -427,12 +439,15 @@ def test_all_helpers_noop_when_otel_unavailable(monkeypatch):
         annotate_span_with_feedback,
         annotate_span_with_tokens,
         annotate_span_with_ttft,
+        _span_scope,
     )
 
     # None of these should raise
-    annotate_span_with_ai_config_metadata("k", "v", "m", "p")
+    annotate_span_with_ai_config_metadata(_make_ai_config())
     annotate_span_with_tokens(1, 2, 3)
     annotate_span_with_duration(100)
     annotate_span_with_ttft(50)
     annotate_span_success(True)
     annotate_span_with_feedback("positive")
+    with _span_scope("ld_ai.test") as s:
+        assert s is None

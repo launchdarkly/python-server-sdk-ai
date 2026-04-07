@@ -2,7 +2,8 @@
 
 from typing import Any, Optional
 
-from ldai.observe import SPAN_NAME_AGENT_GRAPH, _span_scope
+from ldai import log
+from ldai.observe import SPAN_NAME_AGENT_GRAPH, _span_scope, annotate_span_with_graph_metadata
 from ldai.providers import AgentGraphResult, AgentGraphRunner
 from ldai.tracker import AIGraphTracker
 
@@ -42,7 +43,13 @@ class ManagedAgentGraph:
         :param input: The input prompt or structured input for the graph
         :return: AgentGraphResult containing the output, raw response, and metrics
         """
+        log.info("[ldai:observe] ManagedAgentGraph.run() — entering span scope '%s'", SPAN_NAME_AGENT_GRAPH)
         with _span_scope(SPAN_NAME_AGENT_GRAPH):
+            if self._tracker is not None:
+                log.info("[ldai:observe] ManagedAgentGraph.run() — annotating span with graph key '%s'", self._tracker._graph_key)
+                annotate_span_with_graph_metadata(self._tracker)
+            else:
+                log.info("[ldai:observe] ManagedAgentGraph.run() — no tracker, skipping graph span annotation")
             return await self._runner.run(input)
 
     def get_agent_graph_runner(self) -> AgentGraphRunner:

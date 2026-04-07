@@ -1,8 +1,11 @@
+import logging
 import warnings
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Literal, Optional, Union
+from typing import Any, ClassVar, Dict, List, Literal, Optional, Union
 
 from ldai.tracker import LDAIConfigTracker
+
+_log = logging.getLogger("ldai.models")
 
 
 @dataclass
@@ -177,12 +180,67 @@ class AIConfigDefault:
 class AIConfig:
     """
     Base AI Config interface without mode-specific fields.
+
+    Subclasses that set ``_span_name`` are context managers that open an
+    OpenTelemetry span and set baggage for the duration of the block::
+
+        with client.completion_config(key, ctx, default) as config:
+            response = openai_client.chat.completions.create(...)
+            config.tracker.track_success()
     """
+    # Subclasses set this to the appropriate SPAN_NAME_* constant.
+    _span_name: ClassVar[str] = ""
+
     key: str
     enabled: bool
     model: Optional[ModelConfig] = None
     provider: Optional[ProviderConfig] = None
     tracker: Optional[LDAIConfigTracker] = None
+    # Mutable lists inside a frozen dataclass — store OTel state across
+    # __enter__/__exit__. List mutation does not violate frozen semantics.
+    _baggage_tokens: list = field(default_factory=list, repr=False, compare=False, hash=False)
+    _span_scopes: list = field(default_factory=list, repr=False, compare=False, hash=False)
+
+    def __enter__(self) -> 'AIConfig':
+        from ldai.observe import (
+            _OTEL_AVAILABLE,
+            _otel_context,
+            _span_scope,
+            annotate_span_with_ai_config_metadata,
+            set_ai_config_baggage,
+        )
+        _log.info("[ldai:models] AIConfig.__enter__: key=%r span_name=%r tracker=%r",
+                   self.key, self._span_name, self.tracker)
+        if self.tracker is not None:
+            if self._span_name:
+                _log.info("[ldai:models] AIConfig.__enter__: starting span scope '%s' for key=%r", self._span_name, self.key)
+                # Capture the current OTel context now so start_as_current_span
+                # uses the right parent even if the ContextVar drifts before the
+                # generator resumes inside the scope.
+                ctx = _otel_context.get_current() if _OTEL_AVAILABLE and _otel_context is not None else None
+                scope = _span_scope(self._span_name, context=ctx)
+                scope.__enter__()
+                self._span_scopes.append(scope)
+            annotate_span_with_ai_config_metadata(self)
+            _, token = set_ai_config_baggage(
+                self.key,
+                self.tracker._variation_key,
+                self.model.name if self.model else "",
+                self.provider.name if self.provider else "",
+            )
+        else:
+            _log.info("[ldai:models] AIConfig.__enter__: no tracker for key=%r, skipping span/baggage", self.key)
+            token = None
+        self._baggage_tokens.append(token)
+        return self
+
+    def __exit__(self, *exc) -> None:
+        from ldai.observe import detach_ai_config_baggage
+        _log.info("[ldai:models] AIConfig.__exit__: key=%r exc=%r", self.key, exc)
+        if self._baggage_tokens:
+            detach_ai_config_baggage(self._baggage_tokens.pop())
+        if self._span_scopes:
+            self._span_scopes.pop().__exit__(*exc)
 
     def _base_to_dict(self) -> Dict[str, Any]:
         """
@@ -222,41 +280,12 @@ class AICompletionConfigDefault(AIConfigDefault):
 
 @dataclass(frozen=True)
 class AICompletionConfig(AIConfig):
-    """
-    Completion AI Config (default mode).
+    """Completion AI Config (default mode)."""
 
-    Can also be used as a context manager to set OpenTelemetry baggage for
-    the duration of a block, enabling auto-instrumented libraries to
-    automatically inherit AI Config metadata on their spans::
+    _span_name: ClassVar[str] = "ld.ai.completion"
 
-        with client.completion_config(key, ctx, default) as config:
-            response = openai_client.chat.completions.create(...)
-            config.tracker.track_success()
-    """
     messages: Optional[List[LDMessage]] = None
     judge_configuration: Optional[JudgeConfiguration] = None
-    # Mutable list inside a frozen dataclass — stores OTel context tokens.
-    # List mutation does not violate frozen semantics. repr/compare/hash excluded.
-    _baggage_tokens: list = field(default_factory=list, repr=False, compare=False, hash=False)
-
-    def __enter__(self) -> 'AICompletionConfig':
-        from ldai.observe import set_ai_config_baggage
-        if self.tracker is not None:
-            _, token = set_ai_config_baggage(
-                self.key,
-                self.tracker._variation_key,
-                self.model.name if self.model else "",
-                self.provider.name if self.provider else "",
-            )
-        else:
-            token = None
-        self._baggage_tokens.append(token)
-        return self
-
-    def __exit__(self, *_) -> None:
-        from ldai.observe import detach_ai_config_baggage
-        if self._baggage_tokens:
-            detach_ai_config_baggage(self._baggage_tokens.pop())
 
     def to_dict(self) -> dict:
         """
@@ -295,9 +324,10 @@ class AIAgentConfigDefault(AIConfigDefault):
 
 @dataclass(frozen=True)
 class AIAgentConfig(AIConfig):
-    """
-    Agent-specific AI Config with instructions.
-    """
+    """Agent-specific AI Config with instructions."""
+
+    _span_name: ClassVar[str] = "ld.ai.agent"
+
     instructions: Optional[str] = None
     judge_configuration: Optional[JudgeConfiguration] = None
 
@@ -342,9 +372,10 @@ class AIJudgeConfigDefault(AIConfigDefault):
 
 @dataclass(frozen=True)
 class AIJudgeConfig(AIConfig):
-    """
-    Judge-specific AI Config with required evaluation metric key.
-    """
+    """Judge-specific AI Config with required evaluation metric key."""
+
+    _span_name: ClassVar[str] = "ld.ai.judge"
+
     # Deprecated: evaluation_metric_key is used instead
     evaluation_metric_keys: List[str] = field(default_factory=list)
     messages: Optional[List[LDMessage]] = None

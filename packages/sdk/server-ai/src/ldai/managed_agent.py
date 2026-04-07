@@ -1,7 +1,6 @@
 """ManagedAgent — LaunchDarkly managed wrapper for agent invocations."""
 
 from ldai.models import AIAgentConfig
-from ldai.observe import SPAN_NAME_AGENT, annotate_span_with_ai_config_metadata, _span_scope
 from ldai.providers import AgentResult, AgentRunner
 from ldai.tracker import LDAIConfigTracker
 
@@ -31,17 +30,7 @@ class ManagedAgent:
         :param input: The user prompt or input to the agent
         :return: AgentResult containing the agent's output and metrics
         """
-        observe = self._tracker._observe_config
-        with _span_scope(SPAN_NAME_AGENT, create_if_none=observe.create_span_if_none):
-            if observe.annotate_spans:
-                annotate_span_with_ai_config_metadata(
-                    self._tracker._config_key,
-                    self._tracker._variation_key,
-                    self._tracker._model_name,
-                    self._tracker._provider_name,
-                    version=self._tracker._version,
-                    context_key=self._tracker._context.key,
-                )
+        with self._ai_config:
             return await self._tracker.track_metrics_of_async(
                 lambda: self._agent_runner.run(input),
                 lambda result: result.metrics,

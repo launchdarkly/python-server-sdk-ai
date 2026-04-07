@@ -1,3 +1,4 @@
+import logging
 import re
 import time
 from typing import Any, Dict, List, Optional
@@ -16,6 +17,8 @@ from ldai_openai.openai_helper import (
     registry_value_to_agent_tool,
 )
 
+_log = logging.getLogger("ldai_openai.openai_agent_graph_runner")
+
 
 def _sanitize_agent_name(key: str) -> str:
     """Replace characters invalid for OpenAI function names with underscores."""
@@ -28,6 +31,53 @@ class _RunState:
     def __init__(self, last_handoff_ns: int, last_node_key: str) -> None:
         self.last_handoff_ns = last_handoff_ns
         self.last_node_key = last_node_key
+
+
+def _make_span_hooks(RunHooks: Any, graph: AgentGraphDefinition, name_map: Dict[str, str]) -> Any:
+    """
+    Build a RunHooks subclass at call time (after ``agents`` is imported) so the
+    class is a genuine subclass of RunHooks, satisfying the SDK's isinstance check.
+
+    Uses ``tracer.start_span()`` (not ``start_as_current_span``) so no ContextVar
+    token is created — OTel ContextVars cannot cross the async-task boundaries that
+    the OpenAI Agents SDK uses between hooks and agent execution.
+    """
+    open_spans: Dict[str, Any] = {}
+
+    class _LDAIAgentSpanHooks(RunHooks):  # type: ignore[misc]
+        async def on_agent_start(self, context: Any, agent: Any) -> None:
+            from ldai.observe import _OTEL_AVAILABLE, _otel_context, _otel_trace
+            node_key = name_map.get(agent.name, agent.name)
+            _log.info("[ldai:openai] agent_start node_key=%r", node_key)
+            # End any span from the previous agent — on_agent_end only fires for the
+            # final agent; intermediate agents hand off without triggering on_agent_end.
+            for name in list(open_spans):
+                open_spans.pop(name).end()
+            if not _OTEL_AVAILABLE:
+                return
+            node = graph.get_node(node_key)
+            if node is None:
+                return
+            node_config = node.get_config()
+            tracer = _otel_trace.get_tracer("launchdarkly.ai")
+            parent_ctx = _otel_context.get_current()
+            # Use start_as_current_span(end_on_exit=False) so the span is the active
+            # current span while attributes are annotated, then stays open (not ended)
+            # after the with-block exits. Both enter and exit happen within this same
+            # on_agent_start call, so no cross-async-context ContextVar issues.
+            with tracer.start_as_current_span("ld.ai.agent", context=parent_ctx, end_on_exit=False) as span:
+                from ldai.observe import annotate_span_with_ai_config_metadata
+                annotate_span_with_ai_config_metadata(node_config)
+            open_spans[agent.name] = span
+
+        async def on_agent_end(self, context: Any, agent: Any, output: Any) -> None:
+            node_key = name_map.get(agent.name, agent.name)
+            _log.info("[ldai:openai] agent_end node_key=%r", node_key)
+            span = open_spans.pop(agent.name, None)
+            if span is not None:
+                span.end()
+
+    return _LDAIAgentSpanHooks()
 
 
 class OpenAIAgentGraphRunner(AgentGraphRunner):
@@ -79,9 +129,11 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
         start_ns = time.perf_counter_ns()
         state = _RunState(last_handoff_ns=start_ns, last_node_key=root_key)
         try:
-            from agents import Runner
+            from agents import Runner, RunHooks
+            _log.info("[ldai:openai] invoke called for root_key=%r tracker=%r", root_key, tracker)
             root_agent = self._build_agents(path, state)
-            result = await Runner.run(root_agent, str(input))
+            hooks = _make_span_hooks(RunHooks, self._graph, self._agent_name_map)
+            result = await Runner.run(root_agent, str(input), hooks=hooks)
             self._flush_final_segment(state, tracker, result)
             self._track_tool_calls(result, tracker)
 
@@ -231,6 +283,7 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
         config_tracker: Any,
         state: _RunState,
     ) -> None:
+        _log.info("[ldai:openai] handoff from src=%r to tgt=%r", src, tgt)
         path.append(tgt)
         state.last_node_key = tgt
         if tracker:

@@ -8,7 +8,7 @@ with the correct payloads — without making real API calls.
 
 import pytest
 from collections import defaultdict
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from ldai.agent_graph import AgentGraphDefinition
 from ldai.models import AIAgentGraphConfig, AIAgentConfig, Edge, ModelConfig, ProviderConfig
@@ -122,9 +122,9 @@ def _events(mock_ld_client: MagicMock) -> dict:
 
 
 def _mock_model(response):
-    """Return a mock LangChain model that always returns response on invoke()."""
+    """Return a mock LangChain model that always returns response on ainvoke()."""
     model = MagicMock()
-    model.invoke.return_value = response
+    model.ainvoke = AsyncMock(return_value=response)
     model.bind_tools.return_value = model
     return model
 
@@ -260,7 +260,7 @@ async def test_tracks_tool_calls():
     final_response = _make_fake_response('It is sunny in NYC.')
 
     mock_model = MagicMock()
-    mock_model.invoke.side_effect = [tool_response, final_response]
+    mock_model.ainvoke = AsyncMock(side_effect=[tool_response, final_response])
     mock_model.bind_tools.return_value = mock_model
 
     def get_weather(location: str = 'NYC') -> str:
@@ -291,7 +291,7 @@ async def test_tracks_multiple_tool_calls():
     final_response = _make_fake_response('Here is the summary.')
 
     mock_model = MagicMock()
-    mock_model.invoke.side_effect = [tool_response, final_response]
+    mock_model.ainvoke = AsyncMock(side_effect=[tool_response, final_response])
     mock_model.bind_tools.return_value = mock_model
 
     def search(q: str = '') -> str:
@@ -338,7 +338,7 @@ async def test_tracks_failure_and_latency_on_model_error():
     graph = _make_graph(mock_ld_client)
 
     error_model = MagicMock()
-    error_model.invoke.side_effect = RuntimeError('model error')
+    error_model.ainvoke = AsyncMock(side_effect=RuntimeError('model error'))
     error_model.bind_tools.return_value = error_model
 
     with patch('ldai_langchain.langgraph_agent_graph_runner.create_langchain_model',

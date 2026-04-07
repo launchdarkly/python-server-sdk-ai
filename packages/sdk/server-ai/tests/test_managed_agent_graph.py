@@ -11,6 +11,44 @@ from ldai.providers import AgentGraphResult, AgentGraphRunner, ToolRegistry
 from ldai.tracker import AIGraphTracker
 
 
+# ---------------------------------------------------------------------------
+# OTel patch fixture (mirrors test_observe.py)
+# ---------------------------------------------------------------------------
+
+def _make_span(recording: bool = True) -> MagicMock:
+    span = MagicMock()
+    span.is_recording.return_value = recording
+    return span
+
+
+@pytest.fixture()
+def patch_otel(monkeypatch):
+    span = _make_span()
+    trace_mod = MagicMock()
+    trace_mod.get_current_span.return_value = span
+    tracer = MagicMock()
+    tracer.start_as_current_span.return_value.__enter__ = MagicMock(return_value=span)
+    tracer.start_as_current_span.return_value.__exit__ = MagicMock(return_value=False)
+    trace_mod.get_tracer.return_value = tracer
+
+    baggage_mod = MagicMock()
+    baggage_mod.set_baggage.side_effect = lambda key, val, context=None: context or {}
+    baggage_mod.get_baggage.return_value = None
+
+    context_mod = MagicMock()
+    context_mod.get_current.return_value = {}
+    context_mod.attach.return_value = object()
+    context_mod.detach = MagicMock()
+
+    import ldai.observe as obs
+    monkeypatch.setattr(obs, "_OTEL_AVAILABLE", True)
+    monkeypatch.setattr(obs, "_otel_trace", trace_mod)
+    monkeypatch.setattr(obs, "_otel_baggage", baggage_mod)
+    monkeypatch.setattr(obs, "_otel_context", context_mod)
+
+    yield {"span": span, "trace": trace_mod}
+
+
 # --- Test double ---
 
 class StubAgentGraphRunner(AgentGraphRunner):
@@ -34,6 +72,45 @@ async def test_managed_agent_graph_run_delegates_to_runner():
     result = await managed.run("test input")
     assert result.output == "hello world"
     assert result.metrics.success is True
+
+
+@pytest.mark.asyncio
+async def test_managed_agent_graph_run_creates_span_and_annotates(patch_otel):
+    """run() creates an ld.ai.agent_graph span and annotates it with tracker metadata."""
+    span = patch_otel["span"]
+    trace_mod = patch_otel["trace"]
+
+    tracker = MagicMock()
+    tracker._graph_key = "my-graph"
+    tracker._variation_key = "gvar-1"
+    tracker._version = 2
+    tracker._context.key = "user-456"
+
+    runner = StubAgentGraphRunner("result")
+    managed = ManagedAgentGraph(runner, tracker)
+    await managed.run("input")
+
+    trace_mod.get_tracer.assert_called_with("launchdarkly.ai")
+    tracer = trace_mod.get_tracer.return_value
+    tracer.start_as_current_span.assert_called_with("ld_ai.agent_graph", context=None)
+
+    span.set_attribute.assert_any_call("ld_ai.ai_config.key", "my-graph")
+    span.set_attribute.assert_any_call("ld_ai.ai_config.variation_key", "gvar-1")
+    span.set_attribute.assert_any_call("ld_ai.ai_config.version", 2)
+    span.set_attribute.assert_any_call("ld_ai.ai_config.context_key", "user-456")
+
+
+@pytest.mark.asyncio
+async def test_managed_agent_graph_run_no_annotation_without_tracker(patch_otel):
+    """run() creates span but skips annotation when no tracker is present."""
+    span = patch_otel["span"]
+
+    runner = StubAgentGraphRunner("result")
+    managed = ManagedAgentGraph(runner)
+    await managed.run("input")
+
+    attr_keys = [call.args[0] for call in span.set_attribute.call_args_list]
+    assert "ld_ai.ai_config.key" not in attr_keys
 
 
 def test_managed_agent_graph_get_runner():

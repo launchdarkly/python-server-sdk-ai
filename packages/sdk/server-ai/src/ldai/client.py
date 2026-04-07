@@ -10,7 +10,6 @@ from ldai.judge import Judge
 from ldai.managed_agent import ManagedAgent
 from ldai.managed_agent_graph import ManagedAgentGraph
 from ldai.managed_model import ManagedModel
-from ldai.observe import LDAIObserveConfig
 from ldai.models import (
     AIAgentConfig,
     AIAgentConfigDefault,
@@ -49,9 +48,8 @@ _INIT_TRACK_CONTEXT = Context.builder('ld-internal-tracking').kind('ld_ai').anon
 class LDAIClient:
     """The LaunchDarkly AI SDK client object."""
 
-    def __init__(self, client: LDClient, observe: Optional[LDAIObserveConfig] = None):
+    def __init__(self, client: LDClient):
         self._client = client
-        self._observe_config = observe if observe is not None else LDAIObserveConfig()
         self._client.track(
             _TRACK_SDK_INFO,
             _INIT_TRACK_CONTEXT,
@@ -813,7 +811,6 @@ class LDAIClient:
             model.name if model else '',
             provider_config.name if provider_config else '',
             context,
-            observe_config=self._observe_config,
         )
 
         judge_configuration = None

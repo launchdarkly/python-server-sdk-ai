@@ -2,7 +2,11 @@ import operator
 import time
 from typing import Annotated, Any, List
 
+import logging
+
 from ldai import log
+
+_log = logging.getLogger("ldai_langchain.langgraph")
 from ldai.agent_graph import AgentGraphDefinition, AgentGraphNode
 from ldai.providers import AgentGraphResult, AgentGraphRunner, ToolRegistry
 from ldai.providers.types import LDAIMetrics
@@ -81,23 +85,26 @@ class LangGraphAgentGraphRunner(AgentGraphRunner):
                     tool_fns = build_tools(node_config, tools_ref)
                     model = lc_model.bind_tools(tool_fns) if tool_fns else lc_model
 
-                def invoke(state: WorkflowState) -> WorkflowState:
+                async def invoke(state: WorkflowState) -> WorkflowState:
+                    _log.info("[ldai:langgraph] invoke called for node_key=%r node_tracker=%r", node_key, node_tracker)
                     exec_path.append(node_key)
                     if not model:
                         return {'messages': []}
                     gk = tracker.graph_key if tracker is not None else None
-                    if node_tracker:
-                        response = node_tracker.track_metrics_of(
-                            lambda: model.invoke(state['messages']),
-                            get_ai_metrics_from_response,
-                            graph_key=gk,
-                        )
-                        node_tracker.track_tool_calls(
-                            get_tool_calls_from_response(response),
-                            graph_key=tracker.graph_key if tracker is not None else None,
-                        )
-                    else:
-                        response = model.invoke(state['messages'])
+                    _log.info("[ldai:langgraph] entering node_config context for node_key=%r", node_key)
+                    with node_config:
+                        if node_tracker:
+                            response = await node_tracker.track_metrics_of_async(
+                                lambda: model.ainvoke(state['messages']),
+                                get_ai_metrics_from_response,
+                                graph_key=gk,
+                            )
+                            node_tracker.track_tool_calls(
+                                get_tool_calls_from_response(response),
+                                graph_key=tracker.graph_key if tracker is not None else None,
+                            )
+                        else:
+                            response = await model.ainvoke(state['messages'])
 
                     return {'messages': [response]}
 
