@@ -37,11 +37,7 @@ from ldai_optimization.prompts import (
 )
 from ldai_optimization.util import (
     await_if_needed,
-    create_evaluation_tool,
-    create_variation_tool,
     extract_json_from_response,
-    handle_evaluation_tool_call,
-    handle_variation_tool_call,
     interpolate_variables,
     restore_variable_placeholders,
 )
@@ -321,38 +317,17 @@ class OptimizationClient:
             )
             return JudgeResult(score=0.0, rationale=None)
 
-    def _builtin_judge_tool_handlers(self) -> Dict[str, Any]:
-        """
-        Build the dict of built-in tool name → handler passed to handle_judge_call.
-
-        Each handler accepts the tool-call arguments dict produced by the LLM and
-        returns a JSON string so the caller can forward it back to the model or use
-        it directly as the judge response.
-
-        :return: Mapping of built-in tool names to their handler callables
-        """
-        return {
-            create_evaluation_tool().name: handle_evaluation_tool_call,
-        }
-
-    def _builtin_agent_tool_handlers(self, is_variation: bool) -> Dict[str, Any]:
+    def _builtin_agent_tool_handlers(self) -> Dict[str, Any]:
         """
         Build the dict of built-in tool name → handler passed to handle_agent_call.
 
-        For regular agent turns this is empty — the config only contains user-defined
-        tools from the LD flag. For variation-generation turns the variation structured
-        output tool is included so the caller can distinguish it from user tools and
-        route the LLM tool call back to the framework.
+        The framework no longer injects structured-output tools into agent or judge
+        turns — prompts ask for plain JSON directly, which is more reliable across
+        SDK implementations. This method is retained for API stability; it always
+        returns an empty dict.
 
-        :param is_variation: True when called for a variation-generation turn
-        :return: Mapping of built-in tool names to their handler callables
+        :return: Empty mapping (no built-in tool handlers)
         """
-        if is_variation:
-            return {
-                create_variation_tool(
-                    self._options.model_choices
-                ).name: handle_variation_tool_call,
-            }
         return {}
 
     async def _call_judges(
@@ -595,14 +570,12 @@ class OptimizationClient:
         if agent_tools:
             tools = list(agent_tools) + tools
 
-        # Add structured output tool for score and rationale
-        tools.append(create_evaluation_tool())
-
+        tool_params = {"tools": [t.to_dict() for t in tools]} if tools else {}
         judge_call_config = AIJudgeCallConfig(
             key=judge_key,
             model=ModelConfig(
                 name=model_name,
-                parameters={**model_params, "tools": [t.to_dict() for t in tools]},
+                parameters={**model_params, **tool_params},
             ),
             instructions=instructions,
             messages=updated_messages,
@@ -614,7 +587,7 @@ class OptimizationClient:
         )
 
         result = self._options.handle_judge_call(
-            judge_key, judge_call_config, judge_ctx, self._builtin_judge_tool_handlers()
+            judge_key, judge_call_config, judge_ctx, {}
         )
         judge_response_str = await await_if_needed(result)
 
@@ -710,10 +683,8 @@ class OptimizationClient:
                 "Assume that previous feedback will have addressed bad tool call results from prior iterations."
             )
 
-        # Prepend agent tools so the judge can invoke them for verification if needed
-        tools: List[ToolDefinition] = list(resolved_agent_tools) + [
-            create_evaluation_tool()
-        ]
+        # Agent tools are passed through so the judge can invoke them for verification
+        tools: List[ToolDefinition] = list(resolved_agent_tools)
 
         judge_user_input = f"Here is the response to evaluate: {completion_response}"
         if expected_response is not None:
@@ -723,11 +694,12 @@ class OptimizationClient:
                 "how closely it matches the expected response. Factor both into your score."
             )
 
+        tool_params = {"tools": [t.to_dict() for t in tools]} if tools else {}
         judge_call_config = AIJudgeCallConfig(
             key=judge_key,
             model=ModelConfig(
                 name=self._options.judge_model,
-                parameters={"tools": [t.to_dict() for t in tools]},
+                parameters=tool_params,
             ),
             instructions=instructions,
             messages=[
@@ -742,7 +714,7 @@ class OptimizationClient:
         )
 
         result = self._options.handle_judge_call(
-            judge_key, judge_call_config, judge_ctx, self._builtin_judge_tool_handlers()
+            judge_key, judge_call_config, judge_ctx, {}
         )
         judge_response = await await_if_needed(result)
 
@@ -1192,15 +1164,12 @@ class OptimizationClient:
         flat_history = [prev_ctx.copy_without_history() for prev_ctx in self._history]
 
         # Create context for variation generation — low temperature for deterministic output.
-        # The variation tool is placed in current_parameters["tools"] so it surfaces through
-        # AIAgentConfig.model.parameters like any other tool, rather than as a separate field.
         variation_ctx = OptimizationContext(
             scores={},
             completion_response="",
             current_instructions=instructions,
             current_parameters={
                 "temperature": 0.1,
-                "tools": [create_variation_tool(self._options.model_choices).to_dict()],
             },
             current_variables=variables,
             current_model=self._current_model,
@@ -1215,7 +1184,7 @@ class OptimizationClient:
         # responses (e.g. when the agent SDK returns the LLM's post-tool-call empty text
         # instead of the tool result).
         agent_config = self._build_agent_config_for_context(variation_ctx)
-        tool_handlers = self._builtin_agent_tool_handlers(is_variation=True)
+        tool_handlers = self._builtin_agent_tool_handlers()
         response_data = None
         response_str = ""
         for attempt in range(1, _MAX_VARIATION_RETRIES + 1):
@@ -1470,7 +1439,7 @@ class OptimizationClient:
                 self._agent_key,
                 self._build_agent_config_for_context(optimize_context),
                 optimize_context,
-                self._builtin_agent_tool_handlers(is_variation=False),
+                self._builtin_agent_tool_handlers(),
             )
             completion_response = await await_if_needed(result)
             logger.debug(

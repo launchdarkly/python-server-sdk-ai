@@ -31,8 +31,6 @@ from ldai_optimization.prompts import (
 )
 from ldai_optimization.util import interpolate_variables
 from ldai_optimization.util import (
-    create_evaluation_tool,
-    create_variation_tool,
     handle_evaluation_tool_call,
     handle_variation_tool_call,
     restore_variable_placeholders,
@@ -298,7 +296,7 @@ class TestEvaluateResponse:
 
 
 # ---------------------------------------------------------------------------
-# _builtin_judge_tool_handlers / _builtin_agent_tool_handlers
+# _builtin_agent_tool_handlers
 # ---------------------------------------------------------------------------
 
 
@@ -307,36 +305,9 @@ class TestBuiltinToolHandlers:
         self.client = _make_client()
         self.client._options = _make_options()
 
-    def test_judge_handlers_contains_evaluation_tool(self):
-        handlers = self.client._builtin_judge_tool_handlers()
-        assert create_evaluation_tool().name in handlers
-
-    def test_judge_handler_returns_json(self):
-        handlers = self.client._builtin_judge_tool_handlers()
-        result = handlers[create_evaluation_tool().name](score=0.7, rationale="ok")
-        data = json.loads(result)
-        assert data["score"] == 0.7
-
-    def test_agent_handlers_empty_for_regular_turn(self):
-        handlers = self.client._builtin_agent_tool_handlers(is_variation=False)
-        assert handlers == {}
-
-    def test_agent_handlers_contains_variation_tool_for_variation_turn(self):
-        handlers = self.client._builtin_agent_tool_handlers(is_variation=True)
-        expected_name = create_variation_tool(self.client._options.model_choices).name
-        assert expected_name in handlers
-
-    def test_variation_handler_returns_valid_json(self):
-        handlers = self.client._builtin_agent_tool_handlers(is_variation=True)
-        name = create_variation_tool(self.client._options.model_choices).name
-        result = handlers[name](
-            current_instructions="New instructions.",
-            current_parameters={"temperature": 0.3},
-            model="gpt-4o",
-        )
-        data = json.loads(result)
-        assert data["current_instructions"] == "New instructions."
-        assert data["model"] == "gpt-4o"
+    def test_agent_handlers_always_empty(self):
+        """No built-in tool handlers are injected; prompts ask for plain JSON."""
+        assert self.client._builtin_agent_tool_handlers() == {}
 
 
 # ---------------------------------------------------------------------------
@@ -386,7 +357,7 @@ class TestEvaluateAcceptanceJudge:
         assert key == "relevance"
         assert isinstance(config, AIJudgeCallConfig)
         assert isinstance(ctx, OptimizationJudgeContext)
-        assert create_evaluation_tool().name in handlers
+        assert handlers == {}
 
     async def test_messages_has_system_and_user_turns(self):
         judge = OptimizationJudge(
@@ -451,7 +422,8 @@ class TestEvaluateAcceptanceJudge:
         _, config, _, _ = call_args.args
         assert statement in config.instructions
 
-    async def test_evaluation_tool_in_config_parameters(self):
+    async def test_no_structured_output_tool_in_judge_config(self):
+        """Structured output tool must not be injected — judges return plain JSON."""
         judge = OptimizationJudge(threshold=0.8, acceptance_statement="Be brief.")
         await self.client._evaluate_acceptance_judge(
             judge_key="brevity",
@@ -464,10 +436,9 @@ class TestEvaluateAcceptanceJudge:
         call_args = self.handle_judge_call.call_args
         _, config, _, _ = call_args.args
         tools = config.model.get_parameter("tools") or []
-        tool_names = [t["name"] for t in tools]
-        assert create_evaluation_tool().name in tool_names
+        assert tools == []
 
-    async def test_agent_tools_prepended_to_config_tools(self):
+    async def test_agent_tools_included_in_config_tools(self):
         agent_tool = ToolDefinition(
             name="lookup", description="Lookup data", input_schema={}
         )
@@ -485,8 +456,7 @@ class TestEvaluateAcceptanceJudge:
         _, config, _, _ = call_args.args
         tools = config.model.get_parameter("tools") or []
         tool_names = [t["name"] for t in tools]
-        assert "lookup" in tool_names
-        assert tool_names.index("lookup") < tool_names.index(create_evaluation_tool().name)
+        assert tool_names == ["lookup"]
 
     async def test_variables_in_context(self):
         judge = OptimizationJudge(threshold=0.8, acceptance_statement="Be accurate.")
@@ -689,7 +659,7 @@ class TestEvaluateConfigJudge:
         assert "message_history" in passed_vars
         assert "response_to_evaluate" in passed_vars
 
-    async def test_agent_tools_prepended_before_evaluation_tool(self):
+    async def test_agent_tools_included_without_evaluation_tool(self):
         self.mock_ldai.judge_config.return_value = self._make_judge_config()
         agent_tool = ToolDefinition(name="search", description="Search", input_schema={})
         judge = OptimizationJudge(threshold=0.8, judge_key="ld-judge-key")
@@ -705,8 +675,7 @@ class TestEvaluateConfigJudge:
         _, config, _, _ = self.handle_judge_call.call_args.args
         tools = config.model.get_parameter("tools") or []
         names = [t["name"] for t in tools]
-        assert "search" in names
-        assert names.index("search") < names.index(create_evaluation_tool().name)
+        assert names == ["search"]
 
 
 # ---------------------------------------------------------------------------
@@ -804,18 +773,18 @@ class TestGenerateNewVariation:
         await self.client._generate_new_variation(iteration=1, variables={})
         assert self.client._current_model == "gpt-4o"
 
-    async def test_variation_tool_in_agent_config(self):
+    async def test_no_structured_output_tool_in_variation_config(self):
+        """Variation turn must not inject the structured-output tool — prompts use plain JSON."""
         await self.client._generate_new_variation(iteration=1, variables={})
         _, config, _, _ = self.handle_agent_call.call_args.args
         tools = config.model.get_parameter("tools") or []
-        tool_names = [t["name"] for t in tools]
-        assert create_variation_tool(self.client._options.model_choices).name in tool_names
+        assert tools == []
 
-    async def test_builtin_handlers_passed_for_variation(self):
+    async def test_empty_handlers_passed_for_variation(self):
+        """No built-in tool handlers are injected for variation turns."""
         await self.client._generate_new_variation(iteration=1, variables={})
         _, _, _, handlers = self.handle_agent_call.call_args.args
-        expected_name = create_variation_tool(self.client._options.model_choices).name
-        assert expected_name in handlers
+        assert handlers == {}
 
     async def test_model_not_updated_when_not_in_model_choices(self):
         bad_response = json.dumps({
