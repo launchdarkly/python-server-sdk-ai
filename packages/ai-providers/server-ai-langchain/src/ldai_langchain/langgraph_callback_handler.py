@@ -42,8 +42,8 @@ class LDMetricsCallbackHandler(BaseCallbackHandler):
         self._node_tokens: Dict[str, TokenUsage] = {}
         # tool config keys called per node
         self._node_tool_calls: Dict[str, List[str]] = {}
-        # start time (ns) per node — only set while running
-        self._node_start_ns: Dict[str, int] = {}
+        # start time (ns) per active run_id — keyed by run_id to handle re-entrant nodes
+        self._node_start_ns: Dict[UUID, int] = {}
         # accumulated duration (ms) per node
         self._node_duration_ms: Dict[str, int] = {}
         # execution path in order (deduplicated)
@@ -96,7 +96,7 @@ class LDMetricsCallbackHandler(BaseCallbackHandler):
 
         if name in self._node_keys:
             self._run_to_node[run_id] = name
-            self._node_start_ns[name] = time.perf_counter_ns()
+            self._node_start_ns[run_id] = time.perf_counter_ns()
             if name not in self._path_set:
                 self._path.append(name)
                 self._path_set.add(name)
@@ -117,7 +117,7 @@ class LDMetricsCallbackHandler(BaseCallbackHandler):
         node_key = self._run_to_node.get(run_id)
         if node_key is None:
             return
-        start_ns = self._node_start_ns.pop(node_key, None)
+        start_ns = self._node_start_ns.pop(run_id, None)
         if start_ns is not None:
             elapsed_ms = (time.perf_counter_ns() - start_ns) // 1_000_000
             self._node_duration_ms[node_key] = (

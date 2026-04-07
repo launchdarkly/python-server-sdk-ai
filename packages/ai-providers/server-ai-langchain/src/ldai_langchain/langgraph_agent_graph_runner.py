@@ -1,7 +1,7 @@
 """LangGraph agent graph runner for LaunchDarkly AI SDK."""
 
 import time
-from typing import Annotated, Any, Dict, List, Tuple
+from typing import Annotated, Any, Dict, List, Optional, Set, Tuple
 
 from ldai import log
 from ldai.agent_graph import AgentGraphDefinition, AgentGraphNode
@@ -76,13 +76,25 @@ class LangGraphAgentGraphRunner(AgentGraphRunner):
         """
         self._graph = graph
         self._tools = tools
+        self._compiled: Any = None
+        self._fn_name_to_config_key: Dict[str, str] = {}
+        self._node_keys: Set[str] = set()
 
-    def _build_graph(self) -> Tuple[Any, Dict[str, str]]:
+    def _ensure_compiled(self) -> None:
+        """Build and cache the compiled graph if not already done."""
+        if self._compiled is None:
+            compiled, fn_name_to_config_key, node_keys = self._build_graph()
+            self._compiled = compiled
+            self._fn_name_to_config_key = fn_name_to_config_key
+            self._node_keys = node_keys
+
+    def _build_graph(self) -> Tuple[Any, Dict[str, str], Set[str]]:
         """
         Build and compile the LangGraph StateGraph from the AgentGraphDefinition.
 
-        :return: Tuple of (compiled_graph, fn_name_to_config_key) where
-            fn_name_to_config_key maps tool function __name__ to LD config key.
+        :return: Tuple of (compiled_graph, fn_name_to_config_key, node_keys) where
+            fn_name_to_config_key maps tool function __name__ to LD config key, and
+            node_keys is the set of all agent node keys in the graph.
         """
         from langchain_core.messages import SystemMessage
         from langgraph.graph import END, START, StateGraph
@@ -99,10 +111,12 @@ class LangGraphAgentGraphRunner(AgentGraphRunner):
         tools_ref = self._tools
         graph_structure: List[str] = []
         fn_name_to_config_key: Dict[str, str] = {}
+        node_keys: Set[str] = set()
 
         def handle_traversal(node: AgentGraphNode, ctx: dict) -> None:
             node_config = node.get_config()
             node_key = node.get_key()
+            node_keys.add(node_key)
             instructions = node_config.instructions if hasattr(node_config, 'instructions') else None
             outgoing_edges = node.get_edges()
 
@@ -190,6 +204,12 @@ class LangGraphAgentGraphRunner(AgentGraphRunner):
                 if not handoff_fns:
                     # No handoff tools: standard loop-back after tool execution.
                     after_loop = outgoing_edges[0].target_config if outgoing_edges else END
+                    if len(outgoing_edges) > 1:
+                        log.warning(
+                            f"Node '{node_key}' has {len(outgoing_edges)} outgoing edges but no handoff "
+                            "tools; only the first edge will be used after the tool loop. "
+                            "Use handoff tools for multi-child routing."
+                        )
                     agent_builder.add_edge(tools_node_key, node_key)
                     agent_builder.add_conditional_edges(
                         node_key,
@@ -212,10 +232,11 @@ class LangGraphAgentGraphRunner(AgentGraphRunner):
 
                     def make_after_tools_router(parent_key: str, ht_names: frozenset):
                         def route(state: WorkflowState) -> str:
-                            for msg in reversed(state['messages']):
-                                if hasattr(msg, 'name') and msg.name:
-                                    return END if msg.name in ht_names else parent_key
-                                break
+                            msgs = state['messages']
+                            if msgs:
+                                last = msgs[-1]
+                                if hasattr(last, 'name') and last.name in ht_names:
+                                    return END
                             return parent_key
                         return route
 
@@ -247,7 +268,7 @@ class LangGraphAgentGraphRunner(AgentGraphRunner):
         )
 
         compiled = agent_builder.compile()
-        return compiled, fn_name_to_config_key
+        return compiled, fn_name_to_config_key, node_keys
 
     async def run(self, input: Any) -> AgentGraphResult:
         """
@@ -266,12 +287,10 @@ class LangGraphAgentGraphRunner(AgentGraphRunner):
         try:
             from langchain_core.messages import HumanMessage
 
-            compiled, fn_name_to_config_key = self._build_graph()
+            self._ensure_compiled()
+            handler = LDMetricsCallbackHandler(self._node_keys, self._fn_name_to_config_key)
 
-            node_keys = {node.get_key() for node in self._graph._nodes.values()}
-            handler = LDMetricsCallbackHandler(node_keys, fn_name_to_config_key)
-
-            result = await compiled.ainvoke(  # type: ignore[call-overload]
+            result = await self._compiled.ainvoke(  # type: ignore[call-overload]
                 {'messages': [HumanMessage(content=str(input))]},
                 config={'callbacks': [handler], 'recursion_limit': 25},
             )
