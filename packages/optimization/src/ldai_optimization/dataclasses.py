@@ -209,12 +209,12 @@ class OptimizationJudgeContext:
 # Placed here so all referenced types (OptimizationContext, AIJudgeCallConfig,
 # OptimizationJudgeContext) are already defined above.
 HandleAgentCall = Union[
-    Callable[[str, AIAgentConfig, OptimizationContext, Dict[str, Callable[..., Any]]], str],
-    Callable[[str, AIAgentConfig, OptimizationContext, Dict[str, Callable[..., Any]]], Awaitable[str]],
+    Callable[[str, AIAgentConfig, OptimizationContext], str],
+    Callable[[str, AIAgentConfig, OptimizationContext], Awaitable[str]],
 ]
 HandleJudgeCall = Union[
-    Callable[[str, AIJudgeCallConfig, OptimizationJudgeContext, Dict[str, Callable[..., Any]]], str],
-    Callable[[str, AIJudgeCallConfig, OptimizationJudgeContext, Dict[str, Callable[..., Any]]], Awaitable[str]],
+    Callable[[str, AIJudgeCallConfig, OptimizationJudgeContext], str],
+    Callable[[str, AIJudgeCallConfig, OptimizationJudgeContext], Awaitable[str]],
 ]
 
 _StatusLiteral = Literal[

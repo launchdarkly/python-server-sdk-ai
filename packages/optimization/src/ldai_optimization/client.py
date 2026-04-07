@@ -317,18 +317,6 @@ class OptimizationClient:
             )
             return JudgeResult(score=0.0, rationale=None)
 
-    def _builtin_agent_tool_handlers(self) -> Dict[str, Any]:
-        """
-        Build the dict of built-in tool name → handler passed to handle_agent_call.
-
-        The framework no longer injects structured-output tools into agent or judge
-        turns — prompts ask for plain JSON directly, which is more reliable across
-        SDK implementations. This method is retained for API stability; it always
-        returns an empty dict.
-
-        :return: Empty mapping (no built-in tool handlers)
-        """
-        return {}
 
     async def _call_judges(
         self,
@@ -587,7 +575,7 @@ class OptimizationClient:
         )
 
         result = self._options.handle_judge_call(
-            judge_key, judge_call_config, judge_ctx, {}
+            judge_key, judge_call_config, judge_ctx
         )
         judge_response_str = await await_if_needed(result)
 
@@ -714,7 +702,7 @@ class OptimizationClient:
         )
 
         result = self._options.handle_judge_call(
-            judge_key, judge_call_config, judge_ctx, {}
+            judge_key, judge_call_config, judge_ctx
         )
         judge_response = await await_if_needed(result)
 
@@ -1184,7 +1172,6 @@ class OptimizationClient:
         # responses (e.g. when the agent SDK returns the LLM's post-tool-call empty text
         # instead of the tool result).
         agent_config = self._build_agent_config_for_context(variation_ctx)
-        tool_handlers = self._builtin_agent_tool_handlers()
         response_data = None
         response_str = ""
         for attempt in range(1, _MAX_VARIATION_RETRIES + 1):
@@ -1192,7 +1179,6 @@ class OptimizationClient:
                 self._agent_key,
                 agent_config,
                 variation_ctx,
-                tool_handlers,
             )
             response_str = await await_if_needed(result)
             try:
@@ -1439,7 +1425,6 @@ class OptimizationClient:
                 self._agent_key,
                 self._build_agent_config_for_context(optimize_context),
                 optimize_context,
-                self._builtin_agent_tool_handlers(),
             )
             completion_response = await await_if_needed(result)
             logger.debug(
