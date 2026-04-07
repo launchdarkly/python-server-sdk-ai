@@ -2,6 +2,13 @@
 
 All notable changes to the LaunchDarkly Python AI LangChain provider package will be documented in this file. This project adheres to [Semantic Versioning](http://semver.org).
 
+## [0.4.1](https://github.com/launchdarkly/python-server-sdk-ai/compare/launchdarkly-server-sdk-ai-langchain-0.4.0...launchdarkly-server-sdk-ai-langchain-0.4.1) (2026-04-07)
+
+
+### Bug Fixes
+
+* Fixes agent graph tool calls in fanned out graphs ([#123](https://github.com/launchdarkly/python-server-sdk-ai/issues/123)) ([c140410](https://github.com/launchdarkly/python-server-sdk-ai/commit/c14041090643d1261881343fdd70b4079997b773))
+
 ## [0.4.0](https://github.com/launchdarkly/python-server-sdk-ai/compare/launchdarkly-server-sdk-ai-langchain-0.3.2...launchdarkly-server-sdk-ai-langchain-0.4.0) (2026-04-02)
 
 
