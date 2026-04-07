@@ -108,6 +108,7 @@ def build_new_variation_prompt(
             history, current_model, current_instructions, current_parameters
         ),
         variation_prompt_feedback(history, judges),
+        variation_prompt_overfit_warning(history),
         variation_prompt_improvement_instructions(
             history, model_choices, variable_choices, initial_instructions
         ),
@@ -133,6 +134,10 @@ def variation_prompt_preamble() -> str:
             "If the original instructions were to use a placeholder like {{id}}, "
             "you should keep the placeholder in the new instructions, not replace it with the actual value. "
             "This is the case for all parameterized values (all parameters should appear in each new variation).",
+            "IMPORTANT: placeholder names are fixed identifiers (e.g. {{user_id}}, {{trip_purpose}}) — "
+            "never substitute the runtime value of a variable in place of its name. "
+            "For example, if the variable key is 'user_id' and its current value is 'user-125', "
+            "the placeholder MUST be written as {{user_id}}, NOT {{user-125}}.",
             "Pay particular attention to the instructions regarding tools and the rules for variables.",
         ]
     )
@@ -260,6 +265,55 @@ def variation_prompt_feedback(
     return "\n".join(lines)
 
 
+def variation_prompt_overfit_warning(history: List[OptimizationContext]) -> str:
+    """
+    Overfitting warning section of the variation prompt.
+
+    Combines a general reminder to write generalizable instructions with
+    specific values from the most recent iteration so the LLM knows exactly
+    what concrete values to avoid embedding literally. Returns an empty string
+    when there is no history (first attempt, no feedback to overfit to).
+
+    :param history: All previous OptimizationContexts, oldest first.
+    :return: Overfitting warning block, or empty string if history is empty.
+    """
+    if not history:
+        return ""
+
+    recent = history[-1]
+
+    lines = [
+        "## *** OVERFITTING WARNING ***",
+        "Do NOT hardcode specific values from the evaluation feedback into the instructions.",
+        "The configuration must generalise to all possible inputs, not just the ones seen so far.",
+        "Write instructions that treat the values below as examples of a broader class of inputs,",
+        "not as literals to match.",
+        "",
+        "The following specific values appeared in the most recent iteration "
+        "— do not embed them literally:",
+    ]
+
+    if recent.user_input:
+        lines.append(f'- User input: "{recent.user_input}"')
+
+    if recent.current_variables:
+        for k, v in recent.current_variables.items():
+            lines.append(f'  - placeholder {{{{{k}}}}}, current value: "{v}"')
+        lines.append(
+            "  (These are the placeholder NAMES mapped to their current VALUES"
+            " — never use a value as a placeholder name)"
+        )
+
+    lines += [
+        "",
+        "If you find yourself writing instructions that only work for the exact values above,",
+        "step back and generalise: what rule, pattern, or intent do those values represent?",
+        "Write instructions that satisfy that rule for any valid input.",
+    ]
+
+    return "\n".join(lines)
+
+
 def variation_prompt_improvement_instructions(
     history: List[OptimizationContext],
     model_choices: List[str],
@@ -284,40 +338,51 @@ def variation_prompt_improvement_instructions(
         ]
     )
 
-    # Collect unique variable keys across all variable_choices entries
-    variable_keys: set = set()
+    # Build a per-variable table: key → sorted list of unique example values
+    # collected across all variable_choices entries.
+    examples: Dict[str, List[str]] = {}
     for choice in variable_choices:
-        variable_keys.update(choice.keys())
-    placeholder_list = ", ".join(f"{{{{{k}}}}}" for k in sorted(variable_keys))
+        for k, v in choice.items():
+            examples.setdefault(k, [])
+            sv = str(v)
+            if sv not in examples[k]:
+                examples[k].append(sv)
+
+    table_lines = [
+        "## Prompt Variables:",
+        "These are the ONLY valid placeholder names. "
+        "Use them exactly as shown (case-sensitive) with {{...}} syntax:",
+        "",
+    ]
+    for k in sorted(examples.keys()):
+        vals = ", ".join(f'"{v}"' for v in examples[k])
+        table_lines.append(f"  - {{{{{k}}}}}  (example values: {vals})")
+
+    # Build concrete bad/good counterexamples using the actual keys and values
+    # so the LLM cannot mistake a runtime value for a placeholder name.
+    first_key = sorted(examples.keys())[0] if examples else "variable_name"
+    first_val = examples[first_key][0] if examples.get(first_key) else "some-value"
+    table_lines += [
+        "",
+        "IMPORTANT: The names above are the KEYS — they are the placeholder names.",
+        "The values listed are only runtime examples that will be substituted at call time.",
+        "NEVER use a runtime value as a placeholder name.",
+        f'BAD:  "...{{{{...{first_val}...}}}}..."  '
+        f'— "{first_val}" is a runtime value, not a placeholder name',
+        f'GOOD: "...{{{{{first_key}}}}}..."  '
+        f'— "{first_key}" is the correct placeholder name',
+    ]
 
     variable_instructions = "\n".join(
-        [
-            "## Prompt Variables:",
-            "These variables are substituted into the instructions at call time using {{variable_name}} syntax.",
-            "Rules:",
-            "- If the {{variable_name}} placeholder is not present in the current instructions, "
-            "you should include it where logically appropriate.",
+        table_lines
+        + [
+            "",
+            "If a placeholder is not present in the current instructions, "
+            "include it where logically appropriate.",
             "Here are the original instructions so that you can see how the "
             "placeholders are used and which are available:",
             "\nSTART:" "\n" + initial_instructions + "\n",
             "\nEND OF ORIGINAL INSTRUCTIONS\n",
-            "The following prompt variables are available and are the only "
-            f"variables that should be used: {placeholder_list}",
-            "Here is an example of a good response if an {{id}} placeholder is available: "
-            "'Select records matching id {{id}}'",
-            "Here is an example of a bad response if an {{id}} placeholder is available: "
-            "'Select records matching id 1232'",
-            "Here is an example of a good response if a {{resource_id}} and {{resource_type}} "
-            "placeholder are available: "
-            "'Select records matching id {{resource_id}} and type {{resource_type}}'",
-            "Here is an example of a bad response if a {{resource_id}} and {{resource_type}} "
-            "placeholder are available: "
-            "'Select records matching id 1232 and type {{resource_type}}'",
-            "Here is another example of a bad response if a {{resource_id}} and {{resource_type}} "
-            "placeholder are available: "
-            "'Select records matching id {{resource_id}} and type {{resource-123}}'",
-            "The above example is incorrect because the resource-123 is not a valid variable name.",
-            "To fix the above example, you would instead use {{resource_type}} and {{resource_id}}",
         ]
     )
 
@@ -362,9 +427,6 @@ def variation_prompt_improvement_instructions(
             "  }",
             "}",
             "",
-            "Always call the return_improved_configuration tool to format the response.",
-            "Return the response as-is from the return_improved_configuration tool,",
-            "do not modify it in any way.",
         ]
     )
 

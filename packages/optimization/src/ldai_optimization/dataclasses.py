@@ -222,6 +222,7 @@ _StatusLiteral = Literal[
     "generating",
     "evaluating",
     "generating variation",
+    "validating",
     "turn completed",
     "success",
     "failure",

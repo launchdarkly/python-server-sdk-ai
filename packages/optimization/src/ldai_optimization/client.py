@@ -43,6 +43,7 @@ from ldai_optimization.util import (
     handle_evaluation_tool_call,
     handle_variation_tool_call,
     interpolate_variables,
+    restore_variable_placeholders,
 )
 
 logger = logging.getLogger(__name__)
@@ -62,6 +63,25 @@ def _strip_provider_prefix(model: str) -> str:
     return model.split(".", 1)[-1]
 
 
+def _compute_validation_count(pool_size: int) -> int:
+    """Compute how many validation samples to run after a candidate passes in chaos mode.
+
+    Scales with the size of the available input/variable pool so that larger
+    option sets receive proportionally more validation coverage, capped at 5.
+    The floor of 2 ensures at least a minimal cross-check even for small pools.
+
+    :param pool_size: Total number of distinct choices in the sampling pool
+        (user_input_options count when provided, otherwise variable_choices count).
+    :return: Number of validation samples to run (between 2 and 5 inclusive).
+    """
+    return min(5, max(2, pool_size // 4))
+
+
+# Maximum number of attempts for variation generation. Transient empty or
+# unparseable responses from the LLM are retried up to this many times before
+# the variation step is treated as a failure.
+_MAX_VARIATION_RETRIES = 3
+
 # Maps SDK status strings to the API status/activity values expected by
 # agent_optimization_result records. Defined at module level to avoid
 # allocating the dict on every on_status_update invocation.
@@ -70,6 +90,7 @@ _OPTIMIZATION_STATUS_MAP: Dict[str, Dict[str, str]] = {
     "generating": {"status": "RUNNING", "activity": "GENERATING"},
     "evaluating": {"status": "RUNNING", "activity": "EVALUATING"},
     "generating variation": {"status": "RUNNING", "activity": "GENERATING_VARIATION"},
+    "validating": {"status": "RUNNING", "activity": "VALIDATING"},
     "turn completed": {"status": "RUNNING", "activity": "COMPLETED"},
     "success": {"status": "PASSED", "activity": "COMPLETED"},
     "failure": {"status": "FAILED", "activity": "COMPLETED"},
@@ -183,6 +204,7 @@ class OptimizationClient:
             "generating",
             "evaluating",
             "generating variation",
+            "validating",
             "turn completed",
             "success",
             "failure",
@@ -518,8 +540,7 @@ class OptimizationClient:
             if msg.role == "system":
                 system_parts.append(
                     msg.content
-                    + " Use the structured output tool to format your response."
-                    " You should always return a JSON object with a score and rationale."
+                    + " Return your response as a JSON object with 'score' and 'rationale' fields."
                 )
             elif msg.role == "user":
                 user_parts.append(msg.content)
@@ -670,7 +691,7 @@ class OptimizationClient:
             "A score of 0.0-0.3 means that it does not match well at all. "
             "You can return any value between 0.0 and 1.0.\n"
             "You should also provide a rationale for your score.\n"
-            "You should call the structured output tool to format your response.\n\n"
+            "Return your response as a JSON object with 'score' and 'rationale' fields.\n\n"
             'Example: {"score": 0.8, "rationale": "The response matches the acceptance statement well."}'
         )
 
@@ -1060,6 +1081,18 @@ class OptimizationClient:
             )
 
         self._current_instructions = response_data["current_instructions"]
+
+        # Post-process: replace any leaked variable values back to {{key}} form.
+        # This is a deterministic safety net for when the LLM ignores the prompt
+        # instructions and hardcodes a concrete value (e.g. "user-123") instead
+        # of the placeholder ("{{user_id}}").
+        self._current_instructions, placeholder_warnings = restore_variable_placeholders(
+            self._current_instructions,
+            self._options.variable_choices,
+        )
+        for msg in placeholder_warnings:
+            logger.warning("[Iteration %d] -> %s", iteration, msg)
+
         self._current_parameters = response_data["current_parameters"]
 
         # Update model — it should always be provided since it's required in the schema
@@ -1177,17 +1210,37 @@ class OptimizationClient:
         )
 
         # Call handle_agent_call to generate new variation; expects a JSON string
-        # matching the structured output schema (current_instructions, current_parameters, model)
-        result = self._options.handle_agent_call(
-            self._agent_key,
-            self._build_agent_config_for_context(variation_ctx),
-            variation_ctx,
-            self._builtin_agent_tool_handlers(is_variation=True),
-        )
-        response_str = await await_if_needed(result)
+        # matching the structured output schema (current_instructions, current_parameters, model).
+        # Retry up to _MAX_VARIATION_RETRIES times to handle transient empty or unparseable
+        # responses (e.g. when the agent SDK returns the LLM's post-tool-call empty text
+        # instead of the tool result).
+        agent_config = self._build_agent_config_for_context(variation_ctx)
+        tool_handlers = self._builtin_agent_tool_handlers(is_variation=True)
+        response_data = None
+        response_str = ""
+        for attempt in range(1, _MAX_VARIATION_RETRIES + 1):
+            result = self._options.handle_agent_call(
+                self._agent_key,
+                agent_config,
+                variation_ctx,
+                tool_handlers,
+            )
+            response_str = await await_if_needed(result)
+            try:
+                response_data = extract_json_from_response(response_str)
+                break
+            except ValueError:
+                if attempt == _MAX_VARIATION_RETRIES:
+                    raise
+                logger.warning(
+                    "[Iteration %d] -> Variation response empty or unparseable "
+                    "(attempt %d/%d), retrying...",
+                    iteration,
+                    attempt,
+                    _MAX_VARIATION_RETRIES,
+                )
 
-        # Extract and update current state from the parsed response
-        response_data = extract_json_from_response(response_str)
+        assert response_data is not None  # loop always raises or breaks with data
         return self._apply_new_variation_response(
             response_data, variation_ctx, response_str, iteration
         )
@@ -1296,6 +1349,7 @@ class OptimizationClient:
                 "generating",
                 "evaluating",
                 "generating variation",
+                "validating",
                 "turn completed",
                 "success",
                 "failure",
@@ -1527,6 +1581,147 @@ class OptimizationClient:
                 )
         return optimize_context
 
+    async def _run_validation_phase(
+        self,
+        passing_context: OptimizationContext,
+        iteration: int,
+    ) -> "tuple[bool, OptimizationContext, int]":
+        """Run additional evaluations against distinct random samples to confirm a passing candidate.
+
+        Mirrors the sampling logic of _run_optimization: each validation turn selects
+        a user_input from user_input_options (when provided) AND a variables dict from
+        variable_choices independently. The validation count and distinctness guarantee
+        are driven by whichever pool is larger — user_input_options when present,
+        otherwise variable_choices — ensuring validation turns use inputs the passing
+        turn did not.
+
+        If all samples pass, the caller should proceed to _handle_success. If any
+        sample fails, the caller should treat the result as a normal failed attempt
+        and generate a new variation.
+
+        :param passing_context: The OptimizationContext from the turn that just passed.
+        :param iteration: The iteration number of the passing turn; used as the
+            starting point for linear iteration numbering of validation turns.
+        :return: Tuple of (all_passed, last_context, next_iteration) where
+            next_iteration is the iteration number after the last validation sample
+            so the caller can continue numbering correctly.
+        """
+        options = self._options
+
+        # Determine the primary axis of distinctness and the pool size.
+        # user_input_options drives the count when present; otherwise variable_choices does.
+        # In either case, both user_input and variables are selected per-sample just as
+        # they are in the main optimization loop.
+        if options.user_input_options:
+            primary_pool: List[str] = options.user_input_options
+            passing_input: Optional[str] = passing_context.user_input
+            remaining_inputs: List[str] = [
+                inp for inp in primary_pool if inp != passing_input
+            ]
+            pool_size = len(primary_pool)
+        else:
+            var_pool: List[Dict[str, Any]] = options.variable_choices
+            passing_vars: Dict[str, Any] = passing_context.current_variables
+            remaining_vars: List[Dict[str, Any]] = [
+                v for v in var_pool if v != passing_vars
+            ]
+            pool_size = len(var_pool)
+
+        validation_count = _compute_validation_count(pool_size)
+        # Cap to the number of distinct remaining items, but never below 1.
+        # When the pool is exhausted (e.g. only one variable choice), sample
+        # with replacement from the full pool so at least one validation run
+        # always executes.
+        if options.user_input_options:
+            available = len(remaining_inputs)
+        else:
+            available = len(remaining_vars)
+
+        allow_repeats = available == 0
+        if allow_repeats:
+            validation_count = 1
+        else:
+            validation_count = min(validation_count, available)
+
+        logger.info(
+            "[Iteration %d] -> Candidate passed — entering validation phase (%d sample(s)%s)",
+            iteration,
+            validation_count,
+            ", repeated draw" if allow_repeats else "",
+        )
+        self._safe_status_update("validating", passing_context, iteration)
+
+        # Sample primary items, falling back to the full pool when no distinct
+        # items remain so the minimum-1 floor is always satisfied.
+        if options.user_input_options:
+            source_inputs = primary_pool if allow_repeats else remaining_inputs
+            sampled_inputs: List[str] = random.sample(source_inputs, validation_count)
+        else:
+            source_vars = var_pool if allow_repeats else remaining_vars
+            sampled_vars: List[Dict[str, Any]] = random.sample(source_vars, validation_count)
+
+        last_ctx = passing_context
+        for i in range(validation_count):
+            val_iter = iteration + i + 1
+            if options.user_input_options:
+                user_input: Optional[str] = sampled_inputs[i]
+                variables: Dict[str, Any] = random.choice(options.variable_choices)
+            else:
+                user_input = None
+                variables = sampled_vars[i]
+
+            logger.info(
+                "[Validation %d/%d] -> Running sample (iteration=%d)",
+                i + 1,
+                validation_count,
+                val_iter,
+            )
+
+            val_ctx = self._create_optimization_context(
+                iteration=val_iter,
+                user_input=user_input,
+                variables=variables,
+            )
+            self._safe_status_update("generating", val_ctx, val_iter)
+            val_ctx = await self._execute_agent_turn(val_ctx, val_iter)
+
+            if options.on_turn is not None:
+                try:
+                    sample_passed = options.on_turn(val_ctx)
+                except Exception:
+                    logger.exception(
+                        "[Validation %d/%d] -> on_turn evaluation failed", i + 1, validation_count
+                    )
+                    sample_passed = False
+            else:
+                sample_passed = self._evaluate_response(val_ctx)
+
+            last_ctx = val_ctx
+
+            if not sample_passed:
+                logger.info(
+                    "[Validation %d/%d] -> FAILED (iteration=%d) — candidate rejected",
+                    i + 1,
+                    validation_count,
+                    val_iter,
+                )
+                return False, last_ctx, val_iter
+
+            logger.debug(
+                "[Validation %d/%d] -> passed (iteration=%d)",
+                i + 1,
+                validation_count,
+                val_iter,
+            )
+
+        final_iter = iteration + validation_count
+        logger.info(
+            "[Iteration %d] -> All %d validation sample(s) passed — candidate confirmed",
+            final_iter,
+            validation_count,
+        )
+        return True, last_ctx, final_iter
+
     async def _run_optimization(
         self, agent_config: AIAgentConfig, options: OptimizationOptions
     ) -> Any:
@@ -1594,62 +1789,75 @@ class OptimizationClient:
                     )
                     on_turn_result = False
 
-                if on_turn_result:
+                initial_passed = on_turn_result
+                if initial_passed:
                     logger.info(
                         "[Iteration %d] -> on_turn returned True — turn passed",
                         iteration,
                     )
-                    return self._handle_success(optimize_context, iteration)
+            else:
+                # Auto-path: judge scores determine pass/fail via _evaluate_response
+                initial_passed = self._evaluate_response(optimize_context)
+                if initial_passed:
+                    logger.info(
+                        "[Iteration %d] -> All judges passed — turn succeeded",
+                        iteration,
+                    )
 
+            if initial_passed:
+                all_valid, last_ctx, iteration = await self._run_validation_phase(
+                    optimize_context, iteration
+                )
+                if all_valid:
+                    return self._handle_success(last_ctx, iteration)
+                # Validation failed — treat as a normal failed attempt
+                logger.info(
+                    "[Iteration %d] -> Validation failed — generating new variation (attempt %d/%d)",
+                    iteration,
+                    iteration,
+                    self._options.max_attempts,
+                )
+                if iteration >= self._options.max_attempts:
+                    return self._handle_failure(last_ctx, iteration)
+                self._history.append(last_ctx)
+                try:
+                    await self._generate_new_variation(
+                        iteration, last_ctx.current_variables
+                    )
+                except Exception:
+                    logger.exception(
+                        "[Iteration %d] -> variation generation failed", iteration
+                    )
+                    return self._handle_failure(last_ctx, iteration)
+                self._safe_status_update("turn completed", last_ctx, iteration)
+                continue
+
+            # Initial turn failed
+            if self._options.on_turn is not None:
                 logger.info(
                     "[Iteration %d] -> on_turn returned False — turn failed (attempt %d/%d)",
                     iteration,
                     iteration,
                     self._options.max_attempts,
                 )
-                if iteration >= self._options.max_attempts:
-                    return self._handle_failure(optimize_context, iteration)
-                self._history.append(optimize_context)
-                try:
-                    await self._generate_new_variation(
-                        iteration, optimize_context.current_variables
-                    )
-                except Exception:
-                    logger.exception(
-                        "[Iteration %d] -> variation generation failed", iteration
-                    )
-                    return self._handle_failure(optimize_context, iteration)
-                self._safe_status_update("turn completed", optimize_context, iteration)
-                continue
             else:
-                # Auto-path: judge scores determine pass/fail via _evaluate_response
-                passes = self._evaluate_response(optimize_context)
-                if passes:
-                    logger.info(
-                        "[Iteration %d] -> All judges passed — turn succeeded",
-                        iteration,
-                    )
-                    return self._handle_success(optimize_context, iteration)
-                else:
-                    logger.info(
-                        "[Iteration %d] -> One or more judges failed (attempt %d/%d) — generating new variation",
-                        iteration,
-                        iteration,
-                        self._options.max_attempts,
-                    )
-                    if iteration >= self._options.max_attempts:
-                        return self._handle_failure(optimize_context, iteration)
-                    self._history.append(optimize_context)
-                    try:
-                        await self._generate_new_variation(
-                            iteration, optimize_context.current_variables
-                        )
-                    except Exception:
-                        logger.exception(
-                            "[Iteration %d] -> variation generation failed", iteration
-                        )
-                        return self._handle_failure(optimize_context, iteration)
-                    self._safe_status_update(
-                        "turn completed", optimize_context, iteration
-                    )
-                    continue
+                logger.info(
+                    "[Iteration %d] -> One or more judges failed (attempt %d/%d) — generating new variation",
+                    iteration,
+                    iteration,
+                    self._options.max_attempts,
+                )
+            if iteration >= self._options.max_attempts:
+                return self._handle_failure(optimize_context, iteration)
+            self._history.append(optimize_context)
+            try:
+                await self._generate_new_variation(
+                    iteration, optimize_context.current_variables
+                )
+            except Exception:
+                logger.exception(
+                    "[Iteration %d] -> variation generation failed", iteration
+                )
+                return self._handle_failure(optimize_context, iteration)
+            self._safe_status_update("turn completed", optimize_context, iteration)
+            continue
