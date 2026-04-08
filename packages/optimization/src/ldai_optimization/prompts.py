@@ -1,11 +1,41 @@
 """Prompt-building functions for LaunchDarkly AI optimization."""
 
+import re
 from typing import Any, Dict, List, Optional
 
 from ldai_optimization.dataclasses import (
     OptimizationContext,
     OptimizationJudge,
 )
+
+_DURATION_KEYWORDS = re.compile(
+    r"\b(fast|faster|quickly|quick|latency|low-latency|duration|response\s+time|"
+    r"time\s+to\s+respond|milliseconds|performant|snappy|efficient|seconds)\b|"
+    r"(?<![a-zA-Z])ms\b",
+    re.IGNORECASE,
+)
+
+
+def _acceptance_criteria_implies_duration_optimization(
+    judges: Optional[Dict[str, OptimizationJudge]],
+) -> bool:
+    """Return True if any judge acceptance statement implies a latency optimization goal.
+
+    Scans each judge's acceptance_statement for latency-related keywords. The
+    check is case-insensitive. Returns False when judges is None or no judge
+    carries an acceptance statement.
+
+    :param judges: Judge configuration dict from OptimizationOptions, or None.
+    :return: True if duration optimization should be applied.
+    """
+    if not judges:
+        return False
+    for judge in judges.values():
+        if judge.acceptance_statement and _DURATION_KEYWORDS.search(
+            judge.acceptance_statement
+        ):
+            return True
+    return False
 
 
 def build_message_history_text(
@@ -82,6 +112,7 @@ def build_new_variation_prompt(
     model_choices: List[str],
     variable_choices: List[Dict[str, Any]],
     initial_instructions: str,
+    optimize_for_duration: bool = False,
 ) -> str:
     """
     Build the LLM prompt for generating an improved agent configuration.
@@ -99,6 +130,8 @@ def build_new_variation_prompt(
     :param model_choices: List of model IDs the LLM may select from
     :param variable_choices: List of variable dicts (used to derive placeholder names)
     :param initial_instructions: The original unmodified instructions template
+    :param optimize_for_duration: When True, appends a duration optimization section
+        instructing the LLM to prefer faster models and simpler instructions.
     :return: The assembled prompt string
     """
     sections = [
@@ -112,6 +145,7 @@ def build_new_variation_prompt(
         variation_prompt_improvement_instructions(
             history, model_choices, variable_choices, initial_instructions
         ),
+        variation_prompt_duration_optimization(model_choices) if optimize_for_duration else "",
     ]
 
     return "\n\n".join(s for s in sections if s)
@@ -211,6 +245,8 @@ def variation_prompt_configuration(
         if previous_ctx.user_input:
             lines.append(f"User question: {previous_ctx.user_input}")
         lines.append(f"Agent response: {previous_ctx.completion_response}")
+        if previous_ctx.duration_ms is not None:
+            lines.append(f"Agent duration: {previous_ctx.duration_ms:.0f}ms")
         return "\n".join(lines)
     else:
         return "\n".join(
@@ -262,6 +298,8 @@ def variation_prompt_feedback(
                 if result.rationale:
                     feedback_line += f"\n  Reasoning: {result.rationale}"
                 lines.append(feedback_line)
+        if ctx.duration_ms is not None:
+            lines.append(f"Agent duration: {ctx.duration_ms:.0f}ms")
     return "\n".join(lines)
 
 
@@ -487,3 +525,33 @@ def variation_prompt_improvement_instructions(
                 parameters_instructions,
             ]
         )
+
+
+def variation_prompt_duration_optimization(model_choices: List[str]) -> str:
+    """
+    Duration optimization section of the variation prompt.
+
+    Included when acceptance criteria imply a latency reduction goal. Instructs
+    the LLM to treat response speed as a secondary objective — quality criteria
+    must still be met first — and provides concrete guidance on how to reduce
+    latency through model selection and instruction simplification.
+
+    :param model_choices: List of model IDs the LLM may select from, so it can
+        apply its own knowledge of which models tend to be faster.
+    :return: The duration optimization prompt block.
+    """
+    return "\n".join(
+        [
+            "## Duration Optimization:",
+            "The acceptance criteria for this optimization implies that response latency should be reduced.",
+            "In addition to improving quality, generate a variation that aims to reduce the agent's response time.",
+            "You may:",
+            "- Select a faster model from the available choices if quality requirements can still be met.",
+            f"  Available models: {model_choices}",
+            "  Use your knowledge of these models to prefer those that are known to respond more quickly.",
+            "- Simplify or shorten the instructions where this does not compromise the acceptance criteria.",
+            "  Shorter prompts reduce input token counts and typically yield faster responses.",
+            "- Avoid increasing max_tokens or other parameters that extend generation time.",
+            "Quality criteria remain the primary objective — do not sacrifice passing scores to achieve lower latency.",
+        ]
+    )
