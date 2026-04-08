@@ -4,7 +4,7 @@ import inspect
 import json
 import logging
 import re
-from typing import Any, Awaitable, Dict, List, Optional, Union
+from typing import Any, Awaitable, Dict, List, Optional, Tuple, Union
 
 from ldai_optimization.dataclasses import ToolDefinition
 
@@ -68,7 +68,92 @@ def interpolate_variables(text: str, variables: Dict[str, Any]) -> str:
         key = match.group(1).strip()
         return str(variables[key]) if key in variables else match.group(0)
 
-    return re.sub(r"\{\{(\w+)\}\}", replace, text)
+    return re.sub(r"\{\{([\w-]+)\}\}", replace, text)
+
+
+def restore_variable_placeholders(
+    text: str,
+    variable_choices: List[Dict[str, Any]],
+    min_value_length: int = 3,
+) -> Tuple[str, List[str]]:
+    """
+    Scan ``text`` for leaked variable values and restore them to ``{{key}}`` form.
+
+    This is the deterministic inverse of :func:`interpolate_variables`. It acts
+    as a post-processing safety net after variation generation: when the LLM
+    hardcodes a concrete variable value (e.g. ``user-123``) instead of writing
+    the placeholder (``{{user_id}}``), this function replaces the value back so
+    subsequent iterations receive correctly templated instructions.
+
+    Values are matched with boundary guards so that a value like ``user-123``
+    inside a longer token like ``user-1234`` is not substituted. Multi-line
+    values are handled identically to single-line ones — ``re.escape`` produces
+    a literal pattern and the lookbehind/lookahead only inspect the character
+    immediately adjacent to the match boundary.
+
+    Values shorter than ``min_value_length`` characters are skipped because
+    short strings (e.g. ``"en"``, ``"US"``) are too likely to appear
+    coincidentally in unrelated prose.
+
+    :param text: The generated instruction string to clean.
+    :param variable_choices: All possible variable dicts, used to build the
+        reverse value→key map. When the same value appears under multiple keys
+        the first key encountered wins.
+    :param min_value_length: Minimum character length a value must have before
+        it is considered for replacement. Defaults to 3.
+    :return: A tuple of ``(cleaned_text, warnings)`` where ``warnings`` is a
+        list of human-readable strings describing each replacement made.
+    """
+    # Build reverse map: string(value) → key. Longest values first so that
+    # a longer value like "user-123-admin" is replaced before the shorter
+    # "user-123" substring, preventing partial-match corruption.
+    value_to_key: Dict[str, str] = {}
+    for choice in variable_choices:
+        for key, value in choice.items():
+            str_value = str(value)
+            if str_value not in value_to_key:
+                value_to_key[str_value] = key
+
+    sorted_entries = sorted(value_to_key.items(), key=lambda kv: len(kv[0]), reverse=True)
+
+    warnings: List[str] = []
+    for value, key in sorted_entries:
+        if len(value) < min_value_length:
+            continue
+        placeholder = f"{{{{{key}}}}}"
+        # Skip if the placeholder is already present — nothing to fix.
+        if placeholder in text and value not in text:
+            continue
+
+        total_count = 0
+
+        # Pass 1: replace {{value}} forms — the LLM used the runtime value as
+        # if it were a placeholder key (e.g. {{user-125}} instead of {{user_id}}).
+        # This must run before the boundary-guarded pass so that the bare value
+        # inside the braces is consumed here rather than matched by pass 2,
+        # which would otherwise leave the surrounding braces and produce
+        # {{{{user_id}}}}.
+        brace_pattern = r'\{\{' + re.escape(value) + r'\}\}'
+        new_text, brace_count = re.subn(brace_pattern, placeholder, text, flags=re.DOTALL)
+        if brace_count:
+            text = new_text
+            total_count += brace_count
+
+        # Pass 2: replace bare value occurrences with a boundary guard so that
+        # "user-123" inside "user-1234" is not substituted.
+        pattern = r'(?<![A-Za-z0-9_\-])' + re.escape(value) + r'(?![A-Za-z0-9_\-])'
+        new_text, count = re.subn(pattern, placeholder, text, flags=re.DOTALL)
+        if count:
+            text = new_text
+            total_count += count
+
+        if total_count:
+            warnings.append(
+                f"Variable value {value!r} found in generated instructions "
+                f"— replaced {total_count} occurrence(s) with placeholder {placeholder}"
+            )
+
+    return text, warnings
 
 
 async def await_if_needed(

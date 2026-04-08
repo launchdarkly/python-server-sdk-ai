@@ -17,7 +17,21 @@ from typing import (
 
 from ldai import AIAgentConfig
 from ldai.models import LDMessage, ModelConfig
+from ldai.tracker import TokenUsage
 from ldclient import Context
+
+
+@dataclass
+class OptimizationResponse:
+    """The return value for both ``handle_agent_call`` and ``handle_judge_call`` callbacks.
+
+    :param output: The text output produced by the LLM.
+    :param usage: Optional token usage for this call. Set fields to 0 or omit entirely
+        if token tracking is not available for the framework being used.
+    """
+
+    output: str
+    usage: Optional[TokenUsage] = None
 
 
 @dataclass
@@ -26,6 +40,8 @@ class JudgeResult:
 
     score: float
     rationale: Optional[str] = None
+    duration_ms: Optional[float] = None
+    usage: Optional[TokenUsage] = None
 
     def to_json(self) -> Dict[str, Any]:
         """
@@ -33,10 +49,18 @@ class JudgeResult:
 
         :return: Dictionary representation of the judge result that can be serialized with json.dumps()
         """
-        return {
+        result: Dict[str, Any] = {
             "score": self.score,
             "rationale": self.rationale,
+            "duration_ms": self.duration_ms,
         }
+        if self.usage is not None:
+            result["usage"] = {
+                "total": self.usage.total,
+                "input": self.usage.input,
+                "output": self.usage.output,
+            }
+        return result
 
 
 @dataclass
@@ -152,6 +176,8 @@ class OptimizationContext:
         default_factory=list
     )  # previous context items
     iteration: int = 0  # current iteration number
+    duration_ms: Optional[float] = None  # wall-clock time for the agent call in milliseconds
+    usage: Optional[TokenUsage] = None  # token usage reported by the agent for this iteration
 
     def copy_without_history(self) -> OptimizationContext:
         """
@@ -169,6 +195,8 @@ class OptimizationContext:
             user_input=self.user_input,
             history=(),  # Empty history to keep it flat
             iteration=self.iteration,
+            duration_ms=self.duration_ms,
+            usage=self.usage,
         )
 
     def to_json(self) -> Dict[str, Any]:
@@ -183,7 +211,7 @@ class OptimizationContext:
 
         history_list = [ctx.to_json() for ctx in self.history]
 
-        return {
+        result: Dict[str, Any] = {
             "scores": scores_dict,
             "completion_response": self.completion_response,
             "current_instructions": self.current_instructions,
@@ -193,7 +221,15 @@ class OptimizationContext:
             "current_variables": self.current_variables,
             "history": history_list,
             "iteration": self.iteration,
+            "duration_ms": self.duration_ms,
         }
+        if self.usage is not None:
+            result["usage"] = {
+                "total": self.usage.total,
+                "input": self.usage.input,
+                "output": self.usage.output,
+            }
+        return result
 
 
 @dataclass
@@ -209,12 +245,12 @@ class OptimizationJudgeContext:
 # Placed here so all referenced types (OptimizationContext, AIJudgeCallConfig,
 # OptimizationJudgeContext) are already defined above.
 HandleAgentCall = Union[
-    Callable[[str, AIAgentConfig, OptimizationContext, Dict[str, Callable[..., Any]]], str],
-    Callable[[str, AIAgentConfig, OptimizationContext, Dict[str, Callable[..., Any]]], Awaitable[str]],
+    Callable[[str, AIAgentConfig, OptimizationContext], OptimizationResponse],
+    Callable[[str, AIAgentConfig, OptimizationContext], Awaitable[OptimizationResponse]],
 ]
 HandleJudgeCall = Union[
-    Callable[[str, AIJudgeCallConfig, OptimizationJudgeContext, Dict[str, Callable[..., Any]]], str],
-    Callable[[str, AIJudgeCallConfig, OptimizationJudgeContext, Dict[str, Callable[..., Any]]], Awaitable[str]],
+    Callable[[str, AIJudgeCallConfig, OptimizationJudgeContext], OptimizationResponse],
+    Callable[[str, AIJudgeCallConfig, OptimizationJudgeContext], Awaitable[OptimizationResponse]],
 ]
 
 _StatusLiteral = Literal[
@@ -222,6 +258,7 @@ _StatusLiteral = Literal[
     "generating",
     "evaluating",
     "generating variation",
+    "validating",
     "turn completed",
     "success",
     "failure",

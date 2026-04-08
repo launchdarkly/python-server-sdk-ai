@@ -3,6 +3,8 @@
 This package will provide helpers to run selected tools against the LaunchDarkly API from SDK-based workflows.
 """
 
+from ldai.tracker import TokenUsage
+
 from ldai_optimization.client import OptimizationClient
 from ldai_optimization.dataclasses import (
     AIJudgeCallConfig,
@@ -13,6 +15,7 @@ from ldai_optimization.dataclasses import (
     OptimizationJudge,
     OptimizationJudgeContext,
     OptimizationOptions,
+    OptimizationResponse,
     ToolDefinition,
 )
 from ldai_optimization.ld_api_client import LDApiError
@@ -31,5 +34,7 @@ __all__ = [
     'OptimizationJudge',
     'OptimizationJudgeContext',
     'OptimizationOptions',
+    'OptimizationResponse',
+    'TokenUsage',
     'ToolDefinition',
 ]

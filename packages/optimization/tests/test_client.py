@@ -9,7 +9,7 @@ from ldai import AIAgentConfig, AIJudgeConfig, AIJudgeConfigDefault, LDAIClient
 from ldai.models import LDMessage, ModelConfig
 from ldclient import Context
 
-from ldai_optimization.client import OptimizationClient
+from ldai_optimization.client import OptimizationClient, _compute_validation_count
 from ldai_optimization.dataclasses import (
     AIJudgeCallConfig,
     GroundTruthOptimizationOptions,
@@ -20,17 +20,21 @@ from ldai_optimization.dataclasses import (
     OptimizationJudge,
     OptimizationJudgeContext,
     OptimizationOptions,
+    OptimizationResponse,
     ToolDefinition,
 )
 from ldai_optimization.prompts import (
     build_new_variation_prompt,
     variation_prompt_acceptance_criteria,
+    variation_prompt_improvement_instructions,
+    variation_prompt_overfit_warning,
+    variation_prompt_preamble,
 )
+from ldai_optimization.util import interpolate_variables
 from ldai_optimization.util import (
-    create_evaluation_tool,
-    create_variation_tool,
     handle_evaluation_tool_call,
     handle_variation_tool_call,
+    restore_variable_placeholders,
 )
 
 # ---------------------------------------------------------------------------
@@ -79,9 +83,9 @@ def _make_options(
     variable_choices=None,
 ) -> OptimizationOptions:
     if handle_agent_call is None:
-        handle_agent_call = AsyncMock(return_value="The capital of France is Paris.")
+        handle_agent_call = AsyncMock(return_value=OptimizationResponse(output="The capital of France is Paris."))
     if handle_judge_call is None:
-        handle_judge_call = AsyncMock(return_value=JUDGE_PASS_RESPONSE)
+        handle_judge_call = AsyncMock(return_value=OptimizationResponse(output=JUDGE_PASS_RESPONSE))
     if judges is None:
         judges = {
             "accuracy": OptimizationJudge(
@@ -244,7 +248,7 @@ class TestEvaluateResponse:
         assert self.client._evaluate_response(ctx) is True
 
     def test_no_judges_always_passes(self):
-        options = _make_options(judges=None, handle_agent_call=AsyncMock(return_value="x"))
+        options = _make_options(judges=None, handle_agent_call=AsyncMock(return_value=OptimizationResponse(output="x")))
         # Need on_turn to satisfy validation — inject directly
         options_with_on_turn = OptimizationOptions(
             context_choices=[LD_CONTEXT],
@@ -252,8 +256,8 @@ class TestEvaluateResponse:
             model_choices=["gpt-4o"],
             judge_model="gpt-4o",
             variable_choices=[{}],
-            handle_agent_call=AsyncMock(return_value="x"),
-            handle_judge_call=AsyncMock(return_value=JUDGE_PASS_RESPONSE),
+            handle_agent_call=AsyncMock(return_value=OptimizationResponse(output="x")),
+            handle_judge_call=AsyncMock(return_value=OptimizationResponse(output=JUDGE_PASS_RESPONSE)),
             judges={"j": OptimizationJudge(threshold=1.0, acceptance_statement="x")},
             on_turn=lambda ctx: True,
         )
@@ -293,48 +297,6 @@ class TestEvaluateResponse:
 
 
 # ---------------------------------------------------------------------------
-# _builtin_judge_tool_handlers / _builtin_agent_tool_handlers
-# ---------------------------------------------------------------------------
-
-
-class TestBuiltinToolHandlers:
-    def setup_method(self):
-        self.client = _make_client()
-        self.client._options = _make_options()
-
-    def test_judge_handlers_contains_evaluation_tool(self):
-        handlers = self.client._builtin_judge_tool_handlers()
-        assert create_evaluation_tool().name in handlers
-
-    def test_judge_handler_returns_json(self):
-        handlers = self.client._builtin_judge_tool_handlers()
-        result = handlers[create_evaluation_tool().name](score=0.7, rationale="ok")
-        data = json.loads(result)
-        assert data["score"] == 0.7
-
-    def test_agent_handlers_empty_for_regular_turn(self):
-        handlers = self.client._builtin_agent_tool_handlers(is_variation=False)
-        assert handlers == {}
-
-    def test_agent_handlers_contains_variation_tool_for_variation_turn(self):
-        handlers = self.client._builtin_agent_tool_handlers(is_variation=True)
-        expected_name = create_variation_tool(self.client._options.model_choices).name
-        assert expected_name in handlers
-
-    def test_variation_handler_returns_valid_json(self):
-        handlers = self.client._builtin_agent_tool_handlers(is_variation=True)
-        name = create_variation_tool(self.client._options.model_choices).name
-        result = handlers[name](
-            current_instructions="New instructions.",
-            current_parameters={"temperature": 0.3},
-            model="gpt-4o",
-        )
-        data = json.loads(result)
-        assert data["current_instructions"] == "New instructions."
-        assert data["model"] == "gpt-4o"
-
-
-# ---------------------------------------------------------------------------
 # _evaluate_acceptance_judge
 # ---------------------------------------------------------------------------
 
@@ -346,7 +308,7 @@ class TestEvaluateAcceptanceJudge:
         self.client._agent_key = "test-agent"
         self.client._agent_config = agent_config
         self.client._initialize_class_members_from_config(agent_config)
-        self.handle_judge_call = AsyncMock(return_value=JUDGE_PASS_RESPONSE)
+        self.handle_judge_call = AsyncMock(return_value=OptimizationResponse(output=JUDGE_PASS_RESPONSE))
         self.client._options = _make_options(handle_judge_call=self.handle_judge_call)
 
     async def test_returns_parsed_score_and_rationale(self):
@@ -377,11 +339,10 @@ class TestEvaluateAcceptanceJudge:
             user_input="What time is it?",
         )
         call_args = self.handle_judge_call.call_args
-        key, config, ctx, handlers = call_args.args
+        key, config, ctx = call_args.args
         assert key == "relevance"
         assert isinstance(config, AIJudgeCallConfig)
         assert isinstance(ctx, OptimizationJudgeContext)
-        assert create_evaluation_tool().name in handlers
 
     async def test_messages_has_system_and_user_turns(self):
         judge = OptimizationJudge(
@@ -395,7 +356,7 @@ class TestEvaluateAcceptanceJudge:
             reasoning_history="",
             user_input="What colour is the sky?",
         )
-        _, config, _, _ = self.handle_judge_call.call_args.args
+        _, config, _ = self.handle_judge_call.call_args.args
         roles = [m.role for m in config.messages]
         assert roles == ["system", "user"]
 
@@ -411,7 +372,7 @@ class TestEvaluateAcceptanceJudge:
             reasoning_history="",
             user_input="Is Paris in France?",
         )
-        _, config, _, _ = self.handle_judge_call.call_args.args
+        _, config, _ = self.handle_judge_call.call_args.args
         system_msg = next(m for m in config.messages if m.role == "system")
         assert system_msg.content == config.instructions
 
@@ -427,7 +388,7 @@ class TestEvaluateAcceptanceJudge:
             reasoning_history="",
             user_input="Capital of France?",
         )
-        _, config, ctx, _ = self.handle_judge_call.call_args.args
+        _, config, ctx = self.handle_judge_call.call_args.args
         user_msg = next(m for m in config.messages if m.role == "user")
         assert user_msg.content == ctx.user_input
 
@@ -443,10 +404,11 @@ class TestEvaluateAcceptanceJudge:
             user_input="Tell me about Paris.",
         )
         call_args = self.handle_judge_call.call_args
-        _, config, _, _ = call_args.args
+        _, config, _ = call_args.args
         assert statement in config.instructions
 
-    async def test_evaluation_tool_in_config_parameters(self):
+    async def test_no_structured_output_tool_in_judge_config(self):
+        """Structured output tool must not be injected — judges return plain JSON."""
         judge = OptimizationJudge(threshold=0.8, acceptance_statement="Be brief.")
         await self.client._evaluate_acceptance_judge(
             judge_key="brevity",
@@ -457,12 +419,11 @@ class TestEvaluateAcceptanceJudge:
             user_input="Is Paris in France?",
         )
         call_args = self.handle_judge_call.call_args
-        _, config, _, _ = call_args.args
+        _, config, _ = call_args.args
         tools = config.model.get_parameter("tools") or []
-        tool_names = [t["name"] for t in tools]
-        assert create_evaluation_tool().name in tool_names
+        assert tools == []
 
-    async def test_agent_tools_prepended_to_config_tools(self):
+    async def test_agent_tools_included_in_config_tools(self):
         agent_tool = ToolDefinition(
             name="lookup", description="Lookup data", input_schema={}
         )
@@ -477,11 +438,10 @@ class TestEvaluateAcceptanceJudge:
             agent_tools=[agent_tool],
         )
         call_args = self.handle_judge_call.call_args
-        _, config, _, _ = call_args.args
+        _, config, _ = call_args.args
         tools = config.model.get_parameter("tools") or []
         tool_names = [t["name"] for t in tools]
-        assert "lookup" in tool_names
-        assert tool_names.index("lookup") < tool_names.index(create_evaluation_tool().name)
+        assert tool_names == ["lookup"]
 
     async def test_variables_in_context(self):
         judge = OptimizationJudge(threshold=0.8, acceptance_statement="Be accurate.")
@@ -496,7 +456,7 @@ class TestEvaluateAcceptanceJudge:
             variables=variables,
         )
         call_args = self.handle_judge_call.call_args
-        _, _, ctx, _ = call_args.args
+        _, _, ctx = call_args.args
         assert ctx.variables == variables
 
     async def test_returns_zero_score_on_missing_acceptance_statement(self):
@@ -513,7 +473,7 @@ class TestEvaluateAcceptanceJudge:
         self.handle_judge_call.assert_not_called()
 
     async def test_returns_zero_score_on_parse_failure(self):
-        self.handle_judge_call.return_value = "not json at all"
+        self.handle_judge_call.return_value = OptimizationResponse(output="not json at all")
         judge = OptimizationJudge(threshold=0.8, acceptance_statement="Be clear.")
         result = await self.client._evaluate_acceptance_judge(
             judge_key="clarity",
@@ -539,7 +499,7 @@ class TestEvaluateConfigJudge:
         self.client._agent_key = "test-agent"
         self.client._agent_config = agent_config
         self.client._initialize_class_members_from_config(agent_config)
-        self.handle_judge_call = AsyncMock(return_value=JUDGE_PASS_RESPONSE)
+        self.handle_judge_call = AsyncMock(return_value=OptimizationResponse(output=JUDGE_PASS_RESPONSE))
         self.client._options = _make_options(handle_judge_call=self.handle_judge_call)
 
     def _make_judge_config(self, enabled: bool = True) -> AIJudgeConfig:
@@ -565,7 +525,7 @@ class TestEvaluateConfigJudge:
             user_input="What is X?",
         )
         call_args = self.handle_judge_call.call_args
-        key, config, ctx, handlers = call_args.args
+        key, config, ctx = call_args.args
         assert key == "quality"
         assert isinstance(config, AIJudgeCallConfig)
         assert "You are an evaluator." in config.instructions
@@ -582,7 +542,7 @@ class TestEvaluateConfigJudge:
             reasoning_history="",
             user_input="What is X?",
         )
-        _, config, _, _ = self.handle_judge_call.call_args.args
+        _, config, _ = self.handle_judge_call.call_args.args
         roles = [m.role for m in config.messages]
         assert roles == ["system", "user"]
 
@@ -597,7 +557,7 @@ class TestEvaluateConfigJudge:
             reasoning_history="",
             user_input="What is X?",
         )
-        _, config, _, _ = self.handle_judge_call.call_args.args
+        _, config, _ = self.handle_judge_call.call_args.args
         system_msg = next(m for m in config.messages if m.role == "system")
         assert system_msg.content == config.instructions
 
@@ -612,7 +572,7 @@ class TestEvaluateConfigJudge:
             reasoning_history="",
             user_input="What is X?",
         )
-        _, config, ctx, _ = self.handle_judge_call.call_args.args
+        _, config, ctx = self.handle_judge_call.call_args.args
         user_msg = next(m for m in config.messages if m.role == "user")
         assert user_msg.content == ctx.user_input
 
@@ -627,7 +587,7 @@ class TestEvaluateConfigJudge:
             reasoning_history="",
             user_input="What is X?",
         )
-        _, config, _, _ = self.handle_judge_call.call_args.args
+        _, config, _ = self.handle_judge_call.call_args.args
         user_msg = next(m for m in config.messages if m.role == "user")
         assert "Evaluate this response." in user_msg.content
 
@@ -684,7 +644,7 @@ class TestEvaluateConfigJudge:
         assert "message_history" in passed_vars
         assert "response_to_evaluate" in passed_vars
 
-    async def test_agent_tools_prepended_before_evaluation_tool(self):
+    async def test_agent_tools_included_without_evaluation_tool(self):
         self.mock_ldai.judge_config.return_value = self._make_judge_config()
         agent_tool = ToolDefinition(name="search", description="Search", input_schema={})
         judge = OptimizationJudge(threshold=0.8, judge_key="ld-judge-key")
@@ -697,11 +657,10 @@ class TestEvaluateConfigJudge:
             user_input="Q?",
             agent_tools=[agent_tool],
         )
-        _, config, _, _ = self.handle_judge_call.call_args.args
+        _, config, _ = self.handle_judge_call.call_args.args
         tools = config.model.get_parameter("tools") or []
         names = [t["name"] for t in tools]
-        assert "search" in names
-        assert names.index("search") < names.index(create_evaluation_tool().name)
+        assert names == ["search"]
 
 
 # ---------------------------------------------------------------------------
@@ -712,8 +671,8 @@ class TestEvaluateConfigJudge:
 class TestExecuteAgentTurn:
     def setup_method(self):
         self.agent_response = "Paris is the capital of France."
-        self.handle_agent_call = AsyncMock(return_value=self.agent_response)
-        self.handle_judge_call = AsyncMock(return_value=JUDGE_PASS_RESPONSE)
+        self.handle_agent_call = AsyncMock(return_value=OptimizationResponse(output=self.agent_response))
+        self.handle_judge_call = AsyncMock(return_value=OptimizationResponse(output=JUDGE_PASS_RESPONSE))
         self.client = _make_client()
         agent_config = _make_agent_config()
         self.client._agent_key = "test-agent"
@@ -740,11 +699,10 @@ class TestExecuteAgentTurn:
         ctx = self._make_context()
         await self.client._execute_agent_turn(ctx, iteration=1)
         self.handle_agent_call.assert_called_once()
-        key, config, passed_ctx, handlers = self.handle_agent_call.call_args.args
+        key, config, passed_ctx = self.handle_agent_call.call_args.args
         assert key == "test-agent"
         assert isinstance(config, AIAgentConfig)
         assert passed_ctx is ctx
-        assert handlers == {}
 
     async def test_completion_response_stored_in_returned_context(self):
         ctx = self._make_context()
@@ -760,7 +718,7 @@ class TestExecuteAgentTurn:
     async def test_variables_interpolated_into_agent_config_instructions(self):
         ctx = self._make_context()
         await self.client._execute_agent_turn(ctx, iteration=1)
-        _, config, _, _ = self.handle_agent_call.call_args.args
+        _, config, _ = self.handle_agent_call.call_args.args
         assert "{{language}}" not in config.instructions
         assert "English" in config.instructions
 
@@ -778,7 +736,7 @@ class TestExecuteAgentTurn:
 
 class TestGenerateNewVariation:
     def setup_method(self):
-        self.handle_agent_call = AsyncMock(return_value=VARIATION_RESPONSE)
+        self.handle_agent_call = AsyncMock(return_value=OptimizationResponse(output=VARIATION_RESPONSE))
         self.client = _make_client()
         agent_config = _make_agent_config()
         self.client._agent_key = "test-agent"
@@ -799,18 +757,17 @@ class TestGenerateNewVariation:
         await self.client._generate_new_variation(iteration=1, variables={})
         assert self.client._current_model == "gpt-4o"
 
-    async def test_variation_tool_in_agent_config(self):
+    async def test_no_structured_output_tool_in_variation_config(self):
+        """Variation turn must not inject the structured-output tool — prompts use plain JSON."""
         await self.client._generate_new_variation(iteration=1, variables={})
-        _, config, _, _ = self.handle_agent_call.call_args.args
+        _, config, _ = self.handle_agent_call.call_args.args
         tools = config.model.get_parameter("tools") or []
-        tool_names = [t["name"] for t in tools]
-        assert create_variation_tool(self.client._options.model_choices).name in tool_names
+        assert tools == []
 
-    async def test_builtin_handlers_passed_for_variation(self):
+    async def test_variation_call_uses_three_arg_signature(self):
+        """handle_agent_call receives exactly (key, config, context) — no tools arg."""
         await self.client._generate_new_variation(iteration=1, variables={})
-        _, _, _, handlers = self.handle_agent_call.call_args.args
-        expected_name = create_variation_tool(self.client._options.model_choices).name
-        assert expected_name in handlers
+        assert len(self.handle_agent_call.call_args.args) == 3
 
     async def test_model_not_updated_when_not_in_model_choices(self):
         bad_response = json.dumps({
@@ -818,10 +775,41 @@ class TestGenerateNewVariation:
             "current_parameters": {},
             "model": "some-unknown-model",
         })
-        self.handle_agent_call.return_value = bad_response
+        self.handle_agent_call.return_value = OptimizationResponse(output=bad_response)
         original_model = self.client._current_model
         await self.client._generate_new_variation(iteration=1, variables={})
         assert self.client._current_model == original_model
+
+    async def test_retries_on_empty_response_and_succeeds(self):
+        """First attempt returns empty string; second returns valid JSON — succeeds."""
+        self.handle_agent_call.side_effect = [
+            OptimizationResponse(output=""),           # attempt 1: empty
+            OptimizationResponse(output=VARIATION_RESPONSE),  # attempt 2: valid
+        ]
+        await self.client._generate_new_variation(iteration=1, variables={})
+        assert self.client._current_instructions == "You are an improved assistant."
+        assert self.handle_agent_call.call_count == 2
+
+    async def test_retries_on_unparseable_response_and_succeeds(self):
+        """First attempt returns non-JSON text; second returns valid JSON — succeeds."""
+        self.handle_agent_call.side_effect = [
+            OptimizationResponse(output="Sorry, I cannot do that."),  # attempt 1: not JSON
+            OptimizationResponse(output=VARIATION_RESPONSE),           # attempt 2: valid
+        ]
+        await self.client._generate_new_variation(iteration=1, variables={})
+        assert self.client._current_instructions == "You are an improved assistant."
+        assert self.handle_agent_call.call_count == 2
+
+    async def test_raises_after_max_retries_exhausted(self):
+        """All three attempts return empty strings — ValueError is raised."""
+        self.handle_agent_call.side_effect = [
+            OptimizationResponse(output=""),
+            OptimizationResponse(output=""),
+            OptimizationResponse(output=""),
+        ]
+        with pytest.raises(ValueError, match="Failed to parse structured output"):
+            await self.client._generate_new_variation(iteration=1, variables={})
+        assert self.handle_agent_call.call_count == 3
 
 
 # ---------------------------------------------------------------------------
@@ -834,8 +822,8 @@ class TestRunOptimization:
         self.mock_ldai = _make_ldai_client()
 
     async def test_succeeds_on_first_attempt_when_judge_passes(self):
-        handle_agent_call = AsyncMock(return_value="The capital of France is Paris.")
-        handle_judge_call = AsyncMock(return_value=JUDGE_PASS_RESPONSE)
+        handle_agent_call = AsyncMock(return_value=OptimizationResponse(output="The capital of France is Paris."))
+        handle_judge_call = AsyncMock(return_value=OptimizationResponse(output=JUDGE_PASS_RESPONSE))
         client = _make_client(self.mock_ldai)
         options = _make_options(
             handle_agent_call=handle_agent_call,
@@ -843,16 +831,22 @@ class TestRunOptimization:
         )
         result = await client.optimize_from_options("test-agent", options)
         assert result.scores["accuracy"].score == 1.0
-        handle_agent_call.assert_called_once()
+        # 1 initial agent call + 1 validation sample (repeated draw — only 1 variable choice)
+        assert handle_agent_call.call_count == 2
 
     async def test_generates_variation_when_judge_fails(self):
         agent_responses = [
-            "Bad answer.",
-            VARIATION_RESPONSE,  # variation generation
-            "Better answer.",
+            OptimizationResponse(output="Bad answer."),
+            OptimizationResponse(output=VARIATION_RESPONSE),  # variation generation
+            OptimizationResponse(output="Better answer."),
+            OptimizationResponse(output="Better answer."),    # 1 validation sample (repeated draw — only 1 variable choice)
         ]
         handle_agent_call = AsyncMock(side_effect=agent_responses)
-        judge_responses = [JUDGE_FAIL_RESPONSE, JUDGE_PASS_RESPONSE]
+        judge_responses = [
+            OptimizationResponse(output=JUDGE_FAIL_RESPONSE),
+            OptimizationResponse(output=JUDGE_PASS_RESPONSE),
+            OptimizationResponse(output=JUDGE_PASS_RESPONSE),
+        ]
         handle_judge_call = AsyncMock(side_effect=judge_responses)
         client = _make_client(self.mock_ldai)
         options = _make_options(
@@ -862,19 +856,20 @@ class TestRunOptimization:
         )
         result = await client.optimize_from_options("test-agent", options)
         assert result.scores["accuracy"].score == 1.0
-        assert handle_agent_call.call_count == 3  # 1 agent + 1 variation + 1 agent
+        # 1 agent + 1 variation + 1 agent + 1 validation sample
+        assert handle_agent_call.call_count == 4
 
     async def test_returns_last_context_after_max_attempts(self):
         # The max_attempts guard fires before variation on the final iteration,
         # so only iterations 1 and 2 produce a variation call.
         handle_agent_call = AsyncMock(side_effect=[
-            "Bad answer.",       # iteration 1: agent
-            VARIATION_RESPONSE,  # iteration 1: variation
-            "Still bad.",        # iteration 2: agent
-            VARIATION_RESPONSE,  # iteration 2: variation
-            "Still bad.",        # iteration 3: agent (max_attempts reached — no variation)
+            OptimizationResponse(output="Bad answer."),       # iteration 1: agent
+            OptimizationResponse(output=VARIATION_RESPONSE),  # iteration 1: variation
+            OptimizationResponse(output="Still bad."),        # iteration 2: agent
+            OptimizationResponse(output=VARIATION_RESPONSE),  # iteration 2: variation
+            OptimizationResponse(output="Still bad."),        # iteration 3: agent (max_attempts reached — no variation)
         ])
-        handle_judge_call = AsyncMock(return_value=JUDGE_FAIL_RESPONSE)
+        handle_judge_call = AsyncMock(return_value=OptimizationResponse(output=JUDGE_FAIL_RESPONSE))
         client = _make_client(self.mock_ldai)
         options = _make_options(
             handle_agent_call=handle_agent_call,
@@ -886,8 +881,8 @@ class TestRunOptimization:
 
     async def test_on_passing_result_called_on_success(self):
         on_passing = MagicMock()
-        handle_agent_call = AsyncMock(return_value="Great answer.")
-        handle_judge_call = AsyncMock(return_value=JUDGE_PASS_RESPONSE)
+        handle_agent_call = AsyncMock(return_value=OptimizationResponse(output="Great answer."))
+        handle_judge_call = AsyncMock(return_value=OptimizationResponse(output=JUDGE_PASS_RESPONSE))
         client = _make_client(self.mock_ldai)
         options = _make_options(
             handle_agent_call=handle_agent_call,
@@ -900,11 +895,11 @@ class TestRunOptimization:
     async def test_on_failing_result_called_on_max_attempts(self):
         on_failing = MagicMock()
         handle_agent_call = AsyncMock(side_effect=[
-            "Bad.",             # iteration 1: agent
-            VARIATION_RESPONSE, # iteration 1: variation
-            "Still bad.",       # iteration 2: agent (max_attempts reached — no variation)
+            OptimizationResponse(output="Bad."),             # iteration 1: agent
+            OptimizationResponse(output=VARIATION_RESPONSE), # iteration 1: variation
+            OptimizationResponse(output="Still bad."),       # iteration 2: agent (max_attempts reached — no variation)
         ])
-        handle_judge_call = AsyncMock(return_value=JUDGE_FAIL_RESPONSE)
+        handle_judge_call = AsyncMock(return_value=OptimizationResponse(output=JUDGE_FAIL_RESPONSE))
         client = _make_client(self.mock_ldai)
         options = _make_options(
             handle_agent_call=handle_agent_call,
@@ -916,8 +911,8 @@ class TestRunOptimization:
         on_failing.assert_called_once()
 
     async def test_on_turn_manual_path_success(self):
-        handle_agent_call = AsyncMock(return_value="Answer.")
-        handle_judge_call = AsyncMock(return_value=JUDGE_PASS_RESPONSE)
+        handle_agent_call = AsyncMock(return_value=OptimizationResponse(output="Answer."))
+        handle_judge_call = AsyncMock(return_value=OptimizationResponse(output=JUDGE_PASS_RESPONSE))
         client = _make_client(self.mock_ldai)
         options = OptimizationOptions(
             context_choices=[LD_CONTEXT],
@@ -935,8 +930,8 @@ class TestRunOptimization:
 
     async def test_status_update_callback_called_at_each_stage(self):
         statuses = []
-        handle_agent_call = AsyncMock(return_value="Good answer.")
-        handle_judge_call = AsyncMock(return_value=JUDGE_PASS_RESPONSE)
+        handle_agent_call = AsyncMock(return_value=OptimizationResponse(output="Good answer."))
+        handle_judge_call = AsyncMock(return_value=OptimizationResponse(output=JUDGE_PASS_RESPONSE))
         client = _make_client(self.mock_ldai)
         options = _make_options(
             handle_agent_call=handle_agent_call,
@@ -948,6 +943,250 @@ class TestRunOptimization:
         assert "generating" in statuses
         assert "evaluating" in statuses
         assert "success" in statuses
+
+
+# ---------------------------------------------------------------------------
+# _compute_validation_count
+# ---------------------------------------------------------------------------
+
+
+class TestComputeValidationCount:
+    def test_pool_of_10_returns_2(self):
+        assert _compute_validation_count(10) == 2
+
+    def test_pool_of_20_returns_5(self):
+        assert _compute_validation_count(20) == 5
+
+    def test_pool_of_16_returns_4(self):
+        assert _compute_validation_count(16) == 4
+
+    def test_small_pool_floors_at_2(self):
+        assert _compute_validation_count(1) == 2
+        assert _compute_validation_count(3) == 2
+
+    def test_large_pool_caps_at_5(self):
+        assert _compute_validation_count(100) == 5
+
+    def test_pool_of_8_returns_2(self):
+        assert _compute_validation_count(8) == 2
+
+
+# ---------------------------------------------------------------------------
+# Validation phase (chaos mode)
+# ---------------------------------------------------------------------------
+
+# Helper: build OptimizationOptions with multiple variable choices so the
+# validation phase has a non-empty distinct pool to sample from.
+def _make_multi_options(
+    *,
+    variable_count: int = 8,
+    user_input_options=None,
+    on_turn=None,
+    handle_agent_call=None,
+    handle_judge_call=None,
+    on_passing_result=None,
+    max_attempts: int = 5,
+) -> OptimizationOptions:
+    if handle_agent_call is None:
+        handle_agent_call = AsyncMock(return_value=OptimizationResponse(output="answer"))
+    if handle_judge_call is None:
+        handle_judge_call = AsyncMock(return_value=OptimizationResponse(output=JUDGE_PASS_RESPONSE))
+    judges = None if on_turn is not None else {
+        "acc": OptimizationJudge(threshold=0.8, acceptance_statement="Be accurate.")
+    }
+    return OptimizationOptions(
+        context_choices=[LD_CONTEXT],
+        max_attempts=max_attempts,
+        model_choices=["gpt-4o"],
+        judge_model="gpt-4o",
+        variable_choices=[{"x": i} for i in range(variable_count)],
+        user_input_options=user_input_options,
+        handle_agent_call=handle_agent_call,
+        handle_judge_call=handle_judge_call,
+        judges=judges,
+        on_turn=on_turn,
+        on_passing_result=on_passing_result,
+    )
+
+
+class TestValidationPhase:
+    def setup_method(self):
+        self.mock_ldai = _make_ldai_client()
+
+    def _make_client(self) -> OptimizationClient:
+        return _make_client(self.mock_ldai)
+
+    async def test_on_passing_result_fires_only_after_all_validation_passes(self):
+        """on_passing_result must not fire until all validation samples pass."""
+        on_passing = MagicMock()
+        client = self._make_client()
+        # 8 variable_choices → validation_count = 2; all judges always pass
+        opts = _make_multi_options(on_passing_result=on_passing)
+        await client.optimize_from_options("test-agent", opts)
+        on_passing.assert_called_once()
+
+    async def test_validation_runs_additional_agent_calls(self):
+        """With 8 variable choices, validation runs 2 extra agent calls after the initial pass."""
+        call_count = [0]
+
+        async def counting_agent(key, config, ctx):
+            call_count[0] += 1
+            return OptimizationResponse(output="answer")
+
+        client = self._make_client()
+        opts = _make_multi_options(handle_agent_call=counting_agent)
+        await client.optimize_from_options("test-agent", opts)
+        # 1 initial pass + 2 validation samples
+        assert call_count[0] == 3
+
+    async def test_validation_failure_suppresses_on_passing_result_then_retries(self):
+        """When a validation sample fails, on_passing_result is not fired and the loop retries."""
+        turn_calls = [0]
+
+        def on_turn(ctx):
+            turn_calls[0] += 1
+            # call 1: initial pass, call 2: first validation FAIL, everything else passes
+            return turn_calls[0] != 2
+
+        on_passing = MagicMock()
+        client = self._make_client()
+        opts = _make_multi_options(
+            on_turn=on_turn,
+            # 8 items → validation_count = 2
+            variable_count=8,
+            handle_agent_call=AsyncMock(side_effect=[
+                OptimizationResponse(output="iter1"),            # initial turn (passes)
+                OptimizationResponse(output="val_iter2"),        # validation sample 1 (fails)
+                OptimizationResponse(output=VARIATION_RESPONSE),  # variation generation
+                OptimizationResponse(output="iter3"),            # new attempt initial (passes)
+                OptimizationResponse(output="val_iter4"),        # new validation sample 1 (passes)
+                OptimizationResponse(output="val_iter5"),        # new validation sample 2 (passes)
+            ]),
+            on_passing_result=on_passing,
+            max_attempts=3,
+        )
+        result = await client.optimize_from_options("test-agent", opts)
+        # Eventually succeeds after one failed validation cycle
+        on_passing.assert_called_once()
+        assert result is not None
+
+    async def test_validation_does_not_reuse_passing_turn_variable(self):
+        """The variable set used in the initial passing turn must not appear in validation."""
+        seen_variables = []
+
+        async def capture_agent(key, config, ctx):
+            seen_variables.append(ctx.current_variables)
+            return OptimizationResponse(output="answer")
+
+        client = self._make_client()
+        opts = _make_multi_options(handle_agent_call=capture_agent, variable_count=8)
+        await client.optimize_from_options("test-agent", opts)
+
+        # First call is the initial passing turn
+        initial_vars = seen_variables[0]
+        # Remaining calls are validation samples — none should match the initial
+        for val_vars in seen_variables[1:]:
+            assert val_vars != initial_vars, (
+                f"Validation reused the passing turn's variables: {initial_vars}"
+            )
+
+    async def test_validation_uses_user_input_options_as_pool_when_provided(self):
+        """When user_input_options is provided, validation samples from that pool."""
+        seen_inputs = []
+
+        async def capture_agent(key, config, ctx):
+            seen_inputs.append(ctx.user_input)
+            return OptimizationResponse(output="answer")
+
+        client = self._make_client()
+        user_inputs = [f"question {i}" for i in range(8)]
+        opts = _make_multi_options(
+            handle_agent_call=capture_agent,
+            user_input_options=user_inputs,
+        )
+        await client.optimize_from_options("test-agent", opts)
+
+        # Initial input is at index 0; all validation inputs must be different
+        initial_input = seen_inputs[0]
+        for val_input in seen_inputs[1:]:
+            assert val_input != initial_input, (
+                f"Validation reused the passing turn's user_input: {initial_input}"
+            )
+
+    async def test_pool_exhaustion_caps_validation_at_available_distinct_items(self):
+        """When fewer distinct items remain than validation_count, all available ones are used."""
+        call_count = [0]
+
+        async def counting_agent(key, config, ctx):
+            call_count[0] += 1
+            return OptimizationResponse(output="answer")
+
+        client = self._make_client()
+        # 3 variable choices → _compute_validation_count(3) = 2, but only 2 remain after
+        # excluding the passing item, so validation_count is still 2 (min of 2 and 2)
+        opts = _make_multi_options(handle_agent_call=counting_agent, variable_count=3)
+        await client.optimize_from_options("test-agent", opts)
+        # 1 initial + 2 validation (uses all remaining distinct items)
+        assert call_count[0] == 3
+
+    async def test_single_variable_choice_falls_back_to_repeated_draw(self):
+        """With only 1 variable choice validation still runs 1 sample (repeated draw)."""
+        call_count = [0]
+
+        async def counting_agent(key, config, ctx):
+            call_count[0] += 1
+            return OptimizationResponse(output="answer")
+
+        client = self._make_client()
+        opts = _make_multi_options(handle_agent_call=counting_agent, variable_count=1)
+        await client.optimize_from_options("test-agent", opts)
+        # 1 initial pass + 1 validation sample (repeated draw from the only item)
+        assert call_count[0] == 2
+
+    async def test_validation_does_not_consume_attempt_budget(self):
+        """Validation samples must not count against max_attempts.
+
+        With max_attempts=2 and 8 variable choices (validation_count=2), a failed
+        validation on attempt 1 should still leave a full attempt 2 available.
+        Without the fix, iteration would be inflated to 3 after validation, which
+        exceeds max_attempts=2 and would trigger _handle_failure prematurely.
+        """
+        turn_calls = [0]
+
+        def on_turn(ctx):
+            turn_calls[0] += 1
+            # attempt 1 passes initial, validation sample 1 fails
+            # attempt 2 passes initial and all validation
+            return turn_calls[0] != 2
+
+        on_passing = MagicMock()
+        client = self._make_client()
+        opts = _make_multi_options(
+            on_turn=on_turn,
+            variable_count=8,
+            handle_agent_call=AsyncMock(side_effect=[
+                OptimizationResponse(output="iter1"),            # attempt 1 initial (passes)
+                OptimizationResponse(output="val_iter"),         # validation sample 1 (fails)
+                OptimizationResponse(output=VARIATION_RESPONSE),  # variation generation
+                OptimizationResponse(output="iter2"),            # attempt 2 initial (passes)
+                OptimizationResponse(output="val_iter3"),        # validation sample 1 (passes)
+                OptimizationResponse(output="val_iter4"),        # validation sample 2 (passes)
+            ]),
+            on_passing_result=on_passing,
+            max_attempts=2,
+        )
+        result = await client.optimize_from_options("test-agent", opts)
+        on_passing.assert_called_once()
+        assert result is not None
+
+    async def test_validating_status_emitted(self):
+        """The 'validating' status must be emitted when entering the validation phase."""
+        statuses = []
+        client = self._make_client()
+        opts = _make_multi_options()
+        opts.on_status_update = lambda s, ctx: statuses.append(s)
+        await client.optimize_from_options("test-agent", opts)
+        assert "validating" in statuses
 
 
 # ---------------------------------------------------------------------------
@@ -1012,6 +1251,350 @@ class TestVariationPromptAcceptanceCriteria:
 
 
 # ---------------------------------------------------------------------------
+# Variation prompt — overfitting warning section
+# ---------------------------------------------------------------------------
+
+
+class TestVariationPromptOverfitWarning:
+    def _make_ctx(self, user_input=None, variables=None, iteration=1):
+        return OptimizationContext(
+            iteration=iteration,
+            current_instructions=AGENT_INSTRUCTIONS,
+            current_parameters={},
+            current_model="gpt-4o",
+            current_variables=variables or {},
+            user_input=user_input,
+            completion_response=None,
+            scores={},
+        )
+
+    def test_returns_empty_string_with_no_history(self):
+        assert variation_prompt_overfit_warning([]) == ""
+
+    def test_contains_general_overfitting_reminder(self):
+        ctx = self._make_ctx(user_input="What is 2+2?")
+        section = variation_prompt_overfit_warning([ctx])
+        assert "OVERFITTING" in section.upper()
+        assert "generalise" in section.lower() or "generalize" in section.lower() or "generaliz" in section.lower() or "general" in section.lower()
+
+    def test_includes_recent_user_input(self):
+        ctx = self._make_ctx(user_input="What is the capital of France?")
+        section = variation_prompt_overfit_warning([ctx])
+        assert "What is the capital of France?" in section
+
+    def test_includes_recent_variables_as_structured_breakdown(self):
+        ctx = self._make_ctx(variables={"language": "English", "tone": "formal"})
+        section = variation_prompt_overfit_warning([ctx])
+        # Keys (placeholder names) and values must both appear
+        assert "{{language}}" in section
+        assert '"English"' in section
+        assert "{{tone}}" in section
+        assert '"formal"' in section
+
+    def test_variables_section_labels_name_vs_value(self):
+        ctx = self._make_ctx(variables={"user_id": "user-125"})
+        section = variation_prompt_overfit_warning([ctx])
+        assert "{{user_id}}" in section
+        assert '"user-125"' in section
+        assert "placeholder" in section.lower()
+        assert "value" in section.lower()
+        # Must NOT render as a raw Python dict
+        assert "{'user_id': 'user-125'}" not in section
+
+    def test_uses_most_recent_history_entry(self):
+        ctx_old = self._make_ctx(user_input="old question", iteration=1)
+        ctx_new = self._make_ctx(user_input="new question", iteration=2)
+        section = variation_prompt_overfit_warning([ctx_old, ctx_new])
+        assert "new question" in section
+        assert "old question" not in section
+
+    def test_omits_user_input_line_when_none(self):
+        ctx = self._make_ctx(user_input=None, variables={"lang": "en"})
+        section = variation_prompt_overfit_warning([ctx])
+        assert "User input" not in section
+        assert "lang" in section
+
+    def test_omits_variables_line_when_empty(self):
+        ctx = self._make_ctx(user_input="hello", variables={})
+        section = variation_prompt_overfit_warning([ctx])
+        assert "Variables" not in section
+        assert "hello" in section
+
+    def test_warning_appears_in_full_prompt_when_history_present(self):
+        ctx = self._make_ctx(user_input="test question", variables={"k": "v"})
+        prompt = build_new_variation_prompt(
+            history=[ctx],
+            judges=None,
+            current_model="gpt-4o",
+            current_instructions=AGENT_INSTRUCTIONS,
+            current_parameters={},
+            model_choices=["gpt-4o"],
+            variable_choices=[{"k": "v"}],
+            initial_instructions=AGENT_INSTRUCTIONS,
+        )
+        assert "OVERFITTING" in prompt.upper()
+        assert "test question" in prompt
+
+    def test_warning_absent_from_full_prompt_when_no_history(self):
+        prompt = build_new_variation_prompt(
+            history=[],
+            judges=None,
+            current_model="gpt-4o",
+            current_instructions=AGENT_INSTRUCTIONS,
+            current_parameters={},
+            model_choices=["gpt-4o"],
+            variable_choices=[{"k": "v"}],
+            initial_instructions=AGENT_INSTRUCTIONS,
+        )
+        assert "OVERFITTING" not in prompt.upper()
+
+
+# ---------------------------------------------------------------------------
+# Variation prompt — preamble key-vs-value note
+# ---------------------------------------------------------------------------
+
+
+class TestVariationPromptPreamble:
+    def test_contains_key_vs_value_important_note(self):
+        preamble = variation_prompt_preamble()
+        assert "IMPORTANT" in preamble
+        assert "placeholder" in preamble.lower()
+        assert "value" in preamble.lower()
+
+    def test_never_use_value_as_placeholder_name(self):
+        preamble = variation_prompt_preamble()
+        assert "never" in preamble.lower()
+
+
+# ---------------------------------------------------------------------------
+# Variation prompt — placeholder table
+# ---------------------------------------------------------------------------
+
+
+class TestVariationPromptPlaceholderTable:
+    _variable_choices = [
+        {"user_id": "user-123", "trip_purpose": "business"},
+        {"user_id": "user-125", "trip_purpose": "personal"},
+    ]
+
+    def _section(self, variable_choices=None, history=None):
+        return variation_prompt_improvement_instructions(
+            history=history or [],
+            model_choices=["gpt-4o"],
+            variable_choices=variable_choices or self._variable_choices,
+            initial_instructions=AGENT_INSTRUCTIONS,
+        )
+
+    def test_placeholder_names_appear_in_table(self):
+        section = self._section()
+        assert "{{user_id}}" in section
+        assert "{{trip_purpose}}" in section
+
+    def test_example_values_appear_alongside_keys(self):
+        section = self._section()
+        assert '"user-123"' in section or '"user-125"' in section
+        assert '"business"' in section or '"personal"' in section
+
+    def test_keys_and_values_clearly_separated(self):
+        section = self._section()
+        assert "example values" in section.lower()
+
+    def test_bad_good_counterexamples_use_actual_values(self):
+        section = self._section()
+        # The bad example must reference a runtime value, good example the key
+        assert "BAD" in section
+        assert "GOOD" in section
+        # At least one of the real values should appear in the bad example
+        assert "user-123" in section or "user-125" in section \
+            or "business" in section or "personal" in section
+
+    def test_raw_placeholder_list_not_used(self):
+        # The old format was a comma-separated list like "{{trip_purpose}}, {{user_id}}"
+        # The new format is a structured table; confirm no bare comma-list
+        section = self._section()
+        assert "{{trip_purpose}}, {{user_id}}" not in section
+        assert "{{user_id}}, {{trip_purpose}}" not in section
+
+    def test_single_variable_choice(self):
+        section = self._section(variable_choices=[{"lang": "en"}])
+        assert "{{lang}}" in section
+        assert '"en"' in section
+
+    def test_table_appears_in_full_prompt(self):
+        prompt = build_new_variation_prompt(
+            history=[],
+            judges=None,
+            current_model="gpt-4o",
+            current_instructions=AGENT_INSTRUCTIONS,
+            current_parameters={},
+            model_choices=["gpt-4o"],
+            variable_choices=self._variable_choices,
+            initial_instructions=AGENT_INSTRUCTIONS,
+        )
+        assert "{{user_id}}" in prompt
+        assert "{{trip_purpose}}" in prompt
+        assert "example values" in prompt.lower()
+
+
+# ---------------------------------------------------------------------------
+# interpolate_variables — hyphenated key support
+# ---------------------------------------------------------------------------
+
+
+class TestInterpolateVariables:
+    def test_substitutes_standard_underscore_key(self):
+        result = interpolate_variables("Hello {{user_id}}", {"user_id": "abc"})
+        assert result == "Hello abc"
+
+    def test_substitutes_hyphenated_key(self):
+        result = interpolate_variables("Hello {{user-id}}", {"user-id": "abc"})
+        assert result == "Hello abc"
+
+    def test_leaves_unknown_placeholder_unchanged(self):
+        result = interpolate_variables("Hello {{unknown}}", {"user_id": "abc"})
+        assert result == "Hello {{unknown}}"
+
+    def test_leaves_unknown_hyphenated_placeholder_unchanged(self):
+        result = interpolate_variables("Hello {{bad-125}}", {"user_id": "abc"})
+        assert result == "Hello {{bad-125}}"
+
+    def test_mixed_keys_in_same_string(self):
+        result = interpolate_variables(
+            "{{user-id}} and {{trip_purpose}}",
+            {"user-id": "u-1", "trip_purpose": "leisure"},
+        )
+        assert result == "u-1 and leisure"
+
+    def test_empty_variables_leaves_text_unchanged(self):
+        result = interpolate_variables("{{foo}} bar", {})
+        assert result == "{{foo}} bar"
+
+
+# ---------------------------------------------------------------------------
+# restore_variable_placeholders
+# ---------------------------------------------------------------------------
+
+
+class TestRestoreVariablePlaceholders:
+    _CHOICES = [{"user_id": "user-123", "trip_purpose": "business"}]
+
+    def test_replaces_hardcoded_id_value(self):
+        text = "Use the user ID user-123 to look up preferences."
+        result, warnings = restore_variable_placeholders(text, self._CHOICES)
+        assert "{{user_id}}" in result
+        assert "user-123" not in result
+        assert len(warnings) == 1
+        assert "user-123" in warnings[0]
+        assert "{{user_id}}" in warnings[0]
+
+    def test_replaces_multiline_value_verbatim(self):
+        multiline_value = "line one\nline two\nline three"
+        choices = [{"body_text": multiline_value}]
+        text = f"Instructions:\n{multiline_value}\nEnd."
+        result, warnings = restore_variable_placeholders(text, choices)
+        assert "{{body_text}}" in result
+        assert multiline_value not in result
+        assert len(warnings) == 1
+
+    def test_skips_value_shorter_than_min_length(self):
+        choices = [{"lang": "en"}]  # "en" is only 2 chars
+        text = "Use language en for this request."
+        result, warnings = restore_variable_placeholders(text, choices, min_value_length=3)
+        assert result == text
+        assert warnings == []
+
+    def test_does_not_partially_match_longer_token(self):
+        """'user-123' must not be replaced inside 'user-1234'."""
+        text = "Contact user-1234 for help."
+        result, warnings = restore_variable_placeholders(text, self._CHOICES)
+        assert "user-1234" in result
+        assert warnings == []
+
+    def test_replaces_multiple_variables(self):
+        text = "User user-123 is on a business trip."
+        result, warnings = restore_variable_placeholders(text, self._CHOICES)
+        assert "{{user_id}}" in result
+        assert "{{trip_purpose}}" in result
+        assert "user-123" not in result
+        assert "business" not in result
+        assert len(warnings) == 2
+
+    def test_leaves_correct_placeholder_unchanged(self):
+        text = "User {{user_id}} is on a {{trip_purpose}} trip."
+        result, warnings = restore_variable_placeholders(text, self._CHOICES)
+        assert result == text
+        assert warnings == []
+
+    def test_replaces_multiple_occurrences_of_same_value(self):
+        text = "user-123 and user-123 are duplicates."
+        result, warnings = restore_variable_placeholders(text, self._CHOICES)
+        assert result == "{{user_id}} and {{user_id}} are duplicates."
+        assert "2 occurrence(s)" in warnings[0]
+
+    def test_longer_value_replaced_before_shorter_substring(self):
+        """When one value is a prefix of another, the longer one is replaced first."""
+        choices = [{"full_id": "user-123-admin", "short_id": "user-123"}]
+        text = "Admin is user-123-admin, regular is user-123."
+        result, warnings = restore_variable_placeholders(text, choices)
+        assert "{{full_id}}" in result
+        assert "{{short_id}}" in result
+        assert "user-123-admin" not in result
+        # The shorter value should not have corrupted the longer replacement
+        assert result.count("{{full_id}}") == 1
+        assert result.count("{{short_id}}") == 1
+
+    def test_replaces_brace_wrapped_value_without_double_bracketing(self):
+        """{{user-125}} must become {{user_id}}, not {{{{user_id}}}}."""
+        text = "Fetch preferences for user {{user-123}}."
+        result, warnings = restore_variable_placeholders(text, self._CHOICES)
+        assert result == "Fetch preferences for user {{user_id}}."
+        assert len(warnings) == 1
+
+    def test_empty_variable_choices_returns_text_unchanged(self):
+        text = "Some instructions here."
+        result, warnings = restore_variable_placeholders(text, [])
+        assert result == text
+        assert warnings == []
+
+    def test_warning_message_format(self):
+        text = "Handle user user-123 carefully."
+        _, warnings = restore_variable_placeholders(text, self._CHOICES)
+        assert any("user-123" in w for w in warnings)
+        assert any("{{user_id}}" in w for w in warnings)
+
+    async def test_apply_variation_response_calls_restore_and_logs_warning(self):
+        """_apply_new_variation_response must restore leaked values and log warnings."""
+        leaked_instructions = "You serve user user-123 on a business trip."
+        variation_response = json.dumps({
+            "current_instructions": leaked_instructions,
+            "current_parameters": {},
+            "model": "gpt-4o",
+        })
+        handle_agent_call = AsyncMock(return_value=OptimizationResponse(output=variation_response))
+        client = _make_client()
+        agent_config = _make_agent_config()
+        client._agent_key = "test-agent"
+        client._agent_config = agent_config
+        client._initial_instructions = AGENT_INSTRUCTIONS
+        client._initialize_class_members_from_config(agent_config)
+        client._options = _make_options(
+            handle_agent_call=handle_agent_call,
+            variable_choices=[{"user_id": "user-123", "trip_purpose": "business"}],
+        )
+
+        with patch("ldai_optimization.client.logger") as mock_logger:
+            await client._generate_new_variation(iteration=1, variables={})
+            warning_calls = [
+                call for call in mock_logger.warning.call_args_list
+                if "user-123" in str(call) or "business" in str(call)
+            ]
+            assert len(warning_calls) >= 1
+
+        assert "{{user_id}}" in client._current_instructions
+        assert "user-123" not in client._current_instructions
+
+
+# ---------------------------------------------------------------------------
 # _build_options_from_config helpers
 # ---------------------------------------------------------------------------
 
@@ -1035,8 +1618,8 @@ def _make_from_config_options(**overrides: Any) -> OptimizationFromConfigOptions
     defaults: Dict[str, Any] = dict(
         project_key="my-project",
         context_choices=[LD_CONTEXT],
-        handle_agent_call=AsyncMock(return_value="The answer is 4."),
-        handle_judge_call=AsyncMock(return_value=JUDGE_PASS_RESPONSE),
+        handle_agent_call=AsyncMock(return_value=OptimizationResponse(output="The answer is 4.")),
+        handle_judge_call=AsyncMock(return_value=OptimizationResponse(output=JUDGE_PASS_RESPONSE)),
     )
     defaults.update(overrides)
     return OptimizationFromConfigOptions(**defaults)
@@ -1171,8 +1754,8 @@ class TestBuildOptionsFromConfig:
         assert result.judge_model == "claude-opus-4.6"
 
     def test_callbacks_forwarded_from_options(self):
-        handle_agent = AsyncMock(return_value="ok")
-        handle_judge = AsyncMock(return_value=JUDGE_PASS_RESPONSE)
+        handle_agent = AsyncMock(return_value=OptimizationResponse(output="ok"))
+        handle_judge = AsyncMock(return_value=OptimizationResponse(output=JUDGE_PASS_RESPONSE))
         options = _make_from_config_options(
             handle_agent_call=handle_agent,
             handle_judge_call=handle_judge,
@@ -1424,8 +2007,8 @@ class TestGroundTruthOptimizationOptionsValidation:
             max_attempts=3,
             model_choices=["gpt-4o"],
             judge_model="gpt-4o",
-            handle_agent_call=AsyncMock(return_value="ans"),
-            handle_judge_call=AsyncMock(return_value=JUDGE_PASS_RESPONSE),
+            handle_agent_call=AsyncMock(return_value=OptimizationResponse(output="ans")),
+            handle_judge_call=AsyncMock(return_value=OptimizationResponse(output=JUDGE_PASS_RESPONSE)),
             judges={
                 "acc": OptimizationJudge(threshold=0.8, acceptance_statement="Be accurate.")
             },
@@ -1473,8 +2056,8 @@ def _make_gt_options(**overrides) -> GroundTruthOptimizationOptions:
         max_attempts=3,
         model_choices=["gpt-4o", "gpt-4o-mini"],
         judge_model="gpt-4o",
-        handle_agent_call=AsyncMock(return_value="The answer is correct."),
-        handle_judge_call=AsyncMock(return_value=JUDGE_PASS_RESPONSE),
+        handle_agent_call=AsyncMock(return_value=OptimizationResponse(output="The answer is correct.")),
+        handle_judge_call=AsyncMock(return_value=OptimizationResponse(output=JUDGE_PASS_RESPONSE)),
         judges={
             "acc": OptimizationJudge(threshold=0.8, acceptance_statement="Be accurate.")
         },
@@ -1508,7 +2091,7 @@ class TestRunGroundTruthOptimization:
 
     async def test_completion_response_set_on_each_context(self):
         client = self._make_client()
-        opts = _make_gt_options(handle_agent_call=AsyncMock(return_value="42"))
+        opts = _make_gt_options(handle_agent_call=AsyncMock(return_value=OptimizationResponse(output="42")))
         results = await client.optimize_from_ground_truth_options("test-agent", opts)
         for ctx in results:
             assert ctx.completion_response == "42"
@@ -1531,7 +2114,7 @@ class TestRunGroundTruthOptimization:
         client = self._make_client()
         failing_calls = []
         opts = _make_gt_options(
-            handle_judge_call=AsyncMock(return_value=JUDGE_FAIL_RESPONSE),
+            handle_judge_call=AsyncMock(return_value=OptimizationResponse(output=JUDGE_FAIL_RESPONSE)),
             max_attempts=2,
             on_failing_result=lambda ctx: failing_calls.append(ctx),
         )
@@ -1552,14 +2135,16 @@ class TestRunGroundTruthOptimization:
             nonlocal call_count
             resp = judge_responses[call_count]
             call_count += 1
-            return resp
+            return OptimizationResponse(output=resp)
 
         opts = _make_gt_options(
             handle_judge_call=side_effect,
             handle_agent_call=AsyncMock(side_effect=[
-                "ans1", "ans2",           # attempt 1 samples
-                VARIATION_RESPONSE,       # variation generation
-                "ans3", "ans4",           # attempt 2 samples
+                OptimizationResponse(output="ans1"),
+                OptimizationResponse(output="ans2"),           # attempt 1 samples
+                OptimizationResponse(output=VARIATION_RESPONSE),       # variation generation
+                OptimizationResponse(output="ans3"),
+                OptimizationResponse(output="ans4"),           # attempt 2 samples
             ]),
             max_attempts=3,
         )
@@ -1587,9 +2172,9 @@ class TestRunGroundTruthOptimization:
     async def test_variables_from_samples_used_per_evaluation(self):
         client = self._make_client()
         received_contexts = []
-        async def capture_agent_call(key, config, ctx, tools):
+        async def capture_agent_call(key, config, ctx):
             received_contexts.append(ctx)
-            return "response"
+            return OptimizationResponse(output="response")
 
         opts = _make_gt_options(
             ground_truth_responses=[
@@ -1609,9 +2194,9 @@ class TestRunGroundTruthOptimization:
         client = _make_client(mock_ldai)
 
         observed_models = []
-        async def capture(key, config, ctx, tools):
+        async def capture(key, config, ctx):
             observed_models.append(config.model.name if config.model else None)
-            return "answer"
+            return OptimizationResponse(output="answer")
 
         opts = _make_gt_options(
             handle_agent_call=capture,
@@ -1651,9 +2236,9 @@ class TestExpectedResponseInJudges:
     async def test_expected_response_included_in_acceptance_judge_user_message(self):
         captured_configs = []
 
-        async def capture_judge_call(key, config, ctx, tools):
+        async def capture_judge_call(key, config, ctx):
             captured_configs.append(config)
-            return JUDGE_PASS_RESPONSE
+            return OptimizationResponse(output=JUDGE_PASS_RESPONSE)
 
         self.client._options = _make_options(
             judges={
@@ -1673,9 +2258,9 @@ class TestExpectedResponseInJudges:
     async def test_expected_response_in_acceptance_judge_user_message(self):
         captured_configs = []
 
-        async def capture_judge_call(key, config, ctx, tools):
+        async def capture_judge_call(key, config, ctx):
             captured_configs.append(config)
-            return JUDGE_PASS_RESPONSE
+            return OptimizationResponse(output=JUDGE_PASS_RESPONSE)
 
         self.client._options = _make_options(
             judges={
@@ -1698,9 +2283,9 @@ class TestExpectedResponseInJudges:
     async def test_no_expected_response_leaves_judge_messages_unchanged(self):
         captured_configs = []
 
-        async def capture_judge_call(key, config, ctx, tools):
+        async def capture_judge_call(key, config, ctx):
             captured_configs.append(config)
-            return JUDGE_PASS_RESPONSE
+            return OptimizationResponse(output=JUDGE_PASS_RESPONSE)
 
         self.client._options = _make_options(
             judges={
@@ -1799,8 +2384,8 @@ class TestBuildOptionsFromConfigGroundTruth:
 
         with patch("ldai_optimization.client.LDApiClient", return_value=mock_api):
             options = _make_from_config_options(
-                handle_agent_call=AsyncMock(return_value="correct answer"),
-                handle_judge_call=AsyncMock(return_value=JUDGE_PASS_RESPONSE),
+                handle_agent_call=AsyncMock(return_value=OptimizationResponse(output="correct answer")),
+                handle_judge_call=AsyncMock(return_value=OptimizationResponse(output=JUDGE_PASS_RESPONSE)),
             )
             result = await client.optimize_from_config("my-gt-opt", options)
 
