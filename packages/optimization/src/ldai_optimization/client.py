@@ -33,6 +33,7 @@ from ldai_optimization.ld_api_client import (
     OptimizationResultPayload,
 )
 from ldai_optimization.prompts import (
+    _acceptance_criteria_implies_duration_optimization,
     build_message_history_text,
     build_new_variation_prompt,
     build_reasoning_history,
@@ -79,6 +80,12 @@ def _compute_validation_count(pool_size: int) -> int:
 # unparseable responses from the LLM are retried up to this many times before
 # the variation step is treated as a failure.
 _MAX_VARIATION_RETRIES = 3
+
+# Duration gate: a candidate must be at least this much faster than the baseline
+# (history[0].duration_ms) to pass the duration check when acceptance criteria
+# imply a latency optimization goal. 0.80 means the candidate must clock in at
+# under 80% of the baseline — i.e. at least 20% improvement.
+_DURATION_TOLERANCE = 0.80
 
 # Maps SDK status strings to the API status/activity values expected by
 # agent_optimization_result records. Defined at module level to avoid
@@ -328,6 +335,7 @@ class OptimizationClient:
         variables: Optional[Dict[str, Any]] = None,
         agent_tools: Optional[List[ToolDefinition]] = None,
         expected_response: Optional[str] = None,
+        agent_duration_ms: Optional[float] = None,
     ) -> Dict[str, JudgeResult]:
         """
         Call all judges in parallel (auto-path).
@@ -344,6 +352,9 @@ class OptimizationClient:
         :param agent_tools: Normalised list of tool dicts that were available to the agent
         :param expected_response: Optional ground truth expected response. When provided,
             judges are instructed to factor it into their scoring alongside acceptance criteria.
+        :param agent_duration_ms: Wall-clock duration of the agent call in milliseconds.
+            Forwarded to acceptance judges whose statement implies a latency goal so they
+            can mention the duration change in their rationale.
         :return: Dictionary of judge results (score and rationale)
         """
         if not self._options.judges:
@@ -396,6 +407,7 @@ class OptimizationClient:
                         variables=resolved_variables,
                         agent_tools=resolved_agent_tools,
                         expected_response=expected_response,
+                        agent_duration_ms=agent_duration_ms,
                     )
                     judge_results[judge_key] = result
 
@@ -613,6 +625,7 @@ class OptimizationClient:
         variables: Optional[Dict[str, Any]] = None,
         agent_tools: Optional[List[ToolDefinition]] = None,
         expected_response: Optional[str] = None,
+        agent_duration_ms: Optional[float] = None,
     ) -> JudgeResult:
         """
         Evaluate using an acceptance statement judge.
@@ -627,6 +640,9 @@ class OptimizationClient:
         :param agent_tools: Normalised list of tool dicts that were available to the agent
         :param expected_response: Optional ground truth expected response. When provided,
             injected into instructions and judge message so the judge can score actual vs. expected.
+        :param agent_duration_ms: Wall-clock duration of the agent call in milliseconds.
+            When the acceptance statement implies a latency goal, the judge is instructed
+            to mention the duration change in its rationale.
         :return: The judge result with score and rationale
         """
         if not optimization_judge.acceptance_statement:
@@ -661,6 +677,32 @@ class OptimizationClient:
             "Return your response as a JSON object with 'score' and 'rationale' fields.\n\n"
             'Example: {"score": 0.8, "rationale": "The response matches the acceptance statement well."}'
         )
+
+        if (
+            agent_duration_ms is not None
+            and _acceptance_criteria_implies_duration_optimization(
+                {judge_key: optimization_judge}
+            )
+        ):
+            baseline_ms = (
+                self._history[0].duration_ms
+                if self._history and self._history[0].duration_ms is not None
+                else None
+            )
+            instructions += (
+                f"\n\nThe acceptance criteria for this judge includes a latency/duration goal. "
+                f"The agent's response took {agent_duration_ms:.0f}ms to generate. "
+            )
+            if baseline_ms is not None:
+                delta_ms = agent_duration_ms - baseline_ms
+                direction = "faster" if delta_ms < 0 else "slower"
+                instructions += (
+                    f"The baseline duration (first iteration) was {baseline_ms:.0f}ms. "
+                    f"This response was {abs(delta_ms):.0f}ms {direction} than the baseline. "
+                )
+            instructions += (
+                "Please mention the duration and any change from baseline in your rationale."
+            )
 
         if resolved_variables:
             instructions += f"\n\nThe following variables were available to the agent: {json.dumps(resolved_variables)}"
@@ -911,6 +953,11 @@ class OptimizationClient:
                 else:
                     sample_passed = self._evaluate_response(optimize_context)
 
+                if sample_passed and _acceptance_criteria_implies_duration_optimization(
+                    self._options.judges
+                ):
+                    sample_passed = self._evaluate_duration(optimize_context)
+
                 if not sample_passed:
                     logger.info(
                         "[GT Attempt %d] -> Sample %d/%d FAILED",
@@ -1147,6 +1194,9 @@ class OptimizationClient:
         )
         self._safe_status_update("generating variation", status_ctx, iteration)
 
+        optimize_for_duration = _acceptance_criteria_implies_duration_optimization(
+            self._options.judges
+        )
         instructions = build_new_variation_prompt(
             self._history,
             self._options.judges,
@@ -1156,6 +1206,7 @@ class OptimizationClient:
             self._options.model_choices,
             self._options.variable_choices,
             self._initial_instructions,
+            optimize_for_duration=optimize_for_duration,
         )
 
         # Create a flat history list (without nested history) to avoid exponential growth
@@ -1486,6 +1537,7 @@ class OptimizationClient:
                 variables=optimize_context.current_variables,
                 agent_tools=agent_tools,
                 expected_response=expected_response,
+                agent_duration_ms=agent_duration_ms,
             )
 
         return dataclasses.replace(
@@ -1522,6 +1574,38 @@ class OptimizationClient:
                 return False
 
         return True
+
+    def _evaluate_duration(self, optimize_context: OptimizationContext) -> bool:
+        """
+        Check whether the candidate's duration meets the improvement target vs. the baseline.
+
+        The baseline is history[0].duration_ms — the very first completed iteration,
+        representing the original unoptimized configuration's latency. The candidate
+        must be at least _DURATION_TOLERANCE faster (default: 20% improvement).
+
+        Returns True without blocking when no baseline is available (empty history or
+        history[0].duration_ms is None), or when the candidate's duration_ms was not
+        captured. This avoids penalising configurations when timing data is missing.
+
+        :param optimize_context: The completed turn context containing duration_ms
+        :return: True if the duration requirement is met or cannot be checked
+        """
+        if not self._history or self._history[0].duration_ms is None:
+            return True
+        if optimize_context.duration_ms is None:
+            return True
+        baseline = self._history[0].duration_ms
+        passed = optimize_context.duration_ms < baseline * _DURATION_TOLERANCE
+        if not passed:
+            logger.warning(
+                "[Iteration %d] -> Duration check failed: %.0fms >= baseline %.0fms * %.0f%% (%.0fms)",
+                optimize_context.iteration,
+                optimize_context.duration_ms,
+                baseline,
+                _DURATION_TOLERANCE * 100,
+                baseline * _DURATION_TOLERANCE,
+            )
+        return passed
 
     def _handle_success(
         self, optimize_context: OptimizationContext, iteration: int
@@ -1691,6 +1775,11 @@ class OptimizationClient:
             else:
                 sample_passed = self._evaluate_response(val_ctx)
 
+            if sample_passed and _acceptance_criteria_implies_duration_optimization(
+                self._options.judges
+            ):
+                sample_passed = self._evaluate_duration(val_ctx)
+
             last_ctx = val_ctx
 
             if not sample_passed:
@@ -1797,6 +1886,11 @@ class OptimizationClient:
                         "[Iteration %d] -> All judges passed — turn succeeded",
                         iteration,
                     )
+
+            if initial_passed and _acceptance_criteria_implies_duration_optimization(
+                self._options.judges
+            ):
+                initial_passed = self._evaluate_duration(optimize_context)
 
             if initial_passed:
                 all_valid, last_ctx = await self._run_validation_phase(

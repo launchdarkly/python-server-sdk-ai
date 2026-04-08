@@ -24,6 +24,7 @@ from ldai_optimization.dataclasses import (
     ToolDefinition,
 )
 from ldai_optimization.prompts import (
+    _acceptance_criteria_implies_duration_optimization,
     build_new_variation_prompt,
     variation_prompt_acceptance_criteria,
     variation_prompt_improvement_instructions,
@@ -458,6 +459,123 @@ class TestEvaluateAcceptanceJudge:
         call_args = self.handle_judge_call.call_args
         _, _, ctx = call_args.args
         assert ctx.variables == variables
+
+    async def test_duration_context_added_to_instructions_when_latency_keyword_present(self):
+        """When acceptance statement has a latency keyword and agent_duration_ms is provided,
+        the instructions mention the duration."""
+        judge = OptimizationJudge(
+            threshold=0.8,
+            acceptance_statement="The response must be fast.",
+        )
+        await self.client._evaluate_acceptance_judge(
+            judge_key="speed",
+            optimization_judge=judge,
+            completion_response="Here is the answer.",
+            iteration=2,
+            reasoning_history="",
+            user_input="Tell me something.",
+            agent_duration_ms=1500.0,
+        )
+        _, config, _ = self.handle_judge_call.call_args.args
+        assert "1500ms" in config.instructions
+        assert "mention the duration" in config.instructions
+
+    async def test_duration_context_includes_baseline_comparison_when_history_present(self):
+        """When history[0] has a duration, the judge instructions include a baseline comparison."""
+        self.client._history = [
+            OptimizationContext(
+                scores={},
+                completion_response="old response",
+                current_instructions="Do X.",
+                current_parameters={},
+                current_variables={},
+                iteration=1,
+                duration_ms=2000.0,
+            )
+        ]
+        judge = OptimizationJudge(
+            threshold=0.8,
+            acceptance_statement="Responses should have low latency.",
+        )
+        await self.client._evaluate_acceptance_judge(
+            judge_key="latency",
+            optimization_judge=judge,
+            completion_response="Here is the answer.",
+            iteration=2,
+            reasoning_history="",
+            user_input="Tell me something.",
+            agent_duration_ms=1500.0,
+        )
+        _, config, _ = self.handle_judge_call.call_args.args
+        assert "1500ms" in config.instructions
+        assert "2000ms" in config.instructions
+        assert "faster" in config.instructions
+
+    async def test_duration_context_says_slower_when_candidate_is_slower(self):
+        """When the candidate is slower than baseline, the instructions say 'slower'."""
+        self.client._history = [
+            OptimizationContext(
+                scores={},
+                completion_response="old response",
+                current_instructions="Do X.",
+                current_parameters={},
+                current_variables={},
+                iteration=1,
+                duration_ms=1000.0,
+            )
+        ]
+        judge = OptimizationJudge(
+            threshold=0.8,
+            acceptance_statement="The response must be fast.",
+        )
+        await self.client._evaluate_acceptance_judge(
+            judge_key="speed",
+            optimization_judge=judge,
+            completion_response="Here is the answer.",
+            iteration=2,
+            reasoning_history="",
+            user_input="Tell me something.",
+            agent_duration_ms=1800.0,
+        )
+        _, config, _ = self.handle_judge_call.call_args.args
+        assert "slower" in config.instructions
+
+    async def test_duration_context_not_added_when_no_latency_keyword(self):
+        """When acceptance statement has no latency keyword, duration is not injected."""
+        judge = OptimizationJudge(
+            threshold=0.8,
+            acceptance_statement="The response must be accurate.",
+        )
+        await self.client._evaluate_acceptance_judge(
+            judge_key="accuracy",
+            optimization_judge=judge,
+            completion_response="Paris.",
+            iteration=1,
+            reasoning_history="",
+            user_input="Capital of France?",
+            agent_duration_ms=2000.0,
+        )
+        _, config, _ = self.handle_judge_call.call_args.args
+        assert "2000ms" not in config.instructions
+        assert "duration" not in config.instructions.lower() or "acceptance" in config.instructions.lower()
+
+    async def test_duration_context_not_added_when_agent_duration_ms_is_none(self):
+        """When agent_duration_ms is None, no duration block is added even if keyword matches."""
+        judge = OptimizationJudge(
+            threshold=0.8,
+            acceptance_statement="The response must be fast.",
+        )
+        await self.client._evaluate_acceptance_judge(
+            judge_key="speed",
+            optimization_judge=judge,
+            completion_response="Here is the answer.",
+            iteration=1,
+            reasoning_history="",
+            user_input="Tell me something.",
+            agent_duration_ms=None,
+        )
+        _, config, _ = self.handle_judge_call.call_args.args
+        assert "mention the duration" not in config.instructions
 
     async def test_returns_zero_score_on_missing_acceptance_statement(self):
         judge = OptimizationJudge(threshold=0.8, acceptance_statement=None)
@@ -2391,3 +2509,454 @@ class TestBuildOptionsFromConfigGroundTruth:
 
         assert isinstance(result, list)
         assert len(result) == 2
+
+
+# ---------------------------------------------------------------------------
+# _acceptance_criteria_implies_duration_optimization
+# ---------------------------------------------------------------------------
+
+
+class TestAcceptanceCriteriaImpliesDurationOptimization:
+    def test_returns_false_when_judges_is_none(self):
+        assert _acceptance_criteria_implies_duration_optimization(None) is False
+
+    def test_returns_false_when_judges_is_empty(self):
+        assert _acceptance_criteria_implies_duration_optimization({}) is False
+
+    def test_returns_false_when_no_acceptance_statements(self):
+        judges = {"quality": OptimizationJudge(threshold=0.8, judge_key="judge-1")}
+        assert _acceptance_criteria_implies_duration_optimization(judges) is False
+
+    def test_returns_false_when_acceptance_statement_has_no_latency_keywords(self):
+        judges = {
+            "accuracy": OptimizationJudge(
+                threshold=0.8,
+                acceptance_statement="The response must be accurate and complete.",
+            )
+        }
+        assert _acceptance_criteria_implies_duration_optimization(judges) is False
+
+    def test_detects_fast_keyword(self):
+        judges = {
+            "speed": OptimizationJudge(
+                threshold=0.8,
+                acceptance_statement="The response must be fast.",
+            )
+        }
+        assert _acceptance_criteria_implies_duration_optimization(judges) is True
+
+    def test_detects_faster_keyword(self):
+        judges = {
+            "speed": OptimizationJudge(
+                threshold=0.8,
+                acceptance_statement="The agent should respond faster.",
+            )
+        }
+        assert _acceptance_criteria_implies_duration_optimization(judges) is True
+
+    def test_detects_latency_keyword(self):
+        judges = {
+            "perf": OptimizationJudge(
+                threshold=0.8,
+                acceptance_statement="The agent must have low latency.",
+            )
+        }
+        assert _acceptance_criteria_implies_duration_optimization(judges) is True
+
+    def test_detects_duration_keyword(self):
+        judges = {
+            "perf": OptimizationJudge(
+                threshold=0.8,
+                acceptance_statement="Minimize the duration of each response.",
+            )
+        }
+        assert _acceptance_criteria_implies_duration_optimization(judges) is True
+
+    def test_detects_ms_keyword(self):
+        judges = {
+            "perf": OptimizationJudge(
+                threshold=0.8,
+                acceptance_statement="Responses should complete in under 500ms.",
+            )
+        }
+        assert _acceptance_criteria_implies_duration_optimization(judges) is True
+
+    def test_detects_response_time_phrase(self):
+        judges = {
+            "perf": OptimizationJudge(
+                threshold=0.8,
+                acceptance_statement="The response time should be minimized.",
+            )
+        }
+        assert _acceptance_criteria_implies_duration_optimization(judges) is True
+
+    def test_detects_efficient_keyword(self):
+        judges = {
+            "perf": OptimizationJudge(
+                threshold=0.8,
+                acceptance_statement="The model must be efficient.",
+            )
+        }
+        assert _acceptance_criteria_implies_duration_optimization(judges) is True
+
+    def test_detects_snappy_keyword(self):
+        judges = {
+            "perf": OptimizationJudge(
+                threshold=0.8,
+                acceptance_statement="Responses should feel snappy.",
+            )
+        }
+        assert _acceptance_criteria_implies_duration_optimization(judges) is True
+
+    def test_case_insensitive_match(self):
+        judges = {
+            "perf": OptimizationJudge(
+                threshold=0.8,
+                acceptance_statement="The model must be EFFICIENT and FAST.",
+            )
+        }
+        assert _acceptance_criteria_implies_duration_optimization(judges) is True
+
+    def test_returns_true_when_any_judge_matches(self):
+        judges = {
+            "accuracy": OptimizationJudge(
+                threshold=0.8,
+                acceptance_statement="The response must be accurate.",
+            ),
+            "speed": OptimizationJudge(
+                threshold=0.8,
+                acceptance_statement="The response must be fast.",
+            ),
+        }
+        assert _acceptance_criteria_implies_duration_optimization(judges) is True
+
+    def test_returns_false_when_acceptance_statement_is_none(self):
+        judges = {
+            "quality": OptimizationJudge(threshold=0.8, acceptance_statement=None)
+        }
+        assert _acceptance_criteria_implies_duration_optimization(judges) is False
+
+
+# ---------------------------------------------------------------------------
+# _evaluate_duration
+# ---------------------------------------------------------------------------
+
+
+class TestEvaluateDuration:
+    def setup_method(self):
+        self.client = _make_client()
+        self.client._options = _make_options()
+        self.client._agent_config = _make_agent_config()
+        self.client._initialize_class_members_from_config(_make_agent_config())
+
+    def _ctx(self, duration_ms, iteration=1):
+        return OptimizationContext(
+            scores={},
+            completion_response="response",
+            current_instructions="Do X.",
+            current_parameters={},
+            current_variables={},
+            iteration=iteration,
+            duration_ms=duration_ms,
+        )
+
+    def test_returns_true_when_history_is_empty(self):
+        self.client._history = []
+        assert self.client._evaluate_duration(self._ctx(5000)) is True
+
+    def test_returns_true_when_baseline_duration_is_none(self):
+        self.client._history = [self._ctx(None, iteration=1)]
+        assert self.client._evaluate_duration(self._ctx(5000, iteration=2)) is True
+
+    def test_returns_true_when_candidate_duration_is_none(self):
+        self.client._history = [self._ctx(2000, iteration=1)]
+        assert self.client._evaluate_duration(self._ctx(None, iteration=2)) is True
+
+    def test_passes_when_candidate_is_more_than_20_percent_faster(self):
+        # baseline=2000ms, threshold=1600ms, candidate=1500ms → 1500 < 1600 → pass
+        self.client._history = [self._ctx(2000, iteration=1)]
+        assert self.client._evaluate_duration(self._ctx(1500, iteration=2)) is True
+
+    def test_fails_when_candidate_is_exactly_at_threshold(self):
+        # baseline=2000ms, threshold=1600ms, candidate=1600ms → not strictly less → fail
+        self.client._history = [self._ctx(2000, iteration=1)]
+        assert self.client._evaluate_duration(self._ctx(1600, iteration=2)) is False
+
+    def test_fails_when_improvement_is_less_than_20_percent(self):
+        # baseline=2000ms, threshold=1600ms, candidate=1800ms → 1800 >= 1600 → fail
+        self.client._history = [self._ctx(2000, iteration=1)]
+        assert self.client._evaluate_duration(self._ctx(1800, iteration=2)) is False
+
+    def test_fails_when_candidate_matches_baseline(self):
+        self.client._history = [self._ctx(2000, iteration=1)]
+        assert self.client._evaluate_duration(self._ctx(2000, iteration=2)) is False
+
+    def test_fails_when_candidate_is_slower_than_baseline(self):
+        self.client._history = [self._ctx(2000, iteration=1)]
+        assert self.client._evaluate_duration(self._ctx(2500, iteration=2)) is False
+
+    def test_uses_history_index_zero_as_baseline_not_last(self):
+        # history[0] is 2000ms (baseline), history[-1] is 500ms (fast, but not the baseline)
+        first = self._ctx(2000, iteration=1)
+        later = self._ctx(500, iteration=2)
+        self.client._history = [first, later]
+        # candidate=1500ms < 2000 * 0.80 = 1600ms → pass (uses history[0], not history[-1])
+        assert self.client._evaluate_duration(self._ctx(1500, iteration=3)) is True
+
+    def test_pass_boundary_just_below_threshold(self):
+        # baseline=1000ms, threshold=800ms, candidate=799ms → pass
+        self.client._history = [self._ctx(1000, iteration=1)]
+        assert self.client._evaluate_duration(self._ctx(799, iteration=2)) is True
+
+
+# ---------------------------------------------------------------------------
+# Duration optimization — chaos mode wiring
+# ---------------------------------------------------------------------------
+
+
+class TestDurationOptimizationChaosMode:
+    def setup_method(self):
+        self.mock_ldai = _make_ldai_client()
+
+    def _duration_judges(self, statement="The response must be fast."):
+        return {
+            "speed": OptimizationJudge(
+                threshold=0.8,
+                acceptance_statement=statement,
+            )
+        }
+
+    def _ctx_with(self, duration_ms, score=1.0, iteration=1):
+        return OptimizationContext(
+            scores={"speed": JudgeResult(score=score)},
+            completion_response="answer",
+            current_instructions="Do X.",
+            current_parameters={},
+            current_variables={"language": "English"},
+            iteration=iteration,
+            duration_ms=duration_ms,
+        )
+
+    async def test_duration_gate_triggers_variation_when_not_fast_enough(self):
+        """Judge passes but duration fails threshold → variation generated → second attempt succeeds."""
+        client = _make_client(self.mock_ldai)
+
+        # Iter 1: judge fails → history[0].duration_ms = 2000
+        # Iter 2: judge passes, duration 1800ms ≥ 2000 * 0.80 = 1600ms → duration fails → variation
+        # Iter 3: judge passes, duration 1500ms < 1600ms → passes → validation → success
+        execute_side_effects = [
+            self._ctx_with(duration_ms=2000, score=0.2, iteration=1),   # iter 1: judge fails
+            self._ctx_with(duration_ms=1800, score=1.0, iteration=2),   # iter 2: judge passes, duration fails
+            self._ctx_with(duration_ms=1500, score=1.0, iteration=3),   # iter 3: both pass
+            self._ctx_with(duration_ms=1500, score=1.0, iteration=4),   # validation
+        ]
+
+        handle_agent_call = AsyncMock(return_value=OptimizationResponse(output=VARIATION_RESPONSE))
+        opts = _make_options(
+            handle_agent_call=handle_agent_call,
+            judges=self._duration_judges(),
+            max_attempts=5,
+        )
+
+        with patch.object(client, "_execute_agent_turn", new_callable=AsyncMock) as mock_execute:
+            mock_execute.side_effect = execute_side_effects
+            result = await client.optimize_from_options("test-agent", opts)
+
+        assert result.duration_ms == 1500
+        # 2 variations generated (after iter 1 judge fail, after iter 2 duration fail)
+        assert handle_agent_call.call_count == 2
+        assert mock_execute.call_count == 4
+
+    async def test_duration_check_skipped_on_first_iteration_no_baseline(self):
+        """First iteration has no history → duration check always skipped → succeeds even if slow."""
+        client = _make_client(self.mock_ldai)
+
+        # Iter 1 (no history): judge passes, duration check skipped → validation
+        # Validation: judge passes, duration check still uses history[0] = None since nothing appended yet
+        execute_side_effects = [
+            self._ctx_with(duration_ms=9999, score=1.0, iteration=1),   # iter 1: would fail if checked
+            self._ctx_with(duration_ms=9999, score=1.0, iteration=2),   # validation
+        ]
+
+        opts = _make_options(
+            handle_agent_call=AsyncMock(return_value=OptimizationResponse(output="answer")),
+            judges=self._duration_judges(),
+            max_attempts=3,
+        )
+
+        with patch.object(client, "_execute_agent_turn", new_callable=AsyncMock) as mock_execute:
+            mock_execute.side_effect = execute_side_effects
+            result = await client.optimize_from_options("test-agent", opts)
+
+        # Succeeds because history is empty and duration check is skipped
+        assert result.duration_ms == 9999
+
+    async def test_no_duration_gate_when_acceptance_criteria_has_no_latency_keywords(self):
+        """Acceptance statement with no latency keywords → duration gate never applied."""
+        client = _make_client(self.mock_ldai)
+
+        # Judge passes on first try; duration would fail if gate were applied (same as baseline)
+        # but since acceptance criteria has no latency keywords, it should succeed anyway
+        execute_side_effects = [
+            self._ctx_with(duration_ms=2000, score=1.0, iteration=1),
+            self._ctx_with(duration_ms=2000, score=1.0, iteration=2),   # validation
+        ]
+
+        non_latency_judges = {
+            "accuracy": OptimizationJudge(
+                threshold=0.8,
+                acceptance_statement="The response must be accurate and complete.",
+            )
+        }
+        opts = _make_options(
+            handle_agent_call=AsyncMock(return_value=OptimizationResponse(output="answer")),
+            judges=non_latency_judges,
+            max_attempts=3,
+        )
+
+        with patch.object(client, "_execute_agent_turn", new_callable=AsyncMock) as mock_execute:
+            mock_execute.side_effect = execute_side_effects
+            # Manually seed history so _evaluate_duration would fire if incorrectly triggered
+            client._history = [self._ctx_with(duration_ms=2000, iteration=0)]
+            result = await client.optimize_from_options("test-agent", opts)
+
+        assert result is not None
+
+    async def test_evaluate_duration_called_in_validation_phase(self):
+        """Duration gate also runs on validation samples, not just the primary turn."""
+        client = _make_client(self.mock_ldai)
+
+        # Iter 1: judge fails → history[0].duration_ms = 2000
+        # Iter 2: judge passes, duration 1500ms → primary passes
+        # Validation sample: judge passes, duration 1800ms ≥ 1600ms → validation fails → variation
+        # Iter 3: judge passes, duration 1500ms → primary passes
+        # Validation: judge passes, duration 1500ms → validation passes → success
+        execute_side_effects = [
+            self._ctx_with(duration_ms=2000, score=0.2, iteration=1),   # iter 1: judge fails
+            self._ctx_with(duration_ms=1500, score=1.0, iteration=2),   # iter 2: passes
+            self._ctx_with(duration_ms=1800, score=1.0, iteration=3),   # validation: duration fails
+            self._ctx_with(duration_ms=1500, score=1.0, iteration=4),   # iter 3: passes
+            self._ctx_with(duration_ms=1500, score=1.0, iteration=5),   # validation: passes
+        ]
+
+        handle_agent_call = AsyncMock(return_value=OptimizationResponse(output=VARIATION_RESPONSE))
+        opts = _make_options(
+            handle_agent_call=handle_agent_call,
+            judges=self._duration_judges(),
+            max_attempts=5,
+        )
+
+        with patch.object(client, "_execute_agent_turn", new_callable=AsyncMock) as mock_execute:
+            mock_execute.side_effect = execute_side_effects
+            result = await client.optimize_from_options("test-agent", opts)
+
+        assert result.duration_ms == 1500
+        assert mock_execute.call_count == 5
+
+
+# ---------------------------------------------------------------------------
+# Duration optimization — ground truth mode wiring
+# ---------------------------------------------------------------------------
+
+
+class TestDurationOptimizationGroundTruthMode:
+    def setup_method(self):
+        self.mock_ldai = _make_ldai_client()
+
+    def _duration_judges(self):
+        return {
+            "speed": OptimizationJudge(
+                threshold=0.8,
+                acceptance_statement="The response must be fast.",
+            )
+        }
+
+    def _gt_ctx(self, duration_ms, score=1.0, iteration=1, user_input="q"):
+        return OptimizationContext(
+            scores={"speed": JudgeResult(score=score)},
+            completion_response="answer",
+            current_instructions="Do X.",
+            current_parameters={},
+            current_variables={},
+            iteration=iteration,
+            duration_ms=duration_ms,
+            user_input=user_input,
+        )
+
+    async def test_duration_gate_applied_per_sample_in_ground_truth_mode(self):
+        """In GT mode, the duration check fires per sample, not just once per attempt."""
+        client = _make_client(self.mock_ldai)
+
+        # Attempt 1:
+        #   Sample 1: judge fails (score 0.2) → all_passed = False
+        #   Sample 2: judge passes → duration skipped (history empty for sample 2)
+        #   → history extended with attempt 1 results → variation generated
+        # Attempt 2:
+        #   Sample 1: judge passes, duration 1800ms vs baseline history[0].duration_ms = 2000ms
+        #             → 1800 >= 1600 → duration fails → sample_passed = False → all_passed = False
+        #   (attempt 2 fails due to duration on sample 1)
+        #   → variation generated
+        # Attempt 3:
+        #   Sample 1: judge passes, duration 1500ms < 1600ms → passes
+        #   Sample 2: judge passes, duration 1500ms (history[0] still 2000ms) → passes
+        #   → all_passed = True → success
+        execute_side_effects = [
+            # Attempt 1
+            self._gt_ctx(duration_ms=2000, score=0.2, iteration=1, user_input="q1"),
+            self._gt_ctx(duration_ms=2000, score=1.0, iteration=2, user_input="q2"),
+            # Variation (not from _execute_agent_turn, from handle_agent_call)
+            # Attempt 2
+            self._gt_ctx(duration_ms=1800, score=1.0, iteration=3, user_input="q1"),
+            self._gt_ctx(duration_ms=1800, score=1.0, iteration=4, user_input="q2"),
+            # Variation
+            # Attempt 3
+            self._gt_ctx(duration_ms=1500, score=1.0, iteration=5, user_input="q1"),
+            self._gt_ctx(duration_ms=1500, score=1.0, iteration=6, user_input="q2"),
+        ]
+
+        handle_agent_call = AsyncMock(return_value=OptimizationResponse(output=VARIATION_RESPONSE))
+        opts = _make_gt_options(
+            handle_agent_call=handle_agent_call,
+            judges=self._duration_judges(),
+            max_attempts=5,
+        )
+
+        with patch.object(client, "_execute_agent_turn", new_callable=AsyncMock) as mock_execute:
+            mock_execute.side_effect = execute_side_effects
+            results = await client.optimize_from_ground_truth_options("test-agent", opts)
+
+        assert isinstance(results, list)
+        for ctx in results:
+            assert ctx.duration_ms == 1500
+        # 2 variations generated
+        assert handle_agent_call.call_count == 2
+        assert mock_execute.call_count == 6
+
+    async def test_no_duration_gate_in_gt_mode_when_no_latency_keywords(self):
+        """In GT mode, duration gate is not applied when acceptance criteria has no latency keywords."""
+        client = _make_client(self.mock_ldai)
+
+        execute_side_effects = [
+            self._gt_ctx(duration_ms=5000, score=1.0, iteration=1, user_input="q1"),
+            self._gt_ctx(duration_ms=5000, score=1.0, iteration=2, user_input="q2"),
+        ]
+
+        non_latency_judges = {
+            "accuracy": OptimizationJudge(
+                threshold=0.8,
+                acceptance_statement="The response must be accurate.",
+            )
+        }
+        opts = _make_gt_options(
+            handle_agent_call=AsyncMock(return_value=OptimizationResponse(output="answer")),
+            judges=non_latency_judges,
+            max_attempts=3,
+        )
+
+        with patch.object(client, "_execute_agent_turn", new_callable=AsyncMock) as mock_execute:
+            mock_execute.side_effect = execute_side_effects
+            results = await client.optimize_from_ground_truth_options("test-agent", opts)
+
+        # Succeeds on first attempt even with slow duration (no latency keyword → no gate)
+        assert isinstance(results, list)
+        assert mock_execute.call_count == 2
