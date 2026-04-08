@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import random
+import time
 import uuid
 from typing import Any, Dict, List, Literal, Optional, Union
 
@@ -23,6 +24,7 @@ from ldai_optimization.dataclasses import (
     OptimizationJudge,
     OptimizationJudgeContext,
     OptimizationOptions,
+    OptimizationResponse,
     ToolDefinition,
 )
 from ldai_optimization.ld_api_client import (
@@ -574,10 +576,13 @@ class OptimizationClient:
             variables=variables or {},
         )
 
+        _judge_start = time.monotonic()
         result = self._options.handle_judge_call(
             judge_key, judge_call_config, judge_ctx
         )
-        judge_response_str = await await_if_needed(result)
+        judge_response: OptimizationResponse = await await_if_needed(result)
+        judge_duration_ms = (time.monotonic() - _judge_start) * 1000
+        judge_response_str = judge_response.output
 
         logger.debug(
             "[Iteration %d] -> Judge response (%s): %s",
@@ -588,13 +593,14 @@ class OptimizationClient:
 
         # Parse judge response — expect structured JSON output
         judge_identifier = optimization_judge.judge_key or judge_key
-        return self._parse_judge_response(
+        judge_result = self._parse_judge_response(
             judge_response_str,
             judge_key,
             judge_identifier,
             iteration,
             clamp_score=False,
         )
+        return dataclasses.replace(judge_result, duration_ms=judge_duration_ms, usage=judge_response.usage)
 
     async def _evaluate_acceptance_judge(
         self,
@@ -701,22 +707,26 @@ class OptimizationClient:
             variables=resolved_variables,
         )
 
+        _judge_start = time.monotonic()
         result = self._options.handle_judge_call(
             judge_key, judge_call_config, judge_ctx
         )
-        judge_response = await await_if_needed(result)
+        judge_response: OptimizationResponse = await await_if_needed(result)
+        judge_duration_ms = (time.monotonic() - _judge_start) * 1000
+        judge_response_str = judge_response.output
 
         logger.debug(
             "[Iteration %d] -> Judge response (%s): %s",
             iteration,
             judge_key,
-            judge_response,
+            judge_response_str,
         )
 
         # Parse judge response — expect structured JSON output with score and rationale
-        return self._parse_judge_response(
-            judge_response, judge_key, judge_key, iteration, clamp_score=True
+        judge_result = self._parse_judge_response(
+            judge_response_str, judge_key, judge_key, iteration, clamp_score=True
         )
+        return dataclasses.replace(judge_result, duration_ms=judge_duration_ms, usage=judge_response.usage)
 
     async def _get_agent_config(
         self, agent_key: str, context: Context
@@ -1180,7 +1190,8 @@ class OptimizationClient:
                 agent_config,
                 variation_ctx,
             )
-            response_str = await await_if_needed(result)
+            variation_response: OptimizationResponse = await await_if_needed(result)
+            response_str = variation_response.output
             try:
                 response_data = extract_json_from_response(response_str)
                 break
@@ -1329,6 +1340,28 @@ class OptimizationClient:
                 "scores": {k: v.to_json() for k, v in snapshot.scores.items()},
                 "user_input": snapshot.user_input,
             }
+            if snapshot.duration_ms is not None:
+                payload["generation_latency"] = snapshot.duration_ms
+            if snapshot.usage is not None:
+                payload["generation_tokens"] = {
+                    "total": snapshot.usage.total,
+                    "input": snapshot.usage.input,
+                    "output": snapshot.usage.output,
+                }
+            eval_latencies = {
+                k: v.duration_ms
+                for k, v in snapshot.scores.items()
+                if v.duration_ms is not None
+            }
+            if eval_latencies:
+                payload["evaluation_latencies"] = eval_latencies
+            eval_tokens = {
+                k: {"total": v.usage.total, "input": v.usage.input, "output": v.usage.output}
+                for k, v in snapshot.scores.items()
+                if v.usage is not None
+            }
+            if eval_tokens:
+                payload["evaluation_tokens"] = eval_tokens
             api_client.post_agent_optimization_result(project_key, optimization_id, payload)
 
             if options.on_status_update:
@@ -1421,12 +1454,15 @@ class OptimizationClient:
             optimize_context.current_model,
         )
         try:
+            _agent_start = time.monotonic()
             result = self._options.handle_agent_call(
                 self._agent_key,
                 self._build_agent_config_for_context(optimize_context),
                 optimize_context,
             )
-            completion_response = await await_if_needed(result)
+            agent_response: OptimizationResponse = await await_if_needed(result)
+            agent_duration_ms = (time.monotonic() - _agent_start) * 1000
+            completion_response = agent_response.output
             logger.debug(
                 "[Iteration %d] -> Agent response: %.300s%s",
                 iteration,
@@ -1456,6 +1492,8 @@ class OptimizationClient:
             optimize_context,
             completion_response=completion_response,
             scores=scores,
+            duration_ms=agent_duration_ms,
+            usage=agent_response.usage,
         )
 
     def _evaluate_response(self, optimize_context: OptimizationContext) -> bool:

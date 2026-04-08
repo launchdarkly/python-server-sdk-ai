@@ -99,9 +99,7 @@ class OptimizationResultPayload(_OptimizationResultPayloadRequired, total=False)
     """Typed payload for a single agent_optimization_result POST request.
 
     Required fields are always sent. Optional fields are omitted when not
-    available. Fields that require separate tracking instrumentation
-    (variation, generation_tokens, evaluation_tokens, generation_latency,
-    evaluation_latencies) are deferred.
+    available.
 
     created_variation_key is only present on the final result record of a
     successful run, populated once a winning variation is committed to LD.
@@ -109,6 +107,10 @@ class OptimizationResultPayload(_OptimizationResultPayloadRequired, total=False)
 
     user_input: Optional[str]
     created_variation_key: str
+    generation_latency: float
+    generation_tokens: Dict[str, int]
+    evaluation_latencies: Dict[str, float]
+    evaluation_tokens: Dict[str, Dict[str, int]]
 
 
 # ---------------------------------------------------------------------------

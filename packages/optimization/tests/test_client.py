@@ -20,6 +20,7 @@ from ldai_optimization.dataclasses import (
     OptimizationJudge,
     OptimizationJudgeContext,
     OptimizationOptions,
+    OptimizationResponse,
     ToolDefinition,
 )
 from ldai_optimization.prompts import (
@@ -82,9 +83,9 @@ def _make_options(
     variable_choices=None,
 ) -> OptimizationOptions:
     if handle_agent_call is None:
-        handle_agent_call = AsyncMock(return_value="The capital of France is Paris.")
+        handle_agent_call = AsyncMock(return_value=OptimizationResponse(output="The capital of France is Paris."))
     if handle_judge_call is None:
-        handle_judge_call = AsyncMock(return_value=JUDGE_PASS_RESPONSE)
+        handle_judge_call = AsyncMock(return_value=OptimizationResponse(output=JUDGE_PASS_RESPONSE))
     if judges is None:
         judges = {
             "accuracy": OptimizationJudge(
@@ -247,7 +248,7 @@ class TestEvaluateResponse:
         assert self.client._evaluate_response(ctx) is True
 
     def test_no_judges_always_passes(self):
-        options = _make_options(judges=None, handle_agent_call=AsyncMock(return_value="x"))
+        options = _make_options(judges=None, handle_agent_call=AsyncMock(return_value=OptimizationResponse(output="x")))
         # Need on_turn to satisfy validation — inject directly
         options_with_on_turn = OptimizationOptions(
             context_choices=[LD_CONTEXT],
@@ -255,8 +256,8 @@ class TestEvaluateResponse:
             model_choices=["gpt-4o"],
             judge_model="gpt-4o",
             variable_choices=[{}],
-            handle_agent_call=AsyncMock(return_value="x"),
-            handle_judge_call=AsyncMock(return_value=JUDGE_PASS_RESPONSE),
+            handle_agent_call=AsyncMock(return_value=OptimizationResponse(output="x")),
+            handle_judge_call=AsyncMock(return_value=OptimizationResponse(output=JUDGE_PASS_RESPONSE)),
             judges={"j": OptimizationJudge(threshold=1.0, acceptance_statement="x")},
             on_turn=lambda ctx: True,
         )
@@ -307,7 +308,7 @@ class TestEvaluateAcceptanceJudge:
         self.client._agent_key = "test-agent"
         self.client._agent_config = agent_config
         self.client._initialize_class_members_from_config(agent_config)
-        self.handle_judge_call = AsyncMock(return_value=JUDGE_PASS_RESPONSE)
+        self.handle_judge_call = AsyncMock(return_value=OptimizationResponse(output=JUDGE_PASS_RESPONSE))
         self.client._options = _make_options(handle_judge_call=self.handle_judge_call)
 
     async def test_returns_parsed_score_and_rationale(self):
@@ -472,7 +473,7 @@ class TestEvaluateAcceptanceJudge:
         self.handle_judge_call.assert_not_called()
 
     async def test_returns_zero_score_on_parse_failure(self):
-        self.handle_judge_call.return_value = "not json at all"
+        self.handle_judge_call.return_value = OptimizationResponse(output="not json at all")
         judge = OptimizationJudge(threshold=0.8, acceptance_statement="Be clear.")
         result = await self.client._evaluate_acceptance_judge(
             judge_key="clarity",
@@ -498,7 +499,7 @@ class TestEvaluateConfigJudge:
         self.client._agent_key = "test-agent"
         self.client._agent_config = agent_config
         self.client._initialize_class_members_from_config(agent_config)
-        self.handle_judge_call = AsyncMock(return_value=JUDGE_PASS_RESPONSE)
+        self.handle_judge_call = AsyncMock(return_value=OptimizationResponse(output=JUDGE_PASS_RESPONSE))
         self.client._options = _make_options(handle_judge_call=self.handle_judge_call)
 
     def _make_judge_config(self, enabled: bool = True) -> AIJudgeConfig:
@@ -670,8 +671,8 @@ class TestEvaluateConfigJudge:
 class TestExecuteAgentTurn:
     def setup_method(self):
         self.agent_response = "Paris is the capital of France."
-        self.handle_agent_call = AsyncMock(return_value=self.agent_response)
-        self.handle_judge_call = AsyncMock(return_value=JUDGE_PASS_RESPONSE)
+        self.handle_agent_call = AsyncMock(return_value=OptimizationResponse(output=self.agent_response))
+        self.handle_judge_call = AsyncMock(return_value=OptimizationResponse(output=JUDGE_PASS_RESPONSE))
         self.client = _make_client()
         agent_config = _make_agent_config()
         self.client._agent_key = "test-agent"
@@ -735,7 +736,7 @@ class TestExecuteAgentTurn:
 
 class TestGenerateNewVariation:
     def setup_method(self):
-        self.handle_agent_call = AsyncMock(return_value=VARIATION_RESPONSE)
+        self.handle_agent_call = AsyncMock(return_value=OptimizationResponse(output=VARIATION_RESPONSE))
         self.client = _make_client()
         agent_config = _make_agent_config()
         self.client._agent_key = "test-agent"
@@ -774,7 +775,7 @@ class TestGenerateNewVariation:
             "current_parameters": {},
             "model": "some-unknown-model",
         })
-        self.handle_agent_call.return_value = bad_response
+        self.handle_agent_call.return_value = OptimizationResponse(output=bad_response)
         original_model = self.client._current_model
         await self.client._generate_new_variation(iteration=1, variables={})
         assert self.client._current_model == original_model
@@ -782,8 +783,8 @@ class TestGenerateNewVariation:
     async def test_retries_on_empty_response_and_succeeds(self):
         """First attempt returns empty string; second returns valid JSON — succeeds."""
         self.handle_agent_call.side_effect = [
-            "",           # attempt 1: empty
-            VARIATION_RESPONSE,  # attempt 2: valid
+            OptimizationResponse(output=""),           # attempt 1: empty
+            OptimizationResponse(output=VARIATION_RESPONSE),  # attempt 2: valid
         ]
         await self.client._generate_new_variation(iteration=1, variables={})
         assert self.client._current_instructions == "You are an improved assistant."
@@ -792,8 +793,8 @@ class TestGenerateNewVariation:
     async def test_retries_on_unparseable_response_and_succeeds(self):
         """First attempt returns non-JSON text; second returns valid JSON — succeeds."""
         self.handle_agent_call.side_effect = [
-            "Sorry, I cannot do that.",  # attempt 1: not JSON
-            VARIATION_RESPONSE,           # attempt 2: valid
+            OptimizationResponse(output="Sorry, I cannot do that."),  # attempt 1: not JSON
+            OptimizationResponse(output=VARIATION_RESPONSE),           # attempt 2: valid
         ]
         await self.client._generate_new_variation(iteration=1, variables={})
         assert self.client._current_instructions == "You are an improved assistant."
@@ -801,7 +802,11 @@ class TestGenerateNewVariation:
 
     async def test_raises_after_max_retries_exhausted(self):
         """All three attempts return empty strings — ValueError is raised."""
-        self.handle_agent_call.side_effect = ["", "", ""]
+        self.handle_agent_call.side_effect = [
+            OptimizationResponse(output=""),
+            OptimizationResponse(output=""),
+            OptimizationResponse(output=""),
+        ]
         with pytest.raises(ValueError, match="Failed to parse structured output"):
             await self.client._generate_new_variation(iteration=1, variables={})
         assert self.handle_agent_call.call_count == 3
@@ -817,8 +822,8 @@ class TestRunOptimization:
         self.mock_ldai = _make_ldai_client()
 
     async def test_succeeds_on_first_attempt_when_judge_passes(self):
-        handle_agent_call = AsyncMock(return_value="The capital of France is Paris.")
-        handle_judge_call = AsyncMock(return_value=JUDGE_PASS_RESPONSE)
+        handle_agent_call = AsyncMock(return_value=OptimizationResponse(output="The capital of France is Paris."))
+        handle_judge_call = AsyncMock(return_value=OptimizationResponse(output=JUDGE_PASS_RESPONSE))
         client = _make_client(self.mock_ldai)
         options = _make_options(
             handle_agent_call=handle_agent_call,
@@ -831,13 +836,17 @@ class TestRunOptimization:
 
     async def test_generates_variation_when_judge_fails(self):
         agent_responses = [
-            "Bad answer.",
-            VARIATION_RESPONSE,  # variation generation
-            "Better answer.",
-            "Better answer.",    # 1 validation sample (repeated draw — only 1 variable choice)
+            OptimizationResponse(output="Bad answer."),
+            OptimizationResponse(output=VARIATION_RESPONSE),  # variation generation
+            OptimizationResponse(output="Better answer."),
+            OptimizationResponse(output="Better answer."),    # 1 validation sample (repeated draw — only 1 variable choice)
         ]
         handle_agent_call = AsyncMock(side_effect=agent_responses)
-        judge_responses = [JUDGE_FAIL_RESPONSE, JUDGE_PASS_RESPONSE, JUDGE_PASS_RESPONSE]
+        judge_responses = [
+            OptimizationResponse(output=JUDGE_FAIL_RESPONSE),
+            OptimizationResponse(output=JUDGE_PASS_RESPONSE),
+            OptimizationResponse(output=JUDGE_PASS_RESPONSE),
+        ]
         handle_judge_call = AsyncMock(side_effect=judge_responses)
         client = _make_client(self.mock_ldai)
         options = _make_options(
@@ -854,13 +863,13 @@ class TestRunOptimization:
         # The max_attempts guard fires before variation on the final iteration,
         # so only iterations 1 and 2 produce a variation call.
         handle_agent_call = AsyncMock(side_effect=[
-            "Bad answer.",       # iteration 1: agent
-            VARIATION_RESPONSE,  # iteration 1: variation
-            "Still bad.",        # iteration 2: agent
-            VARIATION_RESPONSE,  # iteration 2: variation
-            "Still bad.",        # iteration 3: agent (max_attempts reached — no variation)
+            OptimizationResponse(output="Bad answer."),       # iteration 1: agent
+            OptimizationResponse(output=VARIATION_RESPONSE),  # iteration 1: variation
+            OptimizationResponse(output="Still bad."),        # iteration 2: agent
+            OptimizationResponse(output=VARIATION_RESPONSE),  # iteration 2: variation
+            OptimizationResponse(output="Still bad."),        # iteration 3: agent (max_attempts reached — no variation)
         ])
-        handle_judge_call = AsyncMock(return_value=JUDGE_FAIL_RESPONSE)
+        handle_judge_call = AsyncMock(return_value=OptimizationResponse(output=JUDGE_FAIL_RESPONSE))
         client = _make_client(self.mock_ldai)
         options = _make_options(
             handle_agent_call=handle_agent_call,
@@ -872,8 +881,8 @@ class TestRunOptimization:
 
     async def test_on_passing_result_called_on_success(self):
         on_passing = MagicMock()
-        handle_agent_call = AsyncMock(return_value="Great answer.")
-        handle_judge_call = AsyncMock(return_value=JUDGE_PASS_RESPONSE)
+        handle_agent_call = AsyncMock(return_value=OptimizationResponse(output="Great answer."))
+        handle_judge_call = AsyncMock(return_value=OptimizationResponse(output=JUDGE_PASS_RESPONSE))
         client = _make_client(self.mock_ldai)
         options = _make_options(
             handle_agent_call=handle_agent_call,
@@ -886,11 +895,11 @@ class TestRunOptimization:
     async def test_on_failing_result_called_on_max_attempts(self):
         on_failing = MagicMock()
         handle_agent_call = AsyncMock(side_effect=[
-            "Bad.",             # iteration 1: agent
-            VARIATION_RESPONSE, # iteration 1: variation
-            "Still bad.",       # iteration 2: agent (max_attempts reached — no variation)
+            OptimizationResponse(output="Bad."),             # iteration 1: agent
+            OptimizationResponse(output=VARIATION_RESPONSE), # iteration 1: variation
+            OptimizationResponse(output="Still bad."),       # iteration 2: agent (max_attempts reached — no variation)
         ])
-        handle_judge_call = AsyncMock(return_value=JUDGE_FAIL_RESPONSE)
+        handle_judge_call = AsyncMock(return_value=OptimizationResponse(output=JUDGE_FAIL_RESPONSE))
         client = _make_client(self.mock_ldai)
         options = _make_options(
             handle_agent_call=handle_agent_call,
@@ -902,8 +911,8 @@ class TestRunOptimization:
         on_failing.assert_called_once()
 
     async def test_on_turn_manual_path_success(self):
-        handle_agent_call = AsyncMock(return_value="Answer.")
-        handle_judge_call = AsyncMock(return_value=JUDGE_PASS_RESPONSE)
+        handle_agent_call = AsyncMock(return_value=OptimizationResponse(output="Answer."))
+        handle_judge_call = AsyncMock(return_value=OptimizationResponse(output=JUDGE_PASS_RESPONSE))
         client = _make_client(self.mock_ldai)
         options = OptimizationOptions(
             context_choices=[LD_CONTEXT],
@@ -921,8 +930,8 @@ class TestRunOptimization:
 
     async def test_status_update_callback_called_at_each_stage(self):
         statuses = []
-        handle_agent_call = AsyncMock(return_value="Good answer.")
-        handle_judge_call = AsyncMock(return_value=JUDGE_PASS_RESPONSE)
+        handle_agent_call = AsyncMock(return_value=OptimizationResponse(output="Good answer."))
+        handle_judge_call = AsyncMock(return_value=OptimizationResponse(output=JUDGE_PASS_RESPONSE))
         client = _make_client(self.mock_ldai)
         options = _make_options(
             handle_agent_call=handle_agent_call,
@@ -979,9 +988,9 @@ def _make_multi_options(
     max_attempts: int = 5,
 ) -> OptimizationOptions:
     if handle_agent_call is None:
-        handle_agent_call = AsyncMock(return_value="answer")
+        handle_agent_call = AsyncMock(return_value=OptimizationResponse(output="answer"))
     if handle_judge_call is None:
-        handle_judge_call = AsyncMock(return_value=JUDGE_PASS_RESPONSE)
+        handle_judge_call = AsyncMock(return_value=OptimizationResponse(output=JUDGE_PASS_RESPONSE))
     judges = None if on_turn is not None else {
         "acc": OptimizationJudge(threshold=0.8, acceptance_statement="Be accurate.")
     }
@@ -1022,7 +1031,7 @@ class TestValidationPhase:
 
         async def counting_agent(key, config, ctx):
             call_count[0] += 1
-            return "answer"
+            return OptimizationResponse(output="answer")
 
         client = self._make_client()
         opts = _make_multi_options(handle_agent_call=counting_agent)
@@ -1046,12 +1055,12 @@ class TestValidationPhase:
             # 8 items → validation_count = 2
             variable_count=8,
             handle_agent_call=AsyncMock(side_effect=[
-                "iter1",            # initial turn (passes)
-                "val_iter2",        # validation sample 1 (fails)
-                VARIATION_RESPONSE,  # variation generation
-                "iter3",            # new attempt initial (passes)
-                "val_iter4",        # new validation sample 1 (passes)
-                "val_iter5",        # new validation sample 2 (passes)
+                OptimizationResponse(output="iter1"),            # initial turn (passes)
+                OptimizationResponse(output="val_iter2"),        # validation sample 1 (fails)
+                OptimizationResponse(output=VARIATION_RESPONSE),  # variation generation
+                OptimizationResponse(output="iter3"),            # new attempt initial (passes)
+                OptimizationResponse(output="val_iter4"),        # new validation sample 1 (passes)
+                OptimizationResponse(output="val_iter5"),        # new validation sample 2 (passes)
             ]),
             on_passing_result=on_passing,
             max_attempts=3,
@@ -1067,7 +1076,7 @@ class TestValidationPhase:
 
         async def capture_agent(key, config, ctx):
             seen_variables.append(ctx.current_variables)
-            return "answer"
+            return OptimizationResponse(output="answer")
 
         client = self._make_client()
         opts = _make_multi_options(handle_agent_call=capture_agent, variable_count=8)
@@ -1087,7 +1096,7 @@ class TestValidationPhase:
 
         async def capture_agent(key, config, ctx):
             seen_inputs.append(ctx.user_input)
-            return "answer"
+            return OptimizationResponse(output="answer")
 
         client = self._make_client()
         user_inputs = [f"question {i}" for i in range(8)]
@@ -1110,7 +1119,7 @@ class TestValidationPhase:
 
         async def counting_agent(key, config, ctx):
             call_count[0] += 1
-            return "answer"
+            return OptimizationResponse(output="answer")
 
         client = self._make_client()
         # 3 variable choices → _compute_validation_count(3) = 2, but only 2 remain after
@@ -1126,7 +1135,7 @@ class TestValidationPhase:
 
         async def counting_agent(key, config, ctx):
             call_count[0] += 1
-            return "answer"
+            return OptimizationResponse(output="answer")
 
         client = self._make_client()
         opts = _make_multi_options(handle_agent_call=counting_agent, variable_count=1)
@@ -1156,12 +1165,12 @@ class TestValidationPhase:
             on_turn=on_turn,
             variable_count=8,
             handle_agent_call=AsyncMock(side_effect=[
-                "iter1",            # attempt 1 initial (passes)
-                "val_iter",         # validation sample 1 (fails)
-                VARIATION_RESPONSE,  # variation generation
-                "iter2",            # attempt 2 initial (passes)
-                "val_iter3",        # validation sample 1 (passes)
-                "val_iter4",        # validation sample 2 (passes)
+                OptimizationResponse(output="iter1"),            # attempt 1 initial (passes)
+                OptimizationResponse(output="val_iter"),         # validation sample 1 (fails)
+                OptimizationResponse(output=VARIATION_RESPONSE),  # variation generation
+                OptimizationResponse(output="iter2"),            # attempt 2 initial (passes)
+                OptimizationResponse(output="val_iter3"),        # validation sample 1 (passes)
+                OptimizationResponse(output="val_iter4"),        # validation sample 2 (passes)
             ]),
             on_passing_result=on_passing,
             max_attempts=2,
@@ -1561,7 +1570,7 @@ class TestRestoreVariablePlaceholders:
             "current_parameters": {},
             "model": "gpt-4o",
         })
-        handle_agent_call = AsyncMock(return_value=variation_response)
+        handle_agent_call = AsyncMock(return_value=OptimizationResponse(output=variation_response))
         client = _make_client()
         agent_config = _make_agent_config()
         client._agent_key = "test-agent"
@@ -1609,8 +1618,8 @@ def _make_from_config_options(**overrides: Any) -> OptimizationFromConfigOptions
     defaults: Dict[str, Any] = dict(
         project_key="my-project",
         context_choices=[LD_CONTEXT],
-        handle_agent_call=AsyncMock(return_value="The answer is 4."),
-        handle_judge_call=AsyncMock(return_value=JUDGE_PASS_RESPONSE),
+        handle_agent_call=AsyncMock(return_value=OptimizationResponse(output="The answer is 4.")),
+        handle_judge_call=AsyncMock(return_value=OptimizationResponse(output=JUDGE_PASS_RESPONSE)),
     )
     defaults.update(overrides)
     return OptimizationFromConfigOptions(**defaults)
@@ -1745,8 +1754,8 @@ class TestBuildOptionsFromConfig:
         assert result.judge_model == "claude-opus-4.6"
 
     def test_callbacks_forwarded_from_options(self):
-        handle_agent = AsyncMock(return_value="ok")
-        handle_judge = AsyncMock(return_value=JUDGE_PASS_RESPONSE)
+        handle_agent = AsyncMock(return_value=OptimizationResponse(output="ok"))
+        handle_judge = AsyncMock(return_value=OptimizationResponse(output=JUDGE_PASS_RESPONSE))
         options = _make_from_config_options(
             handle_agent_call=handle_agent,
             handle_judge_call=handle_judge,
@@ -1998,8 +2007,8 @@ class TestGroundTruthOptimizationOptionsValidation:
             max_attempts=3,
             model_choices=["gpt-4o"],
             judge_model="gpt-4o",
-            handle_agent_call=AsyncMock(return_value="ans"),
-            handle_judge_call=AsyncMock(return_value=JUDGE_PASS_RESPONSE),
+            handle_agent_call=AsyncMock(return_value=OptimizationResponse(output="ans")),
+            handle_judge_call=AsyncMock(return_value=OptimizationResponse(output=JUDGE_PASS_RESPONSE)),
             judges={
                 "acc": OptimizationJudge(threshold=0.8, acceptance_statement="Be accurate.")
             },
@@ -2047,8 +2056,8 @@ def _make_gt_options(**overrides) -> GroundTruthOptimizationOptions:
         max_attempts=3,
         model_choices=["gpt-4o", "gpt-4o-mini"],
         judge_model="gpt-4o",
-        handle_agent_call=AsyncMock(return_value="The answer is correct."),
-        handle_judge_call=AsyncMock(return_value=JUDGE_PASS_RESPONSE),
+        handle_agent_call=AsyncMock(return_value=OptimizationResponse(output="The answer is correct.")),
+        handle_judge_call=AsyncMock(return_value=OptimizationResponse(output=JUDGE_PASS_RESPONSE)),
         judges={
             "acc": OptimizationJudge(threshold=0.8, acceptance_statement="Be accurate.")
         },
@@ -2082,7 +2091,7 @@ class TestRunGroundTruthOptimization:
 
     async def test_completion_response_set_on_each_context(self):
         client = self._make_client()
-        opts = _make_gt_options(handle_agent_call=AsyncMock(return_value="42"))
+        opts = _make_gt_options(handle_agent_call=AsyncMock(return_value=OptimizationResponse(output="42")))
         results = await client.optimize_from_ground_truth_options("test-agent", opts)
         for ctx in results:
             assert ctx.completion_response == "42"
@@ -2105,7 +2114,7 @@ class TestRunGroundTruthOptimization:
         client = self._make_client()
         failing_calls = []
         opts = _make_gt_options(
-            handle_judge_call=AsyncMock(return_value=JUDGE_FAIL_RESPONSE),
+            handle_judge_call=AsyncMock(return_value=OptimizationResponse(output=JUDGE_FAIL_RESPONSE)),
             max_attempts=2,
             on_failing_result=lambda ctx: failing_calls.append(ctx),
         )
@@ -2126,14 +2135,16 @@ class TestRunGroundTruthOptimization:
             nonlocal call_count
             resp = judge_responses[call_count]
             call_count += 1
-            return resp
+            return OptimizationResponse(output=resp)
 
         opts = _make_gt_options(
             handle_judge_call=side_effect,
             handle_agent_call=AsyncMock(side_effect=[
-                "ans1", "ans2",           # attempt 1 samples
-                VARIATION_RESPONSE,       # variation generation
-                "ans3", "ans4",           # attempt 2 samples
+                OptimizationResponse(output="ans1"),
+                OptimizationResponse(output="ans2"),           # attempt 1 samples
+                OptimizationResponse(output=VARIATION_RESPONSE),       # variation generation
+                OptimizationResponse(output="ans3"),
+                OptimizationResponse(output="ans4"),           # attempt 2 samples
             ]),
             max_attempts=3,
         )
@@ -2163,7 +2174,7 @@ class TestRunGroundTruthOptimization:
         received_contexts = []
         async def capture_agent_call(key, config, ctx):
             received_contexts.append(ctx)
-            return "response"
+            return OptimizationResponse(output="response")
 
         opts = _make_gt_options(
             ground_truth_responses=[
@@ -2185,7 +2196,7 @@ class TestRunGroundTruthOptimization:
         observed_models = []
         async def capture(key, config, ctx):
             observed_models.append(config.model.name if config.model else None)
-            return "answer"
+            return OptimizationResponse(output="answer")
 
         opts = _make_gt_options(
             handle_agent_call=capture,
@@ -2227,7 +2238,7 @@ class TestExpectedResponseInJudges:
 
         async def capture_judge_call(key, config, ctx):
             captured_configs.append(config)
-            return JUDGE_PASS_RESPONSE
+            return OptimizationResponse(output=JUDGE_PASS_RESPONSE)
 
         self.client._options = _make_options(
             judges={
@@ -2249,7 +2260,7 @@ class TestExpectedResponseInJudges:
 
         async def capture_judge_call(key, config, ctx):
             captured_configs.append(config)
-            return JUDGE_PASS_RESPONSE
+            return OptimizationResponse(output=JUDGE_PASS_RESPONSE)
 
         self.client._options = _make_options(
             judges={
@@ -2274,7 +2285,7 @@ class TestExpectedResponseInJudges:
 
         async def capture_judge_call(key, config, ctx):
             captured_configs.append(config)
-            return JUDGE_PASS_RESPONSE
+            return OptimizationResponse(output=JUDGE_PASS_RESPONSE)
 
         self.client._options = _make_options(
             judges={
@@ -2373,8 +2384,8 @@ class TestBuildOptionsFromConfigGroundTruth:
 
         with patch("ldai_optimization.client.LDApiClient", return_value=mock_api):
             options = _make_from_config_options(
-                handle_agent_call=AsyncMock(return_value="correct answer"),
-                handle_judge_call=AsyncMock(return_value=JUDGE_PASS_RESPONSE),
+                handle_agent_call=AsyncMock(return_value=OptimizationResponse(output="correct answer")),
+                handle_judge_call=AsyncMock(return_value=OptimizationResponse(output=JUDGE_PASS_RESPONSE)),
             )
             result = await client.optimize_from_config("my-gt-opt", options)
 
