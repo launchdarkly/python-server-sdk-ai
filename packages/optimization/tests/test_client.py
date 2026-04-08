@@ -1054,7 +1054,7 @@ class TestValidationPhase:
                 "val_iter5",        # new validation sample 2 (passes)
             ]),
             on_passing_result=on_passing,
-            max_attempts=10,
+            max_attempts=3,
         )
         result = await client.optimize_from_options("test-agent", opts)
         # Eventually succeeds after one failed validation cycle
@@ -1133,6 +1133,42 @@ class TestValidationPhase:
         await client.optimize_from_options("test-agent", opts)
         # 1 initial pass + 1 validation sample (repeated draw from the only item)
         assert call_count[0] == 2
+
+    async def test_validation_does_not_consume_attempt_budget(self):
+        """Validation samples must not count against max_attempts.
+
+        With max_attempts=2 and 8 variable choices (validation_count=2), a failed
+        validation on attempt 1 should still leave a full attempt 2 available.
+        Without the fix, iteration would be inflated to 3 after validation, which
+        exceeds max_attempts=2 and would trigger _handle_failure prematurely.
+        """
+        turn_calls = [0]
+
+        def on_turn(ctx):
+            turn_calls[0] += 1
+            # attempt 1 passes initial, validation sample 1 fails
+            # attempt 2 passes initial and all validation
+            return turn_calls[0] != 2
+
+        on_passing = MagicMock()
+        client = self._make_client()
+        opts = _make_multi_options(
+            on_turn=on_turn,
+            variable_count=8,
+            handle_agent_call=AsyncMock(side_effect=[
+                "iter1",            # attempt 1 initial (passes)
+                "val_iter",         # validation sample 1 (fails)
+                VARIATION_RESPONSE,  # variation generation
+                "iter2",            # attempt 2 initial (passes)
+                "val_iter3",        # validation sample 1 (passes)
+                "val_iter4",        # validation sample 2 (passes)
+            ]),
+            on_passing_result=on_passing,
+            max_attempts=2,
+        )
+        result = await client.optimize_from_options("test-agent", opts)
+        on_passing.assert_called_once()
+        assert result is not None
 
     async def test_validating_status_emitted(self):
         """The 'validating' status must be emitted when entering the validation phase."""

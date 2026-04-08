@@ -1539,7 +1539,7 @@ class OptimizationClient:
         self,
         passing_context: OptimizationContext,
         iteration: int,
-    ) -> "tuple[bool, OptimizationContext, int]":
+    ) -> "tuple[bool, OptimizationContext]":
         """Run additional evaluations against distinct random samples to confirm a passing candidate.
 
         Mirrors the sampling logic of _run_optimization: each validation turn selects
@@ -1553,12 +1553,15 @@ class OptimizationClient:
         sample fails, the caller should treat the result as a normal failed attempt
         and generate a new variation.
 
+        Validation turns are numbered sequentially in logs (iteration + 1, + 2, …)
+        for readability, but this numbering is internal only — the caller's iteration
+        counter is never advanced by this method so validation samples do not consume
+        the attempt budget.
+
         :param passing_context: The OptimizationContext from the turn that just passed.
         :param iteration: The iteration number of the passing turn; used as the
-            starting point for linear iteration numbering of validation turns.
-        :return: Tuple of (all_passed, last_context, next_iteration) where
-            next_iteration is the iteration number after the last validation sample
-            so the caller can continue numbering correctly.
+            base for validation log line numbering only.
+        :return: Tuple of (all_passed, last_context).
         """
         options = self._options
 
@@ -1659,7 +1662,7 @@ class OptimizationClient:
                     validation_count,
                     val_iter,
                 )
-                return False, last_ctx, val_iter
+                return False, last_ctx
 
             logger.debug(
                 "[Validation %d/%d] -> passed (iteration=%d)",
@@ -1668,13 +1671,12 @@ class OptimizationClient:
                 val_iter,
             )
 
-        final_iter = iteration + validation_count
         logger.info(
             "[Iteration %d] -> All %d validation sample(s) passed — candidate confirmed",
-            final_iter,
+            iteration,
             validation_count,
         )
-        return True, last_ctx, final_iter
+        return True, last_ctx
 
     async def _run_optimization(
         self, agent_config: AIAgentConfig, options: OptimizationOptions
@@ -1759,7 +1761,7 @@ class OptimizationClient:
                     )
 
             if initial_passed:
-                all_valid, last_ctx, iteration = await self._run_validation_phase(
+                all_valid, last_ctx = await self._run_validation_phase(
                     optimize_context, iteration
                 )
                 if all_valid:
