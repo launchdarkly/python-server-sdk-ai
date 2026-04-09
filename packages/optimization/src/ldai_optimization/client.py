@@ -9,13 +9,14 @@ import time
 import uuid
 from typing import Any, Dict, List, Literal, Optional, Union
 
+from coolname import generate_slug
+
 from ldai import AIAgentConfig, AIJudgeConfig, AIJudgeConfigDefault, LDAIClient
 from ldai.models import LDMessage, ModelConfig
 from ldclient import Context
 
 from ldai_optimization.dataclasses import (
     AIJudgeCallConfig,
-    AutoCommitConfig,
     GroundTruthOptimizationOptions,
     GroundTruthSample,
     JudgeResult,
@@ -113,6 +114,8 @@ class OptimizationClient:
 
     def __init__(self, ldClient: LDAIClient) -> None:
         self._ldClient = ldClient
+        self._last_run_succeeded: bool = False
+        self._last_succeeded_context: Optional[OptimizationContext] = None
 
         if os.environ.get("LAUNCHDARKLY_API_KEY"):
             self._has_api_key = True
@@ -819,10 +822,28 @@ class OptimizationClient:
         :param options: Optimization options.
         :return: Optimization result.
         """
+        if options.auto_commit:
+            if not self._has_api_key:
+                raise ValueError(
+                    "auto_commit requires LAUNCHDARKLY_API_KEY to be set"
+                )
+            if not options.project_key:
+                raise ValueError(
+                    "auto_commit requires project_key to be set on OptimizationOptions"
+                )
         self._agent_key = agent_key
         context = random.choice(options.context_choices)
         agent_config = await self._get_agent_config(agent_key, context)
-        return await self._run_optimization(agent_config, options)
+        result = await self._run_optimization(agent_config, options)
+        if options.auto_commit and self._last_run_succeeded and self._last_succeeded_context:
+            self._commit_variation(
+                self._last_succeeded_context,
+                project_key=options.project_key,  # type: ignore[arg-type]
+                ai_config_key=agent_key,
+                output_key=options.output_key,
+                base_url=options.base_url,
+            )
+        return result
 
     async def optimize_from_ground_truth_options(
         self, agent_key: str, options: GroundTruthOptimizationOptions
@@ -839,10 +860,28 @@ class OptimizationClient:
         :param options: Ground truth optimization options including the ordered sample list.
         :return: List of OptimizationContexts from the final attempt (one per sample).
         """
+        if options.auto_commit:
+            if not self._has_api_key:
+                raise ValueError(
+                    "auto_commit requires LAUNCHDARKLY_API_KEY to be set"
+                )
+            if not options.project_key:
+                raise ValueError(
+                    "auto_commit requires project_key to be set on GroundTruthOptimizationOptions"
+                )
         self._agent_key = agent_key
         context = random.choice(options.context_choices)
         agent_config = await self._get_agent_config(agent_key, context)
-        return await self._run_ground_truth_optimization(agent_config, options)
+        result = await self._run_ground_truth_optimization(agent_config, options)
+        if options.auto_commit and self._last_run_succeeded and self._last_succeeded_context:
+            self._commit_variation(
+                self._last_succeeded_context,
+                project_key=options.project_key,  # type: ignore[arg-type]
+                ai_config_key=agent_key,
+                output_key=options.output_key,
+                base_url=options.base_url,
+            )
+        return result
 
     async def _run_ground_truth_optimization(
         self,
@@ -874,6 +913,8 @@ class OptimizationClient:
         )
         self._options = bridge
         self._agent_config = agent_config
+        self._last_run_succeeded = False
+        self._last_succeeded_context = None
         self._initialize_class_members_from_config(agent_config)
 
         # Seed from the first model choice on the first iteration
@@ -995,6 +1036,8 @@ class OptimizationClient:
                     attempt,
                     n,
                 )
+                self._last_run_succeeded = True
+                self._last_succeeded_context = last_ctx
                 self._safe_status_update("success", last_ctx, last_ctx.iteration)
                 if self._options.on_passing_result:
                     try:
@@ -1011,6 +1054,8 @@ class OptimizationClient:
                     "[GT Optimization] -> Failed after %d attempt(s) — not all samples passed",
                     attempt,
                 )
+                self._last_run_succeeded = False
+                self._last_succeeded_context = None
                 self._safe_status_update("failure", last_ctx, last_ctx.iteration)
                 if self._options.on_failing_result:
                     try:
@@ -1037,6 +1082,8 @@ class OptimizationClient:
                 logger.exception(
                     "[GT Attempt %d] -> Variation generation failed", attempt
                 )
+                self._last_run_succeeded = False
+                self._last_succeeded_context = None
                 self._safe_status_update("failure", last_ctx, last_ctx.iteration)
                 if self._options.on_failing_result:
                     try:
@@ -1282,6 +1329,10 @@ class OptimizationClient:
             raise ValueError(
                 "LAUNCHDARKLY_API_KEY is not set, so optimize_from_config is not available"
             )
+        if options.auto_commit and not self._has_api_key:
+            raise ValueError(
+                "auto_commit requires LAUNCHDARKLY_API_KEY to be set"
+            )
 
         assert self._api_key is not None
         api_client = LDApiClient(
@@ -1303,8 +1354,19 @@ class OptimizationClient:
             config, options, api_client, optimization_id, run_id
         )
         if isinstance(optimization_options, GroundTruthOptimizationOptions):
-            return await self._run_ground_truth_optimization(agent_config, optimization_options)
-        return await self._run_optimization(agent_config, optimization_options)
+            result = await self._run_ground_truth_optimization(agent_config, optimization_options)
+        else:
+            result = await self._run_optimization(agent_config, optimization_options)
+
+        if options.auto_commit and self._last_run_succeeded and self._last_succeeded_context:
+            self._commit_variation(
+                self._last_succeeded_context,
+                project_key=options.project_key,
+                ai_config_key=config["aiConfigKey"],
+                output_key=options.output_key,
+                api_client=api_client,
+            )
+        return result
 
     def _build_options_from_config(
         self,
@@ -1621,6 +1683,8 @@ class OptimizationClient:
         :return: The passing OptimizationContext
         """
         logger.info("[Iteration %d] -> Optimization succeeded", iteration)
+        self._last_run_succeeded = True
+        self._last_succeeded_context = optimize_context
         self._safe_status_update("success", optimize_context, iteration)
         if self._options.on_passing_result:
             try:
@@ -1647,6 +1711,8 @@ class OptimizationClient:
         logger.warning(
             "[Optimization] -> Optimization failed after %d attempt(s)", iteration
         )
+        self._last_run_succeeded = False
+        self._last_succeeded_context = None
         self._safe_status_update("failure", optimize_context, iteration)
         if self._options.on_failing_result:
             try:
@@ -1656,6 +1722,93 @@ class OptimizationClient:
                     "[Iteration %d] -> on_failing_result callback failed", iteration
                 )
         return optimize_context
+
+    def _commit_variation(
+        self,
+        optimize_context: OptimizationContext,
+        project_key: str,
+        ai_config_key: str,
+        output_key: Optional[str],
+        api_client: Optional[LDApiClient] = None,
+        base_url: Optional[str] = None,
+    ) -> str:
+        """Commit the winning optimization context as a new AI Config variation.
+
+        Determines a unique variation key (from output_key or an auto-generated
+        adjective-noun slug), checks for collisions against existing variation keys,
+        appends a random hex suffix if the key is taken, then POSTs the new variation
+        with up to 2 retries before raising on persistent failure.
+
+        :param optimize_context: The winning OptimizationContext.
+        :param project_key: LaunchDarkly project key.
+        :param ai_config_key: The AI Config key to add the variation to.
+        :param output_key: Desired variation key/name; auto-generated if None.
+        :param api_client: Optional pre-built LDApiClient to reuse (e.g. from optimize_from_config).
+        :param base_url: Optional base URL override forwarded to a newly created LDApiClient.
+        :return: The created variation key.
+        :raises LDApiError: If the variation cannot be created after retries.
+        """
+        if api_client is None:
+            assert self._api_key is not None
+            api_client = LDApiClient(
+                self._api_key,
+                **({"base_url": base_url} if base_url else {}),
+            )
+
+        candidate = output_key if output_key else generate_slug(2)
+
+        try:
+            ai_config = api_client.get_ai_config(project_key, ai_config_key)
+            existing_keys = {v["key"] for v in ai_config.get("variations", [])}
+        except Exception:
+            logger.warning(
+                "Could not fetch AI Config to check variation key collisions; proceeding with candidate key."
+            )
+            existing_keys = set()
+
+        if candidate in existing_keys:
+            suffix = "%04x" % random.randint(0, 0xFFFF)
+            candidate = f"{candidate}-{suffix}"
+            logger.info("Variation key collision detected; using '%s' instead.", candidate)
+
+        model_name = optimize_context.current_model or ""
+        model_config_key = model_name  # fallback if lookup fails
+        try:
+            model_configs = api_client.get_model_configs(project_key)
+            match = next((mc for mc in model_configs if mc.get("id") == model_name), None)
+            if match:
+                model_config_key = match["key"]
+            else:
+                logger.debug(
+                    "No model config found for model id '%s'; using model name as key.", model_name
+                )
+        except Exception as exc:
+            logger.debug("Could not fetch model configs to resolve modelConfigKey: %s", exc)
+
+        payload: Dict[str, Any] = {
+            "key": candidate,
+            "name": candidate,
+            "mode": "agent",
+            "instructions": optimize_context.current_instructions,
+            "modelConfigKey": model_config_key,
+        }
+
+        last_exc: Optional[Exception] = None
+        for attempt in range(1, 4):
+            try:
+                api_client.create_ai_config_variation(project_key, ai_config_key, payload)
+                logger.info(
+                    "Auto-committed variation '%s' to AI Config '%s'.", candidate, ai_config_key
+                )
+                return candidate
+            except Exception as exc:
+                last_exc = exc
+                if attempt < 3:
+                    logger.warning(
+                        "Failed to create variation (attempt %d/3): %s. Retrying...", attempt, exc
+                    )
+
+        raise last_exc  # type: ignore[misc]
 
     async def _run_validation_phase(
         self,
@@ -1816,6 +1969,8 @@ class OptimizationClient:
         """
         self._options = options
         self._agent_config = agent_config
+        self._last_run_succeeded = False
+        self._last_succeeded_context = None
         self._initialize_class_members_from_config(agent_config)
 
         # If the LD flag doesn't carry a model name, seed from the first model choice
