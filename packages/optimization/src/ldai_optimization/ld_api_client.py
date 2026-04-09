@@ -178,6 +178,9 @@ class LDApiClient:
         self._api_key = api_key
         self._base_url = base_url.rstrip("/")
 
+    def __repr__(self) -> str:
+        return f"LDApiClient(base_url={self._base_url!r})"
+
     def _auth_headers(self) -> Dict[str, str]:
         return {"Authorization": self._api_key}
 
@@ -205,6 +208,104 @@ class LDApiClient:
             raise LDApiError(
                 f"Could not reach LaunchDarkly API at {url}: {exc.reason}. "
                 "Check your network connection and the base_url setting.",
+                path=path,
+            ) from exc
+
+    def _ai_config_headers(self) -> Dict[str, str]:
+        return {**self._auth_headers(), "LD-API-Version": "beta"}
+
+    def get_model_configs(self, project_key: str) -> List[Dict[str, Any]]:
+        """Fetch all AI model configs for a project.
+
+        :param project_key: LaunchDarkly project key.
+        :return: List of model config dicts (each has at minimum ``id`` and ``key``).
+        :raises LDApiError: On non-200 HTTP responses or network errors.
+        """
+        path = f"/api/v2/projects/{project_key}/ai-configs/model-configs"
+        url = f"{self._base_url}{path}"
+        req = urllib.request.Request(url, headers=self._ai_config_headers(), method="GET")
+        try:
+            with urllib.request.urlopen(req) as resp:
+                raw = resp.read()
+                return json.loads(raw) if raw else []
+        except urllib.error.HTTPError as exc:
+            body_excerpt = exc.read(500).decode(errors="replace")
+            hint = _HTTP_ERROR_HINTS.get(exc.code, "")
+            detail = f"{hint} (API response: {body_excerpt})" if hint else f"API response: {body_excerpt}"
+            raise LDApiError(
+                f"LaunchDarkly API error {exc.code} {exc.msg} for GET {path}. {detail}",
+                status_code=exc.code,
+                path=path,
+            ) from exc
+        except urllib.error.URLError as exc:
+            raise LDApiError(
+                f"Could not reach LaunchDarkly API at {url}: {exc.reason}.",
+                path=path,
+            ) from exc
+
+    def get_ai_config(self, project_key: str, config_key: str) -> Any:
+        """Fetch a single AI Config by key, including its variations.
+
+        :param project_key: LaunchDarkly project key.
+        :param config_key: Key of the AI Config (aiConfigKey).
+        :return: Raw AI Config dict with a ``variations`` list.
+        :raises LDApiError: On non-200 HTTP responses or network errors.
+        """
+        path = f"/api/v2/projects/{project_key}/ai-configs/{config_key}"
+        headers = self._ai_config_headers()
+        url = f"{self._base_url}{path}"
+        req = urllib.request.Request(url, headers=headers, method="GET")
+        try:
+            with urllib.request.urlopen(req) as resp:
+                raw = resp.read()
+                return json.loads(raw) if raw else None
+        except urllib.error.HTTPError as exc:
+            body_excerpt = exc.read(500).decode(errors="replace")
+            hint = _HTTP_ERROR_HINTS.get(exc.code, "")
+            detail = f"{hint} (API response: {body_excerpt})" if hint else f"API response: {body_excerpt}"
+            raise LDApiError(
+                f"LaunchDarkly API error {exc.code} {exc.msg} for GET {path}. {detail}",
+                status_code=exc.code,
+                path=path,
+            ) from exc
+        except urllib.error.URLError as exc:
+            raise LDApiError(
+                f"Could not reach LaunchDarkly API at {url}: {exc.reason}.",
+                path=path,
+            ) from exc
+
+    def create_ai_config_variation(
+        self, project_key: str, config_key: str, payload: Dict[str, Any]
+    ) -> Any:
+        """Create a new variation on an AI Config.
+
+        :param project_key: LaunchDarkly project key.
+        :param config_key: Key of the AI Config.
+        :param payload: Variation payload (key, name, mode, instructions, model).
+        :return: Created AIConfigVariation dict.
+        :raises LDApiError: On non-200 HTTP responses or network errors.
+        """
+        path = f"/api/v2/projects/{project_key}/ai-configs/{config_key}/variations"
+        url = f"{self._base_url}{path}"
+        data = json.dumps(payload).encode()
+        headers = {**self._ai_config_headers(), "Content-Type": "application/json"}
+        req = urllib.request.Request(url, data=data, headers=headers, method="POST")
+        try:
+            with urllib.request.urlopen(req) as resp:
+                raw = resp.read()
+                return json.loads(raw) if raw else None
+        except urllib.error.HTTPError as exc:
+            body_excerpt = exc.read(500).decode(errors="replace")
+            hint = _HTTP_ERROR_HINTS.get(exc.code, "")
+            detail = f"{hint} (API response: {body_excerpt})" if hint else f"API response: {body_excerpt}"
+            raise LDApiError(
+                f"LaunchDarkly API error {exc.code} {exc.msg} for POST {path}. {detail}",
+                status_code=exc.code,
+                path=path,
+            ) from exc
+        except urllib.error.URLError as exc:
+            raise LDApiError(
+                f"Could not reach LaunchDarkly API at {url}: {exc.reason}.",
                 path=path,
             ) from exc
 

@@ -153,14 +153,6 @@ class OptimizationJudge:
 
 
 @dataclass
-class AutoCommitConfig:
-    """Configuration for auto-committing optimization results to LaunchDarkly."""
-
-    enabled: bool = False
-    project_key: Optional[str] = None
-
-
-@dataclass
 class OptimizationContext:
     """Context for a single optimization iteration."""
 
@@ -291,10 +283,11 @@ class OptimizationOptions:
     on_turn: Optional[Callable[[OptimizationContext], bool]] = (
         None  # if you want manual control of pass/fail
     )
-    # Results - Optional
-    auto_commit: Optional[AutoCommitConfig] = (
-        None  # configuration for automatically saving results back to LaunchDarkly
-    )
+    # Auto-commit - Optional
+    auto_commit: bool = False
+    project_key: Optional[str] = None  # required when auto_commit=True
+    output_key: Optional[str] = None   # variation key/name; auto-generated if omitted
+    base_url: Optional[str] = None  # override to target a non-default LD instance
     on_passing_result: Optional[Callable[[OptimizationContext], None]] = None
     on_failing_result: Optional[Callable[[OptimizationContext], None]] = None
     # called to provide status updates during the optimization flow
@@ -379,6 +372,11 @@ class GroundTruthOptimizationOptions:
             None,
         ]
     ] = None
+    # Auto-commit - Optional
+    auto_commit: bool = False
+    project_key: Optional[str] = None  # required when auto_commit=True
+    output_key: Optional[str] = None   # variation key/name; auto-generated if omitted
+    base_url: Optional[str] = None  # override to target a non-default LD instance
 
     def __post_init__(self):
         """Validate required options."""
@@ -425,6 +423,9 @@ class OptimizationFromConfigOptions:
     on_failing_result: Optional[Callable[["OptimizationContext"], None]] = None
     on_status_update: Optional[Callable[[_StatusLiteral, "OptimizationContext"], None]] = None
     base_url: Optional[str] = None
+    # Auto-commit defaults to True for config-driven runs; set False to disable
+    auto_commit: bool = True
+    output_key: Optional[str] = None  # variation key/name; auto-generated if omitted
 
     def __post_init__(self):
         """Validate required options."""
