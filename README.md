@@ -7,6 +7,7 @@ This repository contains LaunchDarkly AI SDK packages for Python, including the 
 | Package | PyPI | README |
 | ------- | ---- | ------ |
 | [launchdarkly-server-sdk-ai](packages/sdk/server-ai) | [![PyPI](https://img.shields.io/pypi/v/launchdarkly-server-sdk-ai.svg)](https://pypi.org/project/launchdarkly-server-sdk-ai/) | [README](packages/sdk/server-ai/README.md) |
+| [launchdarkly-server-sdk-ai-optimization](packages/optimization) | [![PyPI](https://img.shields.io/pypi/v/launchdarkly-server-sdk-ai-optimization.svg)](https://pypi.org/project/launchdarkly-server-sdk-ai-optimization/) | [README](packages/optimization/README.md) |
 
 | AI Provider Packages | PyPI | README |
 | -------------------- | ---- | ------ |

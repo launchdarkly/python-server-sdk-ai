@@ -1,5 +1,11 @@
 # LaunchDarkly Server-Side AI SDK for Python
 
+[![Actions Status](https://github.com/launchdarkly/python-server-sdk-ai/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/launchdarkly/python-server-sdk-ai/actions/workflows/ci.yml)
+[![readthedocs](https://readthedocs.org/projects/launchdarkly-python-sdk-ai/badge/)](https://launchdarkly-python-sdk-ai.readthedocs.io/en/latest/)
+
+[![PyPI](https://img.shields.io/pypi/v/launchdarkly-server-sdk-ai.svg?maxAge=2592000)](https://pypi.org/project/launchdarkly-server-sdk-ai/)
+[![PyPI](https://img.shields.io/pypi/pyversions/launchdarkly-server-sdk-ai.svg)](https://pypi.org/project/launchdarkly-server-sdk-ai/)
+
 This package contains the LaunchDarkly Server-Side AI SDK for Python (`launchdarkly-server-sdk-ai`).
 
 > [!CAUTION]
@@ -90,16 +96,16 @@ if ai_config.enabled:
     # Use with your AI provider
 ```
 
-## Chat for Conversational AI
+## ManagedModel for Conversational AI
 
-`Chat` provides a high-level interface for conversational AI with automatic conversation management and metrics tracking:
+`ManagedModel` provides a high-level interface for conversational AI with automatic conversation management and metrics tracking:
 
 - Automatically configures models based on AI configuration
 - Maintains conversation history across multiple interactions
 - Automatically tracks token usage, latency, and success rates
 - Works with any supported AI provider (see [AI Providers](https://github.com/launchdarkly/python-server-sdk-ai#ai-providers) for available packages)
 
-### Using Chat
+### Using ManagedModel
 
 ```python
 import asyncio
@@ -109,23 +115,23 @@ from ldai import LDAIClient, AICompletionConfigDefault, ModelConfig, LDMessage
 # Use the same default_config from the retrieval section above
 async def main():
     context = Context.create("user-123")
-    chat = await ai_client.create_chat(
+    model = await ai_client.create_model(
         'customer-support-chat',
         context,
         default_config,
         variables={'customerName': 'John'}
     )
     
-    if chat:
+    if model:
         # Simple conversation flow - metrics are automatically tracked by invoke()
-        response1 = await chat.invoke('I need help with my order')
+        response1 = await model.invoke('I need help with my order')
         print(response1.message.content)
         
-        response2 = await chat.invoke("What's the status?")
+        response2 = await model.invoke("What's the status?")
         print(response2.message.content)
         
         # Access conversation history
-        messages = chat.get_messages()
+        messages = model.get_messages()
         print(f'Conversation has {len(messages)} messages')
 
 asyncio.run(main())
