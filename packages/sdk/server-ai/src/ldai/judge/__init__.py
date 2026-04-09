@@ -3,8 +3,6 @@
 import random
 from typing import Any, Dict, Optional
 
-import chevron
-
 from ldai import log
 from ldai.judge.evaluation_schema_builder import EvaluationSchemaBuilder
 from ldai.models import AIJudgeConfig, LDMessage
@@ -163,14 +161,21 @@ class Judge:
 
     def _interpolate_message(self, content: str, variables: Dict[str, str]) -> str:
         """
-        Interpolates message content with variables using Mustache templating.
+        Interpolates message content with variables using simple string replacement.
+
+        Uses literal string replacement instead of a template engine to prevent
+        template injection: attacker-controlled values from pass 1 (e.g. Mustache
+        delimiter-change tags like {{=[ ]=}}) would otherwise be interpreted as
+        control syntax by a second Mustache pass, blinding the judge.
 
         :param content: The message content template
         :param variables: Variables to interpolate
         :return: Interpolated message content
         """
-        # Use chevron (Mustache) for templating, with no escaping
-        return chevron.render(content, variables)
+        result = content
+        for key, value in variables.items():
+            result = result.replace('{{' + key + '}}', value)
+        return result
 
     def _parse_evaluation_response(self, data: Dict[str, Any]) -> Dict[str, EvalScore]:
         """

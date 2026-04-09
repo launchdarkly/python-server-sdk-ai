@@ -617,3 +617,89 @@ class TestClientJudgeConfig:
         assert len(variation_calls) == 1, f"Expected 1 variation call, got {len(variation_calls)}"
         assert config is not None
         assert config.evaluation_metric_key == '$ld:ai:judge:from-flag'
+
+
+class TestJudgeTemplateInjection:
+    """Regression tests for template injection vulnerability.
+
+    These tests verify that the judge's message interpolation uses simple string
+    replacement instead of Mustache templating. Attacker-controlled values from
+    pass 1 (e.g. Mustache delimiter-change tags) must be treated as inert literal
+    text by pass 2.
+    """
+
+    def _make_judge(self, content: str, tracker, mock_runner) -> Judge:
+        """Helper to create a Judge with a single message containing the given content."""
+        config = AIJudgeConfig(
+            key='test-judge',
+            enabled=True,
+            evaluation_metric_key='metric',
+            messages=[LDMessage(role='user', content=content)],
+            model=ModelConfig('gpt-4'),
+            provider=ProviderConfig('openai'),
+        )
+        return Judge(config, tracker, mock_runner)
+
+    @pytest.mark.parametrize('name,payload', [
+        ('delimiter change brackets', '{{=[ ]=}}'),
+        ('delimiter change angle', '{{=<% %>=}}'),
+        ('partial', '{{> evil}}'),
+        ('comment', '{{! drop everything }}'),
+        ('triple stache', '{{{raw}}}'),
+        ('section', '{{#section}}inject{{/section}}'),
+        ('inverted section', '{{^section}}inject{{/section}}'),
+    ])
+    def test_injection_variants_in_message_history(
+        self, name: str, payload: str, tracker: LDAIConfigTracker, mock_runner
+    ):
+        """Mustache control sequences injected via context must not blind the judge."""
+        after_pass1 = f'Auditing {payload}: ' + '{{message_history}}'
+
+        judge = self._make_judge(after_pass1, tracker, mock_runner)
+        messages = judge._construct_evaluation_messages('ACTUAL HISTORY', 'some output')
+
+        assert len(messages) == 1
+        assert 'ACTUAL HISTORY' in messages[0].content, \
+            f'payload {payload!r} must not blind the judge to the actual history'
+        assert '{{message_history}}' not in messages[0].content, \
+            f'placeholder must be fully substituted after payload {payload!r}'
+
+    def test_injection_via_response(self, tracker: LDAIConfigTracker, mock_runner):
+        """Injection payloads in the response being evaluated are equally neutralized."""
+        after_pass1 = 'History: {{message_history}}\nResponse: {{response_to_evaluate}}'
+
+        judge = self._make_judge(after_pass1, tracker, mock_runner)
+        malicious_response = '{{=[ ]=}} INJECTION ATTEMPT'
+        messages = judge._construct_evaluation_messages('normal history', malicious_response)
+
+        assert len(messages) == 1
+        assert malicious_response in messages[0].content, \
+            'malicious content in response must appear verbatim'
+        assert '{{response_to_evaluate}}' not in messages[0].content, \
+            'response placeholder must be fully substituted'
+
+    def test_multiple_placeholder_occurrences(self, tracker: LDAIConfigTracker, mock_runner):
+        """When a template contains the same placeholder more than once, every occurrence is substituted."""
+        template = '{{message_history}} | {{message_history}}'
+
+        judge = self._make_judge(template, tracker, mock_runner)
+        messages = judge._construct_evaluation_messages('HISTORY', 'RESPONSE')
+
+        assert len(messages) == 1
+        assert messages[0].content == 'HISTORY | HISTORY'
+
+    def test_mustache_syntax_in_content(self, tracker: LDAIConfigTracker, mock_runner):
+        """Mustache-like syntax inside history or response values is preserved verbatim."""
+        template = 'History: {{message_history}}\nResponse: {{response_to_evaluate}}'
+
+        judge = self._make_judge(template, tracker, mock_runner)
+        history_with_mustache = 'How do I use {{user}} in Mustache?'
+        response_with_mustache = 'Use {{user}} like this: {{#user}}Hello{{/user}}'
+
+        messages = judge._construct_evaluation_messages(history_with_mustache, response_with_mustache)
+
+        assert len(messages) == 1
+        assert history_with_mustache in messages[0].content, \
+            'Mustache-like syntax in history must be preserved verbatim'
+        assert response_with_mustache in messages[0].content, \
+            'Mustache-like syntax in response must be preserved verbatim'
