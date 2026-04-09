@@ -82,6 +82,7 @@ def _make_options(
     judges=None,
     max_attempts: int = 3,
     variable_choices=None,
+    **extra,
 ) -> OptimizationOptions:
     if handle_agent_call is None:
         handle_agent_call = AsyncMock(return_value=OptimizationResponse(output="The capital of France is Paris."))
@@ -103,6 +104,7 @@ def _make_options(
         handle_agent_call=handle_agent_call,
         handle_judge_call=handle_judge_call,
         judges=judges,
+        **extra,
     )
 
 
@@ -2165,7 +2167,7 @@ class TestGroundTruthOptimizationOptionsValidation:
 
 
 def _make_gt_options(**overrides) -> GroundTruthOptimizationOptions:
-    defaults = dict(
+    defaults: Dict[str, Any] = dict(
         context_choices=[LD_CONTEXT],
         ground_truth_responses=[
             GroundTruthSample(user_input="What is 2+2?", expected_response="4", variables={"lang": "English"}),
@@ -2182,6 +2184,39 @@ def _make_gt_options(**overrides) -> GroundTruthOptimizationOptions:
     )
     defaults.update(overrides)
     return GroundTruthOptimizationOptions(**defaults)
+
+
+def _make_winning_context(
+    model: str = "gpt-4o",
+    instructions: str = "Be helpful.",
+    parameters: Dict[str, Any] | None = None,
+) -> OptimizationContext:
+    """Return a minimal OptimizationContext representing a successful run."""
+    return OptimizationContext(
+        scores={},
+        completion_response="The answer is 4.",
+        current_instructions=instructions,
+        current_parameters=parameters or {},
+        current_variables={},
+        current_model=model,
+        iteration=1,
+    )
+
+
+def _make_api_client_for_commit(
+    existing_variation_keys: list | None = None,
+    model_configs: list | None = None,
+) -> MagicMock:
+    """Return a mock LDApiClient pre-configured for _commit_variation calls."""
+    mock = MagicMock()
+    existing = existing_variation_keys or []
+    mock.get_ai_config.return_value = {"variations": [{"key": k} for k in existing]}
+    mock.get_model_configs.return_value = model_configs if model_configs is not None else [
+        {"id": "gpt-4o", "key": "OpenAI.gpt-4o"},
+        {"id": "gpt-4o-mini", "key": "OpenAI.gpt-4o-mini"},
+    ]
+    mock.create_ai_config_variation.return_value = {"key": "new-variation"}
+    return mock
 
 
 class TestRunGroundTruthOptimization:
@@ -2960,3 +2995,488 @@ class TestDurationOptimizationGroundTruthMode:
         # Succeeds on first attempt even with slow duration (no latency keyword → no gate)
         assert isinstance(results, list)
         assert mock_execute.call_count == 2
+
+
+# ---------------------------------------------------------------------------
+# _commit_variation
+# ---------------------------------------------------------------------------
+
+
+class TestCommitVariation:
+    def _make_client(self) -> OptimizationClient:
+        with patch.dict("os.environ", {"LAUNCHDARKLY_API_KEY": "test-api-key"}):
+            return OptimizationClient(_make_ldai_client())
+
+    # --- key generation ---
+
+    def test_uses_output_key_as_variation_key(self):
+        client = self._make_client()
+        api_client = _make_api_client_for_commit()
+
+        key = client._commit_variation(
+            _make_winning_context(), project_key="my-project",
+            ai_config_key="my-agent", output_key="my-custom-key", api_client=api_client,
+        )
+
+        assert key == "my-custom-key"
+        payload = api_client.create_ai_config_variation.call_args[0][2]
+        assert payload["key"] == "my-custom-key"
+        assert payload["name"] == "my-custom-key"
+
+    def test_generates_slug_when_output_key_is_none(self):
+        client = self._make_client()
+        api_client = _make_api_client_for_commit()
+
+        with patch("ldai_optimization.client.generate_slug", return_value="fancy-panda"):
+            key = client._commit_variation(
+                _make_winning_context(), project_key="my-project",
+                ai_config_key="my-agent", output_key=None, api_client=api_client,
+            )
+
+        assert key == "fancy-panda"
+        payload = api_client.create_ai_config_variation.call_args[0][2]
+        assert payload["key"] == "fancy-panda"
+        assert payload["name"] == "fancy-panda"
+
+    # --- collision handling ---
+
+    def test_appends_hex_suffix_on_key_collision(self):
+        client = self._make_client()
+        api_client = _make_api_client_for_commit(existing_variation_keys=["my-key"])
+
+        with patch("ldai_optimization.client.random.randint", return_value=0x1234):
+            key = client._commit_variation(
+                _make_winning_context(), project_key="my-project",
+                ai_config_key="my-agent", output_key="my-key", api_client=api_client,
+            )
+
+        assert key == "my-key-1234"
+        payload = api_client.create_ai_config_variation.call_args[0][2]
+        assert payload["key"] == "my-key-1234"
+
+    def test_no_suffix_when_key_does_not_collide(self):
+        client = self._make_client()
+        api_client = _make_api_client_for_commit(existing_variation_keys=["other-key"])
+
+        key = client._commit_variation(
+            _make_winning_context(), project_key="my-project",
+            ai_config_key="my-agent", output_key="my-key", api_client=api_client,
+        )
+
+        assert key == "my-key"
+
+    def test_proceeds_with_candidate_when_get_ai_config_raises(self):
+        client = self._make_client()
+        api_client = _make_api_client_for_commit()
+        api_client.get_ai_config.side_effect = Exception("network error")
+
+        key = client._commit_variation(
+            _make_winning_context(), project_key="my-project",
+            ai_config_key="my-agent", output_key="my-key", api_client=api_client,
+        )
+
+        assert key == "my-key"
+        api_client.create_ai_config_variation.assert_called_once()
+
+    # --- payload shape ---
+
+    def test_payload_mode_is_agent(self):
+        client = self._make_client()
+        api_client = _make_api_client_for_commit()
+
+        client._commit_variation(
+            _make_winning_context(), project_key="my-project",
+            ai_config_key="my-agent", output_key="k", api_client=api_client,
+        )
+
+        payload = api_client.create_ai_config_variation.call_args[0][2]
+        assert payload["mode"] == "agent"
+
+    def test_payload_instructions_from_context(self):
+        client = self._make_client()
+        api_client = _make_api_client_for_commit()
+        ctx = _make_winning_context(instructions="You are a travel assistant.")
+
+        client._commit_variation(
+            ctx, project_key="my-project",
+            ai_config_key="my-agent", output_key="k", api_client=api_client,
+        )
+
+        payload = api_client.create_ai_config_variation.call_args[0][2]
+        assert payload["instructions"] == "You are a travel assistant."
+
+    def test_create_called_with_correct_project_and_config_key(self):
+        client = self._make_client()
+        api_client = _make_api_client_for_commit()
+
+        client._commit_variation(
+            _make_winning_context(), project_key="proj-abc",
+            ai_config_key="agent-xyz", output_key="k", api_client=api_client,
+        )
+
+        args = api_client.create_ai_config_variation.call_args[0]
+        assert args[0] == "proj-abc"
+        assert args[1] == "agent-xyz"
+
+    # --- modelConfigKey resolution ---
+
+    def test_model_config_key_resolved_via_api_match_on_id(self):
+        client = self._make_client()
+        api_client = _make_api_client_for_commit(model_configs=[
+            {"id": "gpt-4o", "key": "OpenAI.gpt-4o"},
+            {"id": "claude-3", "key": "Anthropic.claude-3"},
+        ])
+
+        client._commit_variation(
+            _make_winning_context(model="gpt-4o"), project_key="my-project",
+            ai_config_key="my-agent", output_key="k", api_client=api_client,
+        )
+
+        payload = api_client.create_ai_config_variation.call_args[0][2]
+        assert payload["modelConfigKey"] == "OpenAI.gpt-4o"
+
+    def test_model_config_key_falls_back_to_model_name_when_no_id_match(self):
+        client = self._make_client()
+        api_client = _make_api_client_for_commit(model_configs=[
+            {"id": "claude-3", "key": "Anthropic.claude-3"},
+        ])
+
+        client._commit_variation(
+            _make_winning_context(model="gpt-4o"), project_key="my-project",
+            ai_config_key="my-agent", output_key="k", api_client=api_client,
+        )
+
+        payload = api_client.create_ai_config_variation.call_args[0][2]
+        assert payload["modelConfigKey"] == "gpt-4o"
+
+    def test_model_config_key_falls_back_when_get_model_configs_raises(self):
+        client = self._make_client()
+        api_client = _make_api_client_for_commit()
+        api_client.get_model_configs.side_effect = Exception("network error")
+
+        client._commit_variation(
+            _make_winning_context(model="gpt-4o"), project_key="my-project",
+            ai_config_key="my-agent", output_key="k", api_client=api_client,
+        )
+
+        payload = api_client.create_ai_config_variation.call_args[0][2]
+        assert payload["modelConfigKey"] == "gpt-4o"
+
+    # --- retry logic ---
+
+    def test_retries_on_transient_failure_and_succeeds(self):
+        client = self._make_client()
+        api_client = _make_api_client_for_commit()
+        api_client.create_ai_config_variation.side_effect = [
+            Exception("transient"),
+            {"key": "my-key"},
+        ]
+
+        key = client._commit_variation(
+            _make_winning_context(), project_key="my-project",
+            ai_config_key="my-agent", output_key="my-key", api_client=api_client,
+        )
+
+        assert key == "my-key"
+        assert api_client.create_ai_config_variation.call_count == 2
+
+    def test_raises_after_three_consecutive_failures(self):
+        client = self._make_client()
+        api_client = _make_api_client_for_commit()
+        api_client.create_ai_config_variation.side_effect = RuntimeError("permanent")
+
+        with pytest.raises(RuntimeError, match="permanent"):
+            client._commit_variation(
+                _make_winning_context(), project_key="my-project",
+                ai_config_key="my-agent", output_key="k", api_client=api_client,
+            )
+
+        assert api_client.create_ai_config_variation.call_count == 3
+
+    # --- LDApiClient construction ---
+
+    def test_creates_api_client_from_stored_key_when_none_provided(self):
+        client = self._make_client()
+
+        with patch("ldai_optimization.client.LDApiClient") as MockLDApiClient:
+            MockLDApiClient.return_value = _make_api_client_for_commit()
+            client._commit_variation(
+                _make_winning_context(), project_key="my-project",
+                ai_config_key="my-agent", output_key="k",
+            )
+
+        MockLDApiClient.assert_called_once_with("test-api-key")
+
+    def test_passes_base_url_when_creating_api_client(self):
+        client = self._make_client()
+
+        with patch("ldai_optimization.client.LDApiClient") as MockLDApiClient:
+            MockLDApiClient.return_value = _make_api_client_for_commit()
+            client._commit_variation(
+                _make_winning_context(), project_key="my-project",
+                ai_config_key="my-agent", output_key="k",
+                base_url="https://app.launchdarkly.us",
+            )
+
+        MockLDApiClient.assert_called_once_with(
+            "test-api-key", base_url="https://app.launchdarkly.us"
+        )
+
+    def test_reuses_provided_api_client_without_creating_new_one(self):
+        client = self._make_client()
+        api_client = _make_api_client_for_commit()
+
+        with patch("ldai_optimization.client.LDApiClient") as MockLDApiClient:
+            client._commit_variation(
+                _make_winning_context(), project_key="my-project",
+                ai_config_key="my-agent", output_key="k", api_client=api_client,
+            )
+
+        MockLDApiClient.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# auto_commit in optimize_from_options
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+class TestAutoCommitInOptimizeFromOptions:
+    def _make_client_with_key(self) -> OptimizationClient:
+        with patch.dict("os.environ", {"LAUNCHDARKLY_API_KEY": "test-api-key"}):
+            return OptimizationClient(_make_ldai_client())
+
+    def _make_client_without_key(self) -> OptimizationClient:
+        client = OptimizationClient(_make_ldai_client())
+        client._has_api_key = False
+        client._api_key = None
+        return client
+
+    async def test_commit_called_on_success_when_auto_commit_true(self):
+        client = self._make_client_with_key()
+        options = _make_options(auto_commit=True, project_key="my-project")
+
+        with patch.object(client, "_commit_variation") as mock_commit:
+            await client.optimize_from_options("test-agent", options)
+
+        mock_commit.assert_called_once()
+
+    async def test_commit_not_called_when_auto_commit_false(self):
+        client = self._make_client_with_key()
+        options = _make_options()  # auto_commit defaults to False
+
+        with patch.object(client, "_commit_variation") as mock_commit:
+            await client.optimize_from_options("test-agent", options)
+
+        mock_commit.assert_not_called()
+
+    async def test_commit_not_called_when_run_fails(self):
+        client = self._make_client_with_key()
+        options = _make_options(
+            auto_commit=True,
+            project_key="my-project",
+            handle_judge_call=AsyncMock(return_value=OptimizationResponse(output=JUDGE_FAIL_RESPONSE)),
+            max_attempts=1,
+        )
+
+        with patch.object(client, "_commit_variation") as mock_commit:
+            await client.optimize_from_options("test-agent", options)
+
+        mock_commit.assert_not_called()
+
+    async def test_raises_when_auto_commit_true_and_no_api_key(self):
+        client = self._make_client_without_key()
+        options = _make_options(auto_commit=True, project_key="my-project")
+
+        with pytest.raises(ValueError, match="LAUNCHDARKLY_API_KEY"):
+            await client.optimize_from_options("test-agent", options)
+
+    async def test_raises_when_auto_commit_true_and_no_project_key(self):
+        client = self._make_client_with_key()
+        options = _make_options(auto_commit=True, project_key=None)
+
+        with pytest.raises(ValueError, match="project_key"):
+            await client.optimize_from_options("test-agent", options)
+
+    async def test_output_key_forwarded_to_commit(self):
+        client = self._make_client_with_key()
+        options = _make_options(
+            auto_commit=True, project_key="my-project", output_key="my-variation"
+        )
+
+        with patch.object(client, "_commit_variation") as mock_commit:
+            await client.optimize_from_options("test-agent", options)
+
+        assert mock_commit.call_args[1]["output_key"] == "my-variation"
+
+    async def test_base_url_forwarded_to_commit(self):
+        client = self._make_client_with_key()
+        options = _make_options(
+            auto_commit=True,
+            project_key="my-project",
+            base_url="https://app.launchdarkly.us",
+        )
+
+        with patch.object(client, "_commit_variation") as mock_commit:
+            await client.optimize_from_options("test-agent", options)
+
+        assert mock_commit.call_args[1]["base_url"] == "https://app.launchdarkly.us"
+
+    async def test_agent_key_used_as_ai_config_key(self):
+        client = self._make_client_with_key()
+        options = _make_options(auto_commit=True, project_key="my-project")
+
+        with patch.object(client, "_commit_variation") as mock_commit:
+            await client.optimize_from_options("test-agent", options)
+
+        assert mock_commit.call_args[1]["ai_config_key"] == "test-agent"
+
+
+# ---------------------------------------------------------------------------
+# auto_commit in optimize_from_ground_truth_options
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+class TestAutoCommitInOptimizeFromGroundTruthOptions:
+    def _make_client_with_key(self) -> OptimizationClient:
+        with patch.dict("os.environ", {"LAUNCHDARKLY_API_KEY": "test-api-key"}):
+            return OptimizationClient(_make_ldai_client())
+
+    def _make_client_without_key(self) -> OptimizationClient:
+        client = OptimizationClient(_make_ldai_client())
+        client._has_api_key = False
+        client._api_key = None
+        return client
+
+    async def test_commit_called_on_success_when_auto_commit_true(self):
+        client = self._make_client_with_key()
+        opts = _make_gt_options(auto_commit=True, project_key="my-project")
+
+        with patch.object(client, "_commit_variation") as mock_commit:
+            await client.optimize_from_ground_truth_options("test-agent", opts)
+
+        mock_commit.assert_called_once()
+
+    async def test_commit_not_called_when_auto_commit_false(self):
+        client = self._make_client_with_key()
+        opts = _make_gt_options()  # auto_commit defaults to False
+
+        with patch.object(client, "_commit_variation") as mock_commit:
+            await client.optimize_from_ground_truth_options("test-agent", opts)
+
+        mock_commit.assert_not_called()
+
+    async def test_commit_not_called_when_run_fails(self):
+        client = self._make_client_with_key()
+        opts = _make_gt_options(
+            auto_commit=True,
+            project_key="my-project",
+            handle_judge_call=AsyncMock(return_value=OptimizationResponse(output=JUDGE_FAIL_RESPONSE)),
+            max_attempts=1,
+        )
+
+        with patch.object(client, "_commit_variation") as mock_commit:
+            await client.optimize_from_ground_truth_options("test-agent", opts)
+
+        mock_commit.assert_not_called()
+
+    async def test_raises_when_auto_commit_true_and_no_api_key(self):
+        client = self._make_client_without_key()
+        opts = _make_gt_options(auto_commit=True, project_key="my-project")
+
+        with pytest.raises(ValueError, match="LAUNCHDARKLY_API_KEY"):
+            await client.optimize_from_ground_truth_options("test-agent", opts)
+
+    async def test_raises_when_auto_commit_true_and_no_project_key(self):
+        client = self._make_client_with_key()
+        opts = _make_gt_options(auto_commit=True, project_key=None)
+
+        with pytest.raises(ValueError, match="project_key"):
+            await client.optimize_from_ground_truth_options("test-agent", opts)
+
+    async def test_output_key_forwarded_to_commit(self):
+        client = self._make_client_with_key()
+        opts = _make_gt_options(
+            auto_commit=True, project_key="my-project", output_key="my-variation"
+        )
+
+        with patch.object(client, "_commit_variation") as mock_commit:
+            await client.optimize_from_ground_truth_options("test-agent", opts)
+
+        assert mock_commit.call_args[1]["output_key"] == "my-variation"
+
+    async def test_base_url_forwarded_to_commit(self):
+        client = self._make_client_with_key()
+        opts = _make_gt_options(
+            auto_commit=True,
+            project_key="my-project",
+            base_url="https://app.launchdarkly.us",
+        )
+
+        with patch.object(client, "_commit_variation") as mock_commit:
+            await client.optimize_from_ground_truth_options("test-agent", opts)
+
+        assert mock_commit.call_args[1]["base_url"] == "https://app.launchdarkly.us"
+
+
+# ---------------------------------------------------------------------------
+# auto_commit in optimize_from_config
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+class TestAutoCommitInOptimizeFromConfig:
+    def _make_client_with_key(self) -> OptimizationClient:
+        with patch.dict("os.environ", {"LAUNCHDARKLY_API_KEY": "test-api-key"}):
+            return OptimizationClient(_make_ldai_client())
+
+    async def test_commit_called_by_default(self):
+        """auto_commit=True is the default for optimize_from_config."""
+        client = self._make_client_with_key()
+        mock_api = _make_mock_api_client()
+        mock_api.get_agent_optimization = MagicMock(return_value=dict(_API_CONFIG))
+
+        with patch("ldai_optimization.client.LDApiClient", return_value=mock_api):
+            with patch.object(client, "_commit_variation") as mock_commit:
+                await client.optimize_from_config("my-opt", _make_from_config_options())
+
+        mock_commit.assert_called_once()
+
+    async def test_commit_not_called_when_auto_commit_false(self):
+        client = self._make_client_with_key()
+        mock_api = _make_mock_api_client()
+        mock_api.get_agent_optimization = MagicMock(return_value=dict(_API_CONFIG))
+
+        with patch("ldai_optimization.client.LDApiClient", return_value=mock_api):
+            with patch.object(client, "_commit_variation") as mock_commit:
+                await client.optimize_from_config(
+                    "my-opt", _make_from_config_options(auto_commit=False)
+                )
+
+        mock_commit.assert_not_called()
+
+    async def test_commit_receives_pre_built_api_client(self):
+        """The api_client created for fetching config is reused for _commit_variation."""
+        client = self._make_client_with_key()
+        mock_api = _make_mock_api_client()
+        mock_api.get_agent_optimization = MagicMock(return_value=dict(_API_CONFIG))
+
+        with patch("ldai_optimization.client.LDApiClient", return_value=mock_api):
+            with patch.object(client, "_commit_variation") as mock_commit:
+                await client.optimize_from_config("my-opt", _make_from_config_options())
+
+        assert mock_commit.call_args[1]["api_client"] is mock_api
+
+    async def test_output_key_forwarded_to_commit(self):
+        client = self._make_client_with_key()
+        mock_api = _make_mock_api_client()
+        mock_api.get_agent_optimization = MagicMock(return_value=dict(_API_CONFIG))
+
+        with patch("ldai_optimization.client.LDApiClient", return_value=mock_api):
+            with patch.object(client, "_commit_variation") as mock_commit:
+                await client.optimize_from_config(
+                    "my-opt", _make_from_config_options(output_key="my-variation")
+                )
+
+        assert mock_commit.call_args[1]["output_key"] == "my-variation"
