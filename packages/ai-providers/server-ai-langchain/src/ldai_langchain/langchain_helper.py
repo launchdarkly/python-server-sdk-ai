@@ -1,3 +1,4 @@
+import inspect
 from typing import Any, Dict, List, Optional, Union
 
 from langchain_core.language_models.chat_models import BaseChatModel
@@ -82,6 +83,41 @@ def create_langchain_model(ai_config: AIConfigKind) -> BaseChatModel:
     )
 
 
+def _iter_valid_tools(
+    tool_definitions: List[Dict[str, Any]],
+    tool_registry: ToolRegistry,
+) -> List[tuple]:
+    """
+    Filter LD tool definitions against a registry, returning (name, td) pairs for each
+    valid function tool that has a callable implementation. Built-in provider tools and
+    tools missing from the registry are skipped with a warning.
+    """
+    valid = []
+    for td in tool_definitions:
+        if not isinstance(td, dict):
+            continue
+
+        tool_type = td.get('type')
+        if tool_type and tool_type != 'function':
+            log.warning(
+                f"Built-in tool '{tool_type}' is not reliably supported via LangChain and will be skipped. "
+                "Use a provider-specific runner to use built-in provider tools."
+            )
+            continue
+
+        name = td.get('name')
+        if not name:
+            continue
+
+        if name not in tool_registry:
+            log.warning(f"Tool '{name}' is defined in the AI config but was not found in the tool registry; skipping.")
+            continue
+
+        valid.append((name, td))
+
+    return valid
+
+
 def build_tools(ai_config: AIConfigKind, tool_registry: ToolRegistry) -> List[Any]:
     """
     Return callables from the registry for each tool defined in the AI config.
@@ -111,6 +147,39 @@ def build_tools(ai_config: AIConfigKind, tool_registry: ToolRegistry) -> List[An
             log.warning(f"Tool '{name}' is defined in the AI config but was not found in the tool registry; skipping.")
             continue
         tools.append(fn)
+    return tools
+
+
+def build_structured_tools(ai_config: AIConfigKind, tool_registry: ToolRegistry) -> List[Any]:
+    """
+    Build a list of LangChain StructuredTool instances from LD tool definitions and a registry.
+
+    Tools found in the registry are wrapped as StructuredTool using the LD config key as the
+    tool name so the model's tool calls match ToolNode lookup. Async callables use ``coroutine=``
+    so LangGraph invokes them correctly. Built-in provider tools and tools missing from the
+    registry are skipped with a warning.
+
+    :param ai_config: The LaunchDarkly AI configuration
+    :param tool_registry: Registry mapping tool names to callable implementations
+    :return: List of StructuredTool instances ready to pass to langchain.agents.create_agent
+    """
+    from langchain_core.tools import StructuredTool
+
+    config_dict = ai_config.to_dict()
+    model_dict = config_dict.get('model') or {}
+    parameters = dict(model_dict.get('parameters') or {})
+    tool_definitions = parameters.pop('tools', []) or []
+
+    tools = []
+    for name, td in _iter_valid_tools(tool_definitions, tool_registry):
+        fn = tool_registry[name]
+        raw_desc = td.get('description') if isinstance(td.get('description'), str) else ''
+        description = raw_desc.strip() or (getattr(fn, '__doc__', None) or '').strip() or f'Tool {name}'
+        if inspect.iscoroutinefunction(fn):
+            tool = StructuredTool.from_function(coroutine=fn, name=name, description=description)
+        else:
+            tool = StructuredTool.from_function(fn, name=name, description=description)
+        tools.append(tool)
     return tools
 
 

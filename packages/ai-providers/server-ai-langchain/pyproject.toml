@@ -1,6 +1,6 @@
 [project]
 name = "launchdarkly-server-sdk-ai-langchain"
-version = "0.4.0"
+version = "0.4.1"
 description = "LaunchDarkly AI SDK LangChain Provider"
 authors = [{name = "LaunchDarkly", email = "dev@launchdarkly.com"}]
 license = {text = "Apache-2.0"}
@@ -15,6 +15,7 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Software Development",
     "Topic :: Software Development :: Libraries",
 ]
