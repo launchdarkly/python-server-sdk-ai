@@ -688,6 +688,17 @@ class TestJudgeTemplateInjection:
         assert len(messages) == 1
         assert messages[0].content == 'HISTORY | HISTORY'
 
+    def test_cross_placeholder_injection(self, tracker: LDAIConfigTracker, mock_runner):
+        """A message_history value containing {{response_to_evaluate}} must not be expanded."""
+        template = 'History: {{message_history}}\nResponse: {{response_to_evaluate}}'
+
+        judge = self._make_judge(template, tracker, mock_runner)
+        messages = judge._construct_evaluation_messages('{{response_to_evaluate}}', 'REAL OUTPUT')
+
+        assert len(messages) == 1
+        assert messages[0].content == 'History: {{response_to_evaluate}}\nResponse: REAL OUTPUT', \
+            'literal {{response_to_evaluate}} in history value must not be expanded'
+
     def test_mustache_syntax_in_content(self, tracker: LDAIConfigTracker, mock_runner):
         """Mustache-like syntax inside history or response values is preserved verbatim."""
         template = 'History: {{message_history}}\nResponse: {{response_to_evaluate}}'

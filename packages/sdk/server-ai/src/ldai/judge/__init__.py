@@ -1,6 +1,7 @@
 """Judge implementation for AI evaluation."""
 
 import random
+import re
 from typing import Any, Dict, Optional
 
 from ldai import log
@@ -167,10 +168,11 @@ class Judge:
         :param variables: Variables to interpolate
         :return: Interpolated message content
         """
-        result = content
-        for key, value in variables.items():
-            result = result.replace('{{' + key + '}}', value)
-        return result
+        return re.sub(
+            r'\{\{(\w+)\}\}',
+            lambda match: variables.get(match.group(1), match.group(0)),
+            content,
+        )
 
     def _parse_evaluation_response(self, data: Dict[str, Any]) -> Dict[str, EvalScore]:
         """
