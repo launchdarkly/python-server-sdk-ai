@@ -161,7 +161,7 @@ class Judge:
         return messages
 
     def _interpolate_message(self, content: str, variables: Dict[str, str]) -> str:
-        """Use string replacement to prevent context attributes like {{=[ ]=}})
+        """Use string replacement to prevent context attributes like {{=[ ]=}}
         from influencing judge template parsing.
 
         :param content: The message content template
