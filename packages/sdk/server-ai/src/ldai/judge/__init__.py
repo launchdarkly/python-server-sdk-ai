@@ -160,13 +160,8 @@ class Judge:
         return messages
 
     def _interpolate_message(self, content: str, variables: Dict[str, str]) -> str:
-        """
-        Interpolates message content with variables using simple string replacement.
-
-        Uses literal string replacement instead of a template engine to prevent
-        template injection: attacker-controlled values from pass 1 (e.g. Mustache
-        delimiter-change tags like {{=[ ]=}}) would otherwise be interpreted as
-        control syntax by a second Mustache pass, blinding the judge.
+        """Use string replacement to prevent context attributes like {{=[ ]=}})
+        from influencing judge template parsing.
 
         :param content: The message content template
         :param variables: Variables to interpolate
