@@ -1,9 +1,8 @@
 """Judge implementation for AI evaluation."""
 
 import random
+import re
 from typing import Any, Dict, Optional
-
-import chevron
 
 from ldai import log
 from ldai.judge.evaluation_schema_builder import EvaluationSchemaBuilder
@@ -162,15 +161,18 @@ class Judge:
         return messages
 
     def _interpolate_message(self, content: str, variables: Dict[str, str]) -> str:
-        """
-        Interpolates message content with variables using Mustache templating.
+        """Use string replacement to prevent context attributes like {{=[ ]=}}
+        from influencing judge template parsing.
 
         :param content: The message content template
         :param variables: Variables to interpolate
         :return: Interpolated message content
         """
-        # Use chevron (Mustache) for templating, with no escaping
-        return chevron.render(content, variables)
+        return re.sub(
+            r'\{\{(\w+)\}\}',
+            lambda match: variables.get(match.group(1), match.group(0)),
+            content,
+        )
 
     def _parse_evaluation_response(self, data: Dict[str, Any]) -> Dict[str, EvalScore]:
         """
