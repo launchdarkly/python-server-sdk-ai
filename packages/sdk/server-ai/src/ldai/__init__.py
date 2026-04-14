@@ -36,7 +36,7 @@ from ldai.providers import (
     AgentRunner,
     ToolRegistry,
 )
-from ldai.providers.types import EvalScore, JudgeResponse
+from ldai.providers.types import JudgeResult
 from ldai.tracker import AIGraphTracker
 
 __all__ = [
@@ -60,11 +60,10 @@ __all__ = [
     'ManagedAgent',
     'ManagedModel',
     'ManagedAgentGraph',
-    'EvalScore',
     'AgentGraphDefinition',
     'Judge',
     'JudgeConfiguration',
-    'JudgeResponse',
+    'JudgeResult',
     'LDMessage',
     'ModelConfig',
     'ProviderConfig',

@@ -1,7 +1,7 @@
 """Judge implementation for AI evaluation."""
 
 import random
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 import chevron
 
@@ -9,7 +9,7 @@ from ldai import log
 from ldai.judge.evaluation_schema_builder import EvaluationSchemaBuilder
 from ldai.models import AIJudgeConfig, LDMessage
 from ldai.providers.model_runner import ModelRunner
-from ldai.providers.types import EvalScore, JudgeResponse, ModelResponse
+from ldai.providers.types import JudgeResult, ModelResponse
 from ldai.tracker import LDAIConfigTracker
 
 
@@ -44,29 +44,34 @@ class Judge:
         input_text: str,
         output_text: str,
         sampling_rate: float = 1.0,
-    ) -> Optional[JudgeResponse]:
+    ) -> JudgeResult:
         """
         Evaluates an AI response using the judge's configuration.
 
         :param input_text: The input prompt or question that was provided to the AI
         :param output_text: The AI-generated response to be evaluated
         :param sampling_rate: Sampling rate (0-1) to determine if evaluation should be processed (defaults to 1)
-        :return: Evaluation results or None if not sampled
+        :return: Evaluation result; ``sampled=True`` when skipped due to sampling rate
         """
+        judge_result = JudgeResult(judge_config_key=self._ai_config.key)
+
         try:
             if not self._ai_config.evaluation_metric_key:
                 log.warning(
                     'Judge configuration is missing required evaluationMetricKey'
                 )
-                return None
+                judge_result.error_message = 'Judge configuration is missing required evaluationMetricKey'
+                return judge_result
 
             if not self._ai_config.messages:
                 log.warning('Judge configuration must include messages')
-                return None
+                judge_result.error_message = 'Judge configuration must include messages'
+                return judge_result
 
             if random.random() > sampling_rate:
                 log.debug(f'Judge evaluation skipped due to sampling rate: {sampling_rate}')
-                return None
+                judge_result.sampled = True
+                return judge_result
 
             messages = self._construct_evaluation_messages(input_text, output_text)
             assert self._evaluation_response_structure is not None
@@ -76,39 +81,36 @@ class Judge:
                 lambda result: result.metrics,
             )
 
-            success = response.metrics.success
-            evals = self._parse_evaluation_response(response.data)
+            parsed = self._parse_evaluation_response(response.data)
 
-            if not evals:
+            if parsed is None:
                 log.warning('Judge evaluation did not return the expected evaluation')
-                success = False
+                return judge_result
 
-            return JudgeResponse(
-                judge_config_key=self._ai_config.key,
-                evals=evals,
-                success=success,
-            )
+            score, reasoning = parsed
+            judge_result.metric_key = self._ai_config.evaluation_metric_key
+            judge_result.score = score
+            judge_result.reasoning = reasoning
+            judge_result.success = response.metrics.success
+            return judge_result
         except Exception as error:
             log.error(f'Judge evaluation failed: {error}')
-            return JudgeResponse(
-                evals={},
-                success=False,
-                error=str(error) if isinstance(error, Exception) else 'Unknown error',
-            )
+            judge_result.error_message = str(error) if isinstance(error, Exception) else 'Unknown error'
+            return judge_result
 
     async def evaluate_messages(
         self,
         messages: list[LDMessage],
         response: ModelResponse,
         sampling_ratio: float = 1.0,
-    ) -> Optional[JudgeResponse]:
+    ) -> JudgeResult:
         """
         Evaluates an AI response from chat messages and response.
 
         :param messages: Array of messages representing the conversation history
         :param response: The AI response to be evaluated
         :param sampling_ratio: Sampling ratio (0-1) to determine if evaluation should be processed (defaults to 1)
-        :return: Evaluation results or None if not sampled
+        :return: Evaluation result; ``sampled=True`` when skipped due to sampling rate
         """
         input_text = '\r\n'.join([msg.content for msg in messages]) if messages else ''
         output_text = response.message.content
@@ -172,28 +174,23 @@ class Judge:
         # Use chevron (Mustache) for templating, with no escaping
         return chevron.render(content, variables)
 
-    def _parse_evaluation_response(self, data: Dict[str, Any]) -> Dict[str, EvalScore]:
+    def _parse_evaluation_response(self, data: Dict[str, Any]) -> Optional[Tuple[float, str]]:
         """
         Parses the structured evaluation response. Expects {"score": n, "reasoning": "..."}.
-        """
-        results: Dict[str, EvalScore] = {}
-        metric_key = self._ai_config.evaluation_metric_key
-        if not metric_key:
-            log.warning('Evaluation metric key is missing')
-            return results
 
+        :return: ``(score, reasoning)`` on success, or ``None`` if the response is invalid.
+        """
         if not isinstance(data, dict):
             log.warning('Invalid response: missing or invalid evaluation')
-            return results
+            return None
 
         score = data.get('score')
         reasoning = data.get('reasoning')
         if not isinstance(score, (int, float)) or score < 0 or score > 1:
             log.warning(f'Invalid score: {score}. Score must be a number between 0 and 1 inclusive')
-            return results
+            return None
         if not isinstance(reasoning, str):
             log.warning('Invalid reasoning: must be a string')
-            return results
+            return None
 
-        results[metric_key] = EvalScore(score=float(score), reasoning=reasoning)
-        return results
+        return (float(score), reasoning)

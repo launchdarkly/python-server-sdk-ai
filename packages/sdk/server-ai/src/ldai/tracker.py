@@ -246,49 +246,23 @@ class LDAIConfigTracker:
         self.track_duration(duration, graph_key=graph_key)
         return self._track_from_metrics_extractor(result, metrics_extractor, graph_key=graph_key)
 
-    def track_eval_scores(self, scores: Dict[str, Any], *, graph_key: Optional[str] = None) -> None:
+    def track_judge_result(self, judge_result: Any, *, graph_key: Optional[str] = None) -> None:
         """
-        Track evaluation scores for multiple metrics.
+        Track a judge result, including the evaluation score with judge config key.
 
-        :param scores: Dictionary mapping metric keys to their evaluation scores (EvalScore objects)
+        :param judge_result: JudgeResult object containing score, metric key, and success status
         :param graph_key: When set, include ``graphKey`` in the event payload.
         """
-        from ldai.providers.types import EvalScore
-
-        # Track each evaluation score individually
-        for metric_key, eval_score in scores.items():
-            if isinstance(eval_score, EvalScore):
-                self._ld_client.track(
-                    metric_key,
-                    self._context,
-                    self.__get_track_data(graph_key=graph_key),
-                    eval_score.score
-                )
-
-    def track_judge_response(self, judge_response: Any, *, graph_key: Optional[str] = None) -> None:
-        """
-        Track a judge response, including evaluation scores with judge config key.
-
-        :param judge_response: JudgeResponse object containing evals and success status
-        :param graph_key: When set, include ``graphKey`` in the event payload.
-        """
-        from ldai.providers.types import EvalScore, JudgeResponse
-
-        if isinstance(judge_response, JudgeResponse):
-            # Track evaluation scores with judge config key included in metadata
-            if judge_response.evals:
-                track_data = self.__get_track_data(graph_key=graph_key)
-                if judge_response.judge_config_key:
-                    track_data = {**track_data, 'judgeConfigKey': judge_response.judge_config_key}
-
-                for metric_key, eval_score in judge_response.evals.items():
-                    if isinstance(eval_score, EvalScore):
-                        self._ld_client.track(
-                            metric_key,
-                            self._context,
-                            track_data,
-                            eval_score.score
-                        )
+        if judge_result.success and judge_result.metric_key:
+            track_data = self.__get_track_data(graph_key=graph_key)
+            if judge_result.judge_config_key:
+                track_data = {**track_data, 'judgeConfigKey': judge_result.judge_config_key}
+            self._ld_client.track(
+                judge_result.metric_key,
+                self._context,
+                track_data,
+                judge_result.score,
+            )
 
     def track_feedback(self, feedback: Dict[str, FeedbackKind], *, graph_key: Optional[str] = None) -> None:
         """
@@ -594,29 +568,6 @@ class AIGraphTracker:
             track_data,
             1,
         )
-
-    def track_judge_response(self, response: Any) -> None:
-        """
-        Track judge responses for the final graph output.
-
-        :param response: JudgeResponse object containing evals and success status.
-        """
-        from ldai.providers.types import EvalScore, JudgeResponse
-
-        if isinstance(response, JudgeResponse):
-            if response.evals:
-                track_data = self.__get_track_data()
-                if response.judge_config_key:
-                    track_data = {**track_data, "judgeConfigKey": response.judge_config_key}
-
-                for metric_key, eval_score in response.evals.items():
-                    if isinstance(eval_score, EvalScore):
-                        self._ld_client.track(
-                            metric_key,
-                            self._context,
-                            track_data,
-                            eval_score.score,
-                        )
 
     def track_redirect(self, source_key: str, redirected_target: str) -> None:
         """
