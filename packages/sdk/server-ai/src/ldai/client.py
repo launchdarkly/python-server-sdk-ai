@@ -606,9 +606,10 @@ class LDAIClient:
             for single_edge in variation.get("edges", {}).get(edge_key, []):
                 all_agent_keys.add(single_edge.get("key", ""))
 
+        graph_key_value = key
         agent_configs = {
-            key: self.agent_config(key, context, AIAgentConfigDefault(enabled=False))
-            for key in all_agent_keys
+            agent_key: self.__evaluate_agent(agent_key, context, AIAgentConfigDefault(enabled=False), graph_key=graph_key_value)
+            for agent_key in all_agent_keys
         }
 
         if not all(config.enabled for config in agent_configs.values()):
@@ -748,6 +749,7 @@ class LDAIClient:
         context: Context,
         default_dict: Dict[str, Any],
         variables: Optional[Dict[str, Any]] = None,
+        graph_key: Optional[str] = None,
     ) -> Tuple[
         Optional[ModelConfig], Optional[ProviderConfig], Optional[List[LDMessage]],
         Optional[str], LDAIConfigTracker, bool, Optional[Any], Dict[str, Any]
@@ -759,6 +761,7 @@ class LDAIClient:
         :param context: The evaluation context.
         :param default_dict: Default configuration as dictionary.
         :param variables: Variables for interpolation.
+        :param graph_key: When set, passed to the tracker so all events include ``graphKey``.
         :return: Tuple of (model, provider, messages, instructions, tracker, enabled, judge_configuration, variation).
         """
         variation = self._client.variation(key, context, default_dict)
@@ -809,6 +812,7 @@ class LDAIClient:
             model.name if model else '',
             provider_config.name if provider_config else '',
             context,
+            graph_key=graph_key,
         )
 
         enabled = variation.get('_ldMeta', {}).get('enabled', False)
@@ -836,6 +840,7 @@ class LDAIClient:
         context: Context,
         default: AIAgentConfigDefault,
         variables: Optional[Dict[str, Any]] = None,
+        graph_key: Optional[str] = None,
     ) -> AIAgentConfig:
         """
         Internal method to evaluate an agent configuration.
@@ -844,10 +849,11 @@ class LDAIClient:
         :param context: The evaluation context.
         :param default: Default agent values.
         :param variables: Variables for interpolation.
+        :param graph_key: When set, passed to the tracker so all events include ``graphKey``.
         :return: Configured AIAgentConfig instance.
         """
         model, provider, messages, instructions, tracker, enabled, judge_configuration, _ = self.__evaluate(
-            key, context, default.to_dict(), variables
+            key, context, default.to_dict(), variables, graph_key=graph_key
         )
 
         # For agents, prioritize instructions over messages

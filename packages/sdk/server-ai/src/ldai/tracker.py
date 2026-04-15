@@ -77,6 +77,7 @@ class LDAIConfigTracker:
         model_name: str,
         provider_name: str,
         context: Context,
+        graph_key: Optional[str] = None,
     ):
         """
         Initialize an AI Config tracker.
@@ -88,6 +89,8 @@ class LDAIConfigTracker:
         :param model_name: Name of the model used.
         :param provider_name: Name of the provider used.
         :param context: Context for evaluation.
+        :param graph_key: When set, include ``graphKey`` in all event payloads
+            (e.g. config-level metrics inside a graph).
         """
         self._ld_client = ld_client
         self._variation_key = variation_key
@@ -96,13 +99,13 @@ class LDAIConfigTracker:
         self._model_name = model_name
         self._provider_name = provider_name
         self._context = context
+        self._graph_key = graph_key
         self._summary = LDAIMetricSummary()
 
-    def __get_track_data(self, graph_key: Optional[str] = None) -> dict:
+    def __get_track_data(self) -> dict:
         """
         Get tracking data for events.
 
-        :param graph_key: When set, include ``graphKey`` in the payload.
         :return: Dictionary containing variation and config keys.
         """
         data = {
@@ -112,41 +115,36 @@ class LDAIConfigTracker:
             "modelName": self._model_name,
             "providerName": self._provider_name,
         }
-        if graph_key is not None:
-            data['graphKey'] = graph_key
+        if self._graph_key is not None:
+            data['graphKey'] = self._graph_key
         return data
 
-    def track_duration(self, duration: int, *, graph_key: Optional[str] = None) -> None:
+    def track_duration(self, duration: int) -> None:
         """
         Manually track the duration of an AI operation.
 
         :param duration: Duration in milliseconds.
-        :param graph_key: When set, include ``graphKey`` in the event payload
-            (e.g. config-level metrics inside a graph).
         """
         self._summary._duration = duration
         self._ld_client.track(
-            "$ld:ai:duration:total", self._context, self.__get_track_data(graph_key), duration
+            "$ld:ai:duration:total", self._context, self.__get_track_data(), duration
         )
 
-    def track_time_to_first_token(
-        self, time_to_first_token: int, *, graph_key: Optional[str] = None
-    ) -> None:
+    def track_time_to_first_token(self, time_to_first_token: int) -> None:
         """
         Manually track the time to first token of an AI operation.
 
         :param time_to_first_token: Time to first token in milliseconds.
-        :param graph_key: When set, include ``graphKey`` in the event payload.
         """
         self._summary._time_to_first_token = time_to_first_token
         self._ld_client.track(
             "$ld:ai:tokens:ttf",
             self._context,
-            self.__get_track_data(graph_key),
+            self.__get_track_data(),
             time_to_first_token,
         )
 
-    def track_duration_of(self, func, *, graph_key: Optional[str] = None):
+    def track_duration_of(self, func):
         """
         Automatically track the duration of an AI operation.
 
@@ -154,7 +152,6 @@ class LDAIConfigTracker:
         track the duration. The exception will be re-thrown.
 
         :param func: Function to track (synchronous only).
-        :param graph_key: When set, passed through to :meth:`track_duration`.
         :return: Result of the tracked function.
         """
         start_ns = time.perf_counter_ns()
@@ -162,7 +159,7 @@ class LDAIConfigTracker:
             result = func()
         finally:
             duration = (time.perf_counter_ns() - start_ns) // 1_000_000  # duration in milliseconds
-            self.track_duration(duration, graph_key=graph_key)
+            self.track_duration(duration)
 
         return result
 
@@ -170,24 +167,20 @@ class LDAIConfigTracker:
         self,
         result: Any,
         metrics_extractor: Callable[[Any], Any],
-        *,
-        graph_key: Optional[str] = None,
     ) -> Any:
         metrics = metrics_extractor(result)
         if metrics.success:
-            self.track_success(graph_key=graph_key)
+            self.track_success()
         else:
-            self.track_error(graph_key=graph_key)
+            self.track_error()
         if metrics.usage:
-            self.track_tokens(metrics.usage, graph_key=graph_key)
+            self.track_tokens(metrics.usage)
         return result
 
     def track_metrics_of(
         self,
         func: Callable[[], Any],
         metrics_extractor: Callable[[Any], Any],
-        *,
-        graph_key: Optional[str] = None,
     ) -> Any:
         """
         Track metrics for a synchronous AI operation.
@@ -203,7 +196,6 @@ class LDAIConfigTracker:
 
         :param func: Synchronous callable that runs the operation
         :param metrics_extractor: Function that extracts LDAIMetrics from the operation result
-        :param graph_key: When set, include ``graphKey`` on emitted config-level events.
         :return: The result of the operation
         """
         start_ns = time.perf_counter_ns()
@@ -211,17 +203,15 @@ class LDAIConfigTracker:
             result = func()
         except Exception as err:
             duration = (time.perf_counter_ns() - start_ns) // 1_000_000
-            self.track_duration(duration, graph_key=graph_key)
-            self.track_error(graph_key=graph_key)
+            self.track_duration(duration)
+            self.track_error()
             raise err
 
         duration = (time.perf_counter_ns() - start_ns) // 1_000_000
-        self.track_duration(duration, graph_key=graph_key)
-        return self._track_from_metrics_extractor(result, metrics_extractor, graph_key=graph_key)
+        self.track_duration(duration)
+        return self._track_from_metrics_extractor(result, metrics_extractor)
 
-    async def track_metrics_of_async(
-        self, func, metrics_extractor, *, graph_key: Optional[str] = None
-    ):
+    async def track_metrics_of_async(self, func, metrics_extractor):
         """
         Track metrics for an async AI operation (``func`` is awaited).
 
@@ -229,7 +219,6 @@ class LDAIConfigTracker:
 
         :param func: Async callable or zero-arg callable that returns an awaitable when called
         :param metrics_extractor: Function that extracts LDAIMetrics from the operation result
-        :param graph_key: When set, include ``graphKey`` on emitted config-level events.
         :return: The result of the operation
         """
         start_ns = time.perf_counter_ns()
@@ -238,23 +227,22 @@ class LDAIConfigTracker:
             result = await func()
         except Exception as err:
             duration = (time.perf_counter_ns() - start_ns) // 1_000_000
-            self.track_duration(duration, graph_key=graph_key)
-            self.track_error(graph_key=graph_key)
+            self.track_duration(duration)
+            self.track_error()
             raise err
 
         duration = (time.perf_counter_ns() - start_ns) // 1_000_000
-        self.track_duration(duration, graph_key=graph_key)
-        return self._track_from_metrics_extractor(result, metrics_extractor, graph_key=graph_key)
+        self.track_duration(duration)
+        return self._track_from_metrics_extractor(result, metrics_extractor)
 
-    def track_judge_result(self, judge_result: Any, *, graph_key: Optional[str] = None) -> None:
+    def track_judge_result(self, judge_result: Any) -> None:
         """
         Track a judge result, including the evaluation score with judge config key.
 
         :param judge_result: JudgeResult object containing score, metric key, and success status
-        :param graph_key: When set, include ``graphKey`` in the event payload.
         """
         if judge_result.success and judge_result.metric_key:
-            track_data = self.__get_track_data(graph_key=graph_key)
+            track_data = self.__get_track_data()
             if judge_result.judge_config_key:
                 track_data = {**track_data, 'judgeConfigKey': judge_result.judge_config_key}
             self._ld_client.track(
@@ -264,49 +252,44 @@ class LDAIConfigTracker:
                 judge_result.score,
             )
 
-    def track_feedback(self, feedback: Dict[str, FeedbackKind], *, graph_key: Optional[str] = None) -> None:
+    def track_feedback(self, feedback: Dict[str, FeedbackKind]) -> None:
         """
         Track user feedback for an AI operation.
 
         :param feedback: Dictionary containing feedback kind.
-        :param graph_key: When set, include ``graphKey`` in the event payload.
         """
         self._summary._feedback = feedback
         if feedback["kind"] == FeedbackKind.Positive:
             self._ld_client.track(
                 "$ld:ai:feedback:user:positive",
                 self._context,
-                self.__get_track_data(graph_key=graph_key),
+                self.__get_track_data(),
                 1,
             )
         elif feedback["kind"] == FeedbackKind.Negative:
             self._ld_client.track(
                 "$ld:ai:feedback:user:negative",
                 self._context,
-                self.__get_track_data(graph_key=graph_key),
+                self.__get_track_data(),
                 1,
             )
 
-    def track_success(self, *, graph_key: Optional[str] = None) -> None:
+    def track_success(self) -> None:
         """
         Track a successful AI generation.
-
-        :param graph_key: When set, include ``graphKey`` in the event payload.
         """
         self._summary._success = True
         self._ld_client.track(
-            "$ld:ai:generation:success", self._context, self.__get_track_data(graph_key=graph_key), 1
+            "$ld:ai:generation:success", self._context, self.__get_track_data(), 1
         )
 
-    def track_error(self, *, graph_key: Optional[str] = None) -> None:
+    def track_error(self) -> None:
         """
         Track an unsuccessful AI generation attempt.
-
-        :param graph_key: When set, include ``graphKey`` in the event payload.
         """
         self._summary._success = False
         self._ld_client.track(
-            "$ld:ai:generation:error", self._context, self.__get_track_data(graph_key=graph_key), 1
+            "$ld:ai:generation:error", self._context, self.__get_track_data(), 1
         )
 
     def track_openai_metrics(self, func):
@@ -364,15 +347,14 @@ class LDAIConfigTracker:
             self.track_tokens(_bedrock_to_token_usage(res["usage"]))
         return res
 
-    def track_tokens(self, tokens: TokenUsage, *, graph_key: Optional[str] = None) -> None:
+    def track_tokens(self, tokens: TokenUsage) -> None:
         """
         Track token usage metrics.
 
         :param tokens: Token usage data from either custom, OpenAI, or Bedrock sources.
-        :param graph_key: When set, include ``graphKey`` in the event payload.
         """
         self._summary._usage = tokens
-        td = self.__get_track_data(graph_key=graph_key)
+        td = self.__get_track_data()
         if tokens.total > 0:
             self._ld_client.track(
                 "$ld:ai:tokens:total",
@@ -395,14 +377,13 @@ class LDAIConfigTracker:
                 tokens.output,
             )
 
-    def track_tool_call(self, tool_key: str, *, graph_key: Optional[str] = None) -> None:
+    def track_tool_call(self, tool_key: str) -> None:
         """
         Track a tool invocation for this configuration (standalone or within a graph).
 
         :param tool_key: Identifier of the tool that was invoked.
-        :param graph_key: When set, include ``graphKey`` in the event payload.
         """
-        track_data = {**self.__get_track_data(graph_key=graph_key), "toolKey": tool_key}
+        track_data = {**self.__get_track_data(), "toolKey": tool_key}
         self._ld_client.track(
             "$ld:ai:tool_call",
             self._context,
@@ -410,17 +391,14 @@ class LDAIConfigTracker:
             1,
         )
 
-    def track_tool_calls(
-        self, tool_keys: Iterable[str], *, graph_key: Optional[str] = None
-    ) -> None:
+    def track_tool_calls(self, tool_keys: Iterable[str]) -> None:
         """
         Track multiple tool invocations for this configuration.
 
         :param tool_keys: Tool identifiers (e.g. from a model response).
-        :param graph_key: When set, include ``graphKey`` on each event.
         """
         for tool_key in tool_keys:
-            self.track_tool_call(tool_key, graph_key=graph_key)
+            self.track_tool_call(tool_key)
 
     def get_summary(self) -> LDAIMetricSummary:
         """
