@@ -608,7 +608,9 @@ class LDAIClient:
 
         graph_key_value = key
         agent_configs = {
-            agent_key: self.__evaluate_agent(agent_key, context, AIAgentConfigDefault(enabled=False), graph_key=graph_key_value)
+            agent_key: self.__evaluate_agent(
+                agent_key, context, AIAgentConfigDefault(enabled=False), graph_key=graph_key_value
+            )
             for agent_key in all_agent_keys
         }
 

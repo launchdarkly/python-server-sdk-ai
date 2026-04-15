@@ -248,13 +248,12 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
         except Exception:
             pass
 
-        gk = tracker.graph_key if tracker is not None else None
         if config_tracker is not None:
             if usage is not None:
-                config_tracker.track_tokens(usage, graph_key=gk)
+                config_tracker.track_tokens(usage)
             if duration_ms is not None:
-                config_tracker.track_duration(int(duration_ms), graph_key=gk)
-            config_tracker.track_success(graph_key=gk)
+                config_tracker.track_duration(int(duration_ms))
+            config_tracker.track_success()
 
     def _flush_final_segment(
         self,
@@ -283,15 +282,13 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
         except Exception:
             pass
 
-        gk = tracker.graph_key if tracker is not None else None
         if usage is not None:
-            config_tracker.track_tokens(usage, graph_key=gk)
-        config_tracker.track_duration(int(duration_ms), graph_key=gk)
-        config_tracker.track_success(graph_key=gk)
+            config_tracker.track_tokens(usage)
+        config_tracker.track_duration(int(duration_ms))
+        config_tracker.track_success()
 
     def _track_tool_calls(self, result: Any, tracker: Any) -> None:
         """Track all tool calls from the run result, attributed to the node that called them."""
-        gk = tracker.graph_key if tracker is not None else None
         for agent_name, tool_fn_name in get_tool_calls_from_run_items(result.new_items):
             agent_key = self._agent_name_map.get(agent_name, agent_name)
             tool_name = self._tool_name_map.get(tool_fn_name)
@@ -302,4 +299,4 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
                 continue
             config_tracker = node.get_config().tracker
             if config_tracker is not None:
-                config_tracker.track_tool_call(tool_name, graph_key=gk)
+                config_tracker.track_tool_call(tool_name)

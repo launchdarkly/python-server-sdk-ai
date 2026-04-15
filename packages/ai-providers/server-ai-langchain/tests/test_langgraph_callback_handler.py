@@ -35,6 +35,7 @@ def _make_graph(mock_ld_client: MagicMock, node_key: str = 'root-agent', graph_k
         model_name='gpt-4',
         provider_name='openai',
         context=context,
+        graph_key=graph_key,
     )
     graph_tracker = AIGraphTracker(
         ld_client=mock_ld_client,
@@ -389,16 +390,47 @@ def test_flush_includes_graph_key_in_node_events():
     assert token_data.get('graphKey') == 'my-graph'
 
 
-def test_flush_with_none_tracker_uses_no_graph_key():
-    """flush() with graph_tracker=None does not fail and omits graphKey."""
+def test_flush_with_no_graph_key_on_node_tracker():
+    """When node tracker has no graph_key, events omit graphKey."""
     mock_ld_client = MagicMock()
-    graph = _make_graph(mock_ld_client)
+    context = MagicMock()
+    node_tracker = LDAIConfigTracker(
+        ld_client=mock_ld_client,
+        variation_key='v1',
+        config_key='root-agent',
+        version=1,
+        model_name='gpt-4',
+        provider_name='openai',
+        context=context,
+    )
+    node_config = AIAgentConfig(
+        key='root-agent',
+        enabled=True,
+        model=ModelConfig(name='gpt-4', parameters={}),
+        provider=ProviderConfig(name='openai'),
+        instructions='Be helpful.',
+        tracker=node_tracker,
+    )
+    graph_config = AIAgentGraphConfig(
+        key='test-graph',
+        root_config_key='root-agent',
+        edges=[],
+        enabled=True,
+    )
+    nodes = AgentGraphDefinition.build_nodes(graph_config, {'root-agent': node_config})
+    graph = AgentGraphDefinition(
+        agent_graph=graph_config,
+        nodes=nodes,
+        context=context,
+        enabled=True,
+        tracker=None,
+    )
 
     handler = LDMetricsCallbackHandler({'root-agent'}, {})
     node_run_id = uuid4()
     handler.on_chain_start({}, {}, run_id=node_run_id, name='root-agent')
     handler.on_llm_end(_llm_result(5, 3, 2), run_id=uuid4(), parent_run_id=node_run_id)
-    handler.flush(graph, None)  # graph_tracker=None
+    handler.flush(graph, None)
 
     ev = _events(mock_ld_client)
     token_data = ev['$ld:ai:tokens:total'][0][0]

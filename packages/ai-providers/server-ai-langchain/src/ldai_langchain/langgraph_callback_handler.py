@@ -197,7 +197,6 @@ class LDMetricsCallbackHandler(BaseCallbackHandler):
         :param graph: The AgentGraphDefinition whose nodes hold the LD config trackers.
         :param graph_tracker: The AIGraphTracker for the overall graph (may be None).
         """
-        gk = graph_tracker.graph_key if graph_tracker is not None else None
         for node_key in self._path:
             node = graph.get_node(node_key)
             if not node:
@@ -208,13 +207,13 @@ class LDMetricsCallbackHandler(BaseCallbackHandler):
 
             usage = self._node_tokens.get(node_key)
             if usage:
-                config_tracker.track_tokens(usage, graph_key=gk)
+                config_tracker.track_tokens(usage)
 
             duration = self._node_duration_ms.get(node_key)
             if duration is not None:
-                config_tracker.track_duration(duration, graph_key=gk)
+                config_tracker.track_duration(duration)
 
-            config_tracker.track_success(graph_key=gk)
+            config_tracker.track_success()
 
             for tool_key in self._node_tool_calls.get(node_key, []):
-                config_tracker.track_tool_call(tool_key, graph_key=gk)
+                config_tracker.track_tool_call(tool_key)
