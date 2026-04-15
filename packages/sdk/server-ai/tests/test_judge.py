@@ -9,7 +9,7 @@ from ldclient.integrations.test_data import TestData
 from ldai.judge import Judge
 from ldai.judge.evaluation_schema_builder import EvaluationSchemaBuilder
 from ldai.models import AIJudgeConfig, AIJudgeConfigDefault, LDMessage, ModelConfig, ProviderConfig
-from ldai.providers.types import EvalScore, JudgeResponse, LDAIMetrics, StructuredResponse
+from ldai.providers.types import JudgeResult, LDAIMetrics, StructuredResponse
 from ldai.tracker import LDAIConfigTracker
 
 
@@ -118,27 +118,31 @@ class TestJudgeEvaluate:
     """Tests for Judge.evaluate() method."""
 
     @pytest.mark.asyncio
-    async def test_evaluate_returns_none_when_evaluation_metric_key_missing(
+    async def test_evaluate_returns_failure_when_evaluation_metric_key_missing(
         self, judge_config_without_key: AIJudgeConfig, tracker: LDAIConfigTracker, mock_runner
     ):
-        """Evaluate should return None when evaluation_metric_key is missing."""
+        """Evaluate should return a failed JudgeResult when evaluation_metric_key is missing."""
         judge = Judge(judge_config_without_key, tracker, mock_runner)
-        
+
         result = await judge.evaluate("input text", "output text")
-        
-        assert result is None
+
+        assert isinstance(result, JudgeResult)
+        assert result.success is False
+        assert result.sampled is False
         mock_runner.invoke_structured_model.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_evaluate_returns_none_when_messages_missing(
+    async def test_evaluate_returns_failure_when_messages_missing(
         self, judge_config_without_messages: AIJudgeConfig, tracker: LDAIConfigTracker, mock_runner
     ):
-        """Evaluate should return None when messages are missing."""
+        """Evaluate should return a failed JudgeResult when messages are missing."""
         judge = Judge(judge_config_without_messages, tracker, mock_runner)
-        
+
         result = await judge.evaluate("input text", "output text")
-        
-        assert result is None
+
+        assert isinstance(result, JudgeResult)
+        assert result.success is False
+        assert result.sampled is False
         mock_runner.invoke_structured_model.assert_not_called()
 
     @pytest.mark.asyncio
@@ -162,12 +166,12 @@ class TestJudgeEvaluate:
         
         result = await judge.evaluate("What is AI?", "AI is artificial intelligence.")
         
-        assert result is not None
-        assert isinstance(result, JudgeResponse)
+        assert isinstance(result, JudgeResult)
         assert result.success is True
-        assert '$ld:ai:judge:relevance' in result.evals
-        assert result.evals['$ld:ai:judge:relevance'].score == 0.85
-        assert 'relevant' in result.evals['$ld:ai:judge:relevance'].reasoning.lower()
+        assert result.metric_key == '$ld:ai:judge:relevance'
+        assert result.score == 0.85
+        assert result.reasoning is not None
+        assert 'relevant' in result.reasoning.lower()
 
     @pytest.mark.asyncio
     async def test_evaluate_success_with_evaluation_response_shape(
@@ -188,11 +192,12 @@ class TestJudgeEvaluate:
         judge = Judge(judge_config_with_key, tracker, mock_runner)
         result = await judge.evaluate("What is feature flagging?", "Feature flagging is...")
 
-        assert result is not None
+        assert isinstance(result, JudgeResult)
         assert result.success is True
-        assert '$ld:ai:judge:relevance' in result.evals
-        assert result.evals['$ld:ai:judge:relevance'].score == 0.9
-        assert 'accurate' in result.evals['$ld:ai:judge:relevance'].reasoning.lower()
+        assert result.metric_key == '$ld:ai:judge:relevance'
+        assert result.score == 0.9
+        assert result.reasoning is not None
+        assert 'accurate' in result.reasoning.lower()
 
     @pytest.mark.asyncio
     async def test_evaluate_handles_missing_evaluation_in_response(
@@ -212,9 +217,9 @@ class TestJudgeEvaluate:
         
         result = await judge.evaluate("input", "output")
         
-        assert result is not None
+        assert isinstance(result, JudgeResult)
         assert result.success is False
-        assert len(result.evals) == 0
+        assert result.score is None
 
     @pytest.mark.asyncio
     async def test_evaluate_handles_invalid_score(
@@ -237,9 +242,9 @@ class TestJudgeEvaluate:
         
         result = await judge.evaluate("input", "output")
         
-        assert result is not None
+        assert isinstance(result, JudgeResult)
         assert result.success is False
-        assert len(result.evals) == 0
+        assert result.score is None
 
     @pytest.mark.asyncio
     async def test_evaluate_handles_missing_reasoning(
@@ -259,9 +264,9 @@ class TestJudgeEvaluate:
         
         result = await judge.evaluate("input", "output")
         
-        assert result is not None
+        assert isinstance(result, JudgeResult)
         assert result.success is False
-        assert len(result.evals) == 0
+        assert result.score is None
 
     @pytest.mark.asyncio
     async def test_evaluate_handles_exception(
@@ -275,22 +280,22 @@ class TestJudgeEvaluate:
         
         result = await judge.evaluate("input", "output")
         
-        assert result is not None
-        assert isinstance(result, JudgeResponse)
+        assert isinstance(result, JudgeResult)
         assert result.success is False
-        assert result.error is not None
-        assert len(result.evals) == 0
+        assert result.error_message is not None
 
     @pytest.mark.asyncio
     async def test_evaluate_respects_sampling_rate(
         self, judge_config_with_key: AIJudgeConfig, tracker: LDAIConfigTracker, mock_runner
     ):
-        """Evaluate should respect sampling rate."""
+        """Evaluate should return sampled=True when skipped due to sampling rate."""
         judge = Judge(judge_config_with_key, tracker, mock_runner)
-        
+
         result = await judge.evaluate("input", "output", sampling_rate=0.0)
-        
-        assert result is None
+
+        assert isinstance(result, JudgeResult)
+        assert result.sampled is True
+        assert result.success is False
         mock_runner.invoke_structured_model.assert_not_called()
 
 

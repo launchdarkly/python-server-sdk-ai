@@ -2,8 +2,6 @@ import warnings
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Literal, Optional, Union
 
-from ldai.tracker import LDAIConfigTracker
-
 
 @dataclass
 class LDMessage:
@@ -182,7 +180,7 @@ class AIConfig:
     enabled: bool
     model: Optional[ModelConfig] = None
     provider: Optional[ProviderConfig] = None
-    tracker: Optional[LDAIConfigTracker] = None
+    tracker: Optional[Any] = None
 
     def _base_to_dict(self) -> Dict[str, Any]:
         """

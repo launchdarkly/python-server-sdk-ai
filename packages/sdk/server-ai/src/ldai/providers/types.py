@@ -44,7 +44,7 @@ class ModelResponse:
     """
     message: LDMessage
     metrics: LDAIMetrics
-    evaluations: Optional[List[JudgeResponse]] = None
+    evaluations: Optional[List[JudgeResult]] = None
 
 
 @dataclass
@@ -58,45 +58,36 @@ class StructuredResponse:
 
 
 @dataclass
-class EvalScore:
+class JudgeResult:
     """
-    Score and reasoning for a single evaluation metric.
+    Result from a judge evaluation.
     """
-    score: float  # Score between 0.0 and 1.0
-    reasoning: str  # Reasoning behind the provided score
+    judge_config_key: Optional[str] = None
+    success: bool = False
+    error_message: Optional[str] = None
+    sampled: bool = False  # True when the judge was skipped due to sampling rate
+    score: Optional[float] = None
+    reasoning: Optional[str] = None
+    metric_key: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         """
-        Render the evaluation score as a dictionary object.
-        """
-        return {
-            'score': self.score,
-            'reasoning': self.reasoning,
-        }
-
-
-@dataclass
-class JudgeResponse:
-    """
-    Response from a judge evaluation containing scores and reasoning for multiple metrics.
-    """
-    evals: Dict[str, EvalScore]  # Dictionary where keys are metric names and values contain score and reasoning
-    success: bool  # Whether the evaluation completed successfully
-    judge_config_key: Optional[str] = None  # The key of the judge configuration that was used to generate this response
-    error: Optional[str] = None  # Error message if evaluation failed
-
-    def to_dict(self) -> Dict[str, Any]:
-        """
-        Render the judge response as a dictionary object.
+        Render the judge result as a dictionary object.
         """
         result: Dict[str, Any] = {
-            'evals': {key: eval_score.to_dict() for key, eval_score in self.evals.items()},
             'success': self.success,
+            'sampled': self.sampled,
         }
+        if self.score is not None:
+            result['score'] = self.score
+        if self.reasoning is not None:
+            result['reasoning'] = self.reasoning
+        if self.metric_key is not None:
+            result['metricKey'] = self.metric_key
         if self.judge_config_key is not None:
             result['judgeConfigKey'] = self.judge_config_key
-        if self.error is not None:
-            result['error'] = self.error
+        if self.error_message is not None:
+            result['errorMessage'] = self.error_message
         return result
 
 

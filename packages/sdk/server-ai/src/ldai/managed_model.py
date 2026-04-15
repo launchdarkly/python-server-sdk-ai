@@ -5,7 +5,7 @@ from ldai import log
 from ldai.judge import Judge
 from ldai.models import AICompletionConfig, LDMessage
 from ldai.providers.model_runner import ModelRunner
-from ldai.providers.types import JudgeResponse, ModelResponse
+from ldai.providers.types import JudgeResult, ModelResponse
 from ldai.tracker import LDAIConfigTracker
 
 
@@ -66,19 +66,19 @@ class ManagedModel:
         self,
         messages: List[LDMessage],
         response: ModelResponse,
-    ) -> List[asyncio.Task[Optional[JudgeResponse]]]:
+    ) -> List[asyncio.Task[Optional[JudgeResult]]]:
         if not self._ai_config.judge_configuration or not self._ai_config.judge_configuration.judges:
             return []
 
-        async def evaluate_judge(judge_config: Any) -> Optional[JudgeResponse]:
+        async def evaluate_judge(judge_config: Any) -> Optional[JudgeResult]:
             judge = self._judges.get(judge_config.key)
             if not judge:
                 log.warning(f'Judge configuration is not enabled: {judge_config.key}')
                 return None
-            eval_result = await judge.evaluate_messages(messages, response, judge_config.sampling_rate)
-            if eval_result and eval_result.success:
-                self._tracker.track_judge_response(eval_result)
-            return eval_result
+            judge_result = await judge.evaluate_messages(messages, response, judge_config.sampling_rate)
+            if judge_result.success:
+                self._tracker.track_judge_result(judge_result)
+            return judge_result
 
         return [
             asyncio.create_task(evaluate_judge(jc))
