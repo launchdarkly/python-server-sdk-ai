@@ -1,5 +1,5 @@
 from time import sleep
-from unittest.mock import MagicMock, call
+from unittest.mock import ANY, MagicMock, call
 
 import pytest
 from ldclient import Config, Context, LDClient
@@ -59,7 +59,7 @@ def test_tracks_duration(client: LDClient):
     client.track.assert_called_with(  # type: ignore
         "$ld:ai:duration:total",
         context,
-        {"variationKey": "variation-key", "configKey": "config-key", "version": 3, "modelName": "fakeModel", "providerName": "fakeProvider"},
+        {"runId": ANY, "variationKey": "variation-key", "configKey": "config-key", "version": 3, "modelName": "fakeModel", "providerName": "fakeProvider"},
         100,
     )
 
@@ -94,7 +94,7 @@ def test_tracks_time_to_first_token(client: LDClient):
     client.track.assert_called_with(  # type: ignore
         "$ld:ai:tokens:ttf",
         context,
-        {"variationKey": "variation-key", "configKey": "config-key", "version": 3, "modelName": "fakeModel", "providerName": "fakeProvider"},
+        {"runId": ANY, "variationKey": "variation-key", "configKey": "config-key", "version": 3, "modelName": "fakeModel", "providerName": "fakeProvider"},
         100,
     )
 
@@ -141,19 +141,19 @@ def test_tracks_token_usage(client: LDClient):
         call(
             "$ld:ai:tokens:total",
             context,
-            {"variationKey": "variation-key", "configKey": "config-key", "version": 3, "modelName": "fakeModel", "providerName": "fakeProvider"},
+            {"runId": ANY, "variationKey": "variation-key", "configKey": "config-key", "version": 3, "modelName": "fakeModel", "providerName": "fakeProvider"},
             300,
         ),
         call(
             "$ld:ai:tokens:input",
             context,
-            {"variationKey": "variation-key", "configKey": "config-key", "version": 3, "modelName": "fakeModel", "providerName": "fakeProvider"},
+            {"runId": ANY, "variationKey": "variation-key", "configKey": "config-key", "version": 3, "modelName": "fakeModel", "providerName": "fakeProvider"},
             200,
         ),
         call(
             "$ld:ai:tokens:output",
             context,
-            {"variationKey": "variation-key", "configKey": "config-key", "version": 3, "modelName": "fakeModel", "providerName": "fakeProvider"},
+            {"runId": ANY, "variationKey": "variation-key", "configKey": "config-key", "version": 3, "modelName": "fakeModel", "providerName": "fakeProvider"},
             100,
         ),
     ]
@@ -184,31 +184,31 @@ def test_tracks_bedrock_metrics(client: LDClient):
         call(
             "$ld:ai:generation:success",
             context,
-            {"variationKey": "variation-key", "configKey": "config-key", "version": 3, "modelName": "fakeModel", "providerName": "fakeProvider"},
+            {"runId": ANY, "variationKey": "variation-key", "configKey": "config-key", "version": 3, "modelName": "fakeModel", "providerName": "fakeProvider"},
             1,
         ),
         call(
             "$ld:ai:duration:total",
             context,
-            {"variationKey": "variation-key", "configKey": "config-key", "version": 3, "modelName": "fakeModel", "providerName": "fakeProvider"},
+            {"runId": ANY, "variationKey": "variation-key", "configKey": "config-key", "version": 3, "modelName": "fakeModel", "providerName": "fakeProvider"},
             50,
         ),
         call(
             "$ld:ai:tokens:total",
             context,
-            {"variationKey": "variation-key", "configKey": "config-key", "version": 3, "modelName": "fakeModel", "providerName": "fakeProvider"},
+            {"runId": ANY, "variationKey": "variation-key", "configKey": "config-key", "version": 3, "modelName": "fakeModel", "providerName": "fakeProvider"},
             330,
         ),
         call(
             "$ld:ai:tokens:input",
             context,
-            {"variationKey": "variation-key", "configKey": "config-key", "version": 3, "modelName": "fakeModel", "providerName": "fakeProvider"},
+            {"runId": ANY, "variationKey": "variation-key", "configKey": "config-key", "version": 3, "modelName": "fakeModel", "providerName": "fakeProvider"},
             220,
         ),
         call(
             "$ld:ai:tokens:output",
             context,
-            {"variationKey": "variation-key", "configKey": "config-key", "version": 3, "modelName": "fakeModel", "providerName": "fakeProvider"},
+            {"runId": ANY, "variationKey": "variation-key", "configKey": "config-key", "version": 3, "modelName": "fakeModel", "providerName": "fakeProvider"},
             110,
         ),
     ]
@@ -241,31 +241,31 @@ def test_tracks_bedrock_metrics_with_error(client: LDClient):
         call(
             "$ld:ai:generation:error",
             context,
-            {"variationKey": "variation-key", "configKey": "config-key", "version": 3, "modelName": "fakeModel", "providerName": "fakeProvider"},
+            {"runId": ANY, "variationKey": "variation-key", "configKey": "config-key", "version": 3, "modelName": "fakeModel", "providerName": "fakeProvider"},
             1,
         ),
         call(
             "$ld:ai:duration:total",
             context,
-            {"variationKey": "variation-key", "configKey": "config-key", "version": 3, "modelName": "fakeModel", "providerName": "fakeProvider"},
+            {"runId": ANY, "variationKey": "variation-key", "configKey": "config-key", "version": 3, "modelName": "fakeModel", "providerName": "fakeProvider"},
             50,
         ),
         call(
             "$ld:ai:tokens:total",
             context,
-            {"variationKey": "variation-key", "configKey": "config-key", "version": 3, "modelName": "fakeModel", "providerName": "fakeProvider"},
+            {"runId": ANY, "variationKey": "variation-key", "configKey": "config-key", "version": 3, "modelName": "fakeModel", "providerName": "fakeProvider"},
             330,
         ),
         call(
             "$ld:ai:tokens:input",
             context,
-            {"variationKey": "variation-key", "configKey": "config-key", "version": 3, "modelName": "fakeModel", "providerName": "fakeProvider"},
+            {"runId": ANY, "variationKey": "variation-key", "configKey": "config-key", "version": 3, "modelName": "fakeModel", "providerName": "fakeProvider"},
             220,
         ),
         call(
             "$ld:ai:tokens:output",
             context,
-            {"variationKey": "variation-key", "configKey": "config-key", "version": 3, "modelName": "fakeModel", "providerName": "fakeProvider"},
+            {"runId": ANY, "variationKey": "variation-key", "configKey": "config-key", "version": 3, "modelName": "fakeModel", "providerName": "fakeProvider"},
             110,
         ),
     ]
@@ -302,25 +302,25 @@ def test_tracks_openai_metrics(client: LDClient):
         call(
             "$ld:ai:generation:success",
             context,
-            {"variationKey": "variation-key", "configKey": "config-key", "version": 3, "modelName": "fakeModel", "providerName": "fakeProvider"},
+            {"runId": ANY, "variationKey": "variation-key", "configKey": "config-key", "version": 3, "modelName": "fakeModel", "providerName": "fakeProvider"},
             1,
         ),
         call(
             "$ld:ai:tokens:total",
             context,
-            {"variationKey": "variation-key", "configKey": "config-key", "version": 3, "modelName": "fakeModel", "providerName": "fakeProvider"},
+            {"runId": ANY, "variationKey": "variation-key", "configKey": "config-key", "version": 3, "modelName": "fakeModel", "providerName": "fakeProvider"},
             330,
         ),
         call(
             "$ld:ai:tokens:input",
             context,
-            {"variationKey": "variation-key", "configKey": "config-key", "version": 3, "modelName": "fakeModel", "providerName": "fakeProvider"},
+            {"runId": ANY, "variationKey": "variation-key", "configKey": "config-key", "version": 3, "modelName": "fakeModel", "providerName": "fakeProvider"},
             220,
         ),
         call(
             "$ld:ai:tokens:output",
             context,
-            {"variationKey": "variation-key", "configKey": "config-key", "version": 3, "modelName": "fakeModel", "providerName": "fakeProvider"},
+            {"runId": ANY, "variationKey": "variation-key", "configKey": "config-key", "version": 3, "modelName": "fakeModel", "providerName": "fakeProvider"},
             110,
         ),
     ]
@@ -347,7 +347,7 @@ def test_tracks_openai_metrics_with_exception(client: LDClient):
         call(
             "$ld:ai:generation:error",
             context,
-            {"variationKey": "variation-key", "configKey": "config-key", "version": 3, "modelName": "fakeModel", "providerName": "fakeProvider"},
+            {"runId": ANY, "variationKey": "variation-key", "configKey": "config-key", "version": 3, "modelName": "fakeModel", "providerName": "fakeProvider"},
             1,
         ),
     ]
@@ -373,7 +373,7 @@ def test_tracks_feedback(client: LDClient, kind: FeedbackKind, label: str):
     client.track.assert_called_with(  # type: ignore
         f"$ld:ai:feedback:user:{label}",
         context,
-        {"variationKey": "variation-key", "configKey": "config-key", "version": 3, "modelName": "fakeModel", "providerName": "fakeProvider"},
+        {"runId": ANY, "variationKey": "variation-key", "configKey": "config-key", "version": 3, "modelName": "fakeModel", "providerName": "fakeProvider"},
         1,
     )
     assert tracker.get_summary().feedback == {"kind": kind}
@@ -388,7 +388,7 @@ def test_tracks_success(client: LDClient):
         call(
             "$ld:ai:generation:success",
             context,
-            {"variationKey": "variation-key", "configKey": "config-key", "version": 3, "modelName": "fakeModel", "providerName": "fakeProvider"},
+            {"runId": ANY, "variationKey": "variation-key", "configKey": "config-key", "version": 3, "modelName": "fakeModel", "providerName": "fakeProvider"},
             1,
         ),
     ]
@@ -407,7 +407,7 @@ def test_tracks_error(client: LDClient):
         call(
             "$ld:ai:generation:error",
             context,
-            {"variationKey": "variation-key", "configKey": "config-key", "version": 3, "modelName": "fakeModel", "providerName": "fakeProvider"},
+            {"runId": ANY, "variationKey": "variation-key", "configKey": "config-key", "version": 3, "modelName": "fakeModel", "providerName": "fakeProvider"},
             1,
         ),
     ]
@@ -417,34 +417,26 @@ def test_tracks_error(client: LDClient):
     assert tracker.get_summary().success is False
 
 
-def test_error_overwrites_success(client: LDClient):
+def test_error_after_success_is_blocked(client: LDClient):
     context = Context.create("user-key")
     tracker = LDAIConfigTracker(client, "variation-key", "config-key", 3, "fakeModel", "fakeProvider", context)
     tracker.track_success()
     tracker.track_error()
 
-    calls = [
-        call(
-            "$ld:ai:generation:success",
-            context,
-            {"variationKey": "variation-key", "configKey": "config-key", "version": 3, "modelName": "fakeModel", "providerName": "fakeProvider"},
-            1,
-        ),
-        call(
-            "$ld:ai:generation:error",
-            context,
-            {"variationKey": "variation-key", "configKey": "config-key", "version": 3, "modelName": "fakeModel", "providerName": "fakeProvider"},
-            1,
-        ),
-    ]
+    # Only the first call (success) should go through; error is blocked by at-most-once guard
+    client.track.assert_called_once_with(  # type: ignore
+        "$ld:ai:generation:success",
+        context,
+        {"runId": ANY, "variationKey": "variation-key", "configKey": "config-key", "version": 3, "modelName": "fakeModel", "providerName": "fakeProvider"},
+        1,
+    )
 
-    client.track.assert_has_calls(calls)  # type: ignore
-
-    assert tracker.get_summary().success is False
+    assert tracker.get_summary().success is True
 
 
 def _base_td() -> dict:
     return {
+        "runId": ANY,
         "variationKey": "variation-key",
         "configKey": "config-key",
         "version": 3,
@@ -591,3 +583,92 @@ def test_ai_graph_tracker_track_total_tokens_tracks_when_positive(client: LDClie
         {"variationKey": "variation-key", "graphKey": "graph-key", "version": 2},
         42,
     )
+
+
+# --- At-most-once guard tests ---
+
+
+def test_duplicate_track_duration_is_ignored(client: LDClient):
+    context = Context.create("user-key")
+    tracker = LDAIConfigTracker(client, "variation-key", "config-key", 3, "fakeModel", "fakeProvider", context)
+    tracker.track_duration(100)
+    tracker.track_duration(200)
+
+    assert client.track.call_count == 1  # type: ignore
+    assert tracker.get_summary().duration == 100
+
+
+def test_duplicate_track_time_to_first_token_is_ignored(client: LDClient):
+    context = Context.create("user-key")
+    tracker = LDAIConfigTracker(client, "variation-key", "config-key", 3, "fakeModel", "fakeProvider", context)
+    tracker.track_time_to_first_token(50)
+    tracker.track_time_to_first_token(75)
+
+    assert client.track.call_count == 1  # type: ignore
+    assert tracker.get_summary().time_to_first_token == 50
+
+
+def test_duplicate_track_tokens_is_ignored(client: LDClient):
+    context = Context.create("user-key")
+    tracker = LDAIConfigTracker(client, "variation-key", "config-key", 3, "fakeModel", "fakeProvider", context)
+    tokens1 = TokenUsage(300, 200, 100)
+    tokens2 = TokenUsage(600, 400, 200)
+    tracker.track_tokens(tokens1)
+    tracker.track_tokens(tokens2)
+
+    # 3 track calls for total/input/output from the first call only
+    assert client.track.call_count == 3  # type: ignore
+    assert tracker.get_summary().usage == tokens1
+
+
+def test_duplicate_track_success_is_ignored(client: LDClient):
+    context = Context.create("user-key")
+    tracker = LDAIConfigTracker(client, "variation-key", "config-key", 3, "fakeModel", "fakeProvider", context)
+    tracker.track_success()
+    tracker.track_success()
+
+    assert client.track.call_count == 1  # type: ignore
+    assert tracker.get_summary().success is True
+
+
+def test_duplicate_track_error_is_ignored(client: LDClient):
+    context = Context.create("user-key")
+    tracker = LDAIConfigTracker(client, "variation-key", "config-key", 3, "fakeModel", "fakeProvider", context)
+    tracker.track_error()
+    tracker.track_error()
+
+    assert client.track.call_count == 1  # type: ignore
+    assert tracker.get_summary().success is False
+
+
+def test_duplicate_track_feedback_is_ignored(client: LDClient):
+    context = Context.create("user-key")
+    tracker = LDAIConfigTracker(client, "variation-key", "config-key", 3, "fakeModel", "fakeProvider", context)
+    tracker.track_feedback({"kind": FeedbackKind.Positive})
+    tracker.track_feedback({"kind": FeedbackKind.Negative})
+
+    assert client.track.call_count == 1  # type: ignore
+    assert tracker.get_summary().feedback == {"kind": FeedbackKind.Positive}
+
+
+def test_track_data_includes_run_id(client: LDClient):
+    context = Context.create("user-key")
+    tracker = LDAIConfigTracker(client, "variation-key", "config-key", 3, "fakeModel", "fakeProvider", context)
+    tracker.track_success()
+
+    track_data = client.track.call_args[0][2]  # type: ignore
+    assert "runId" in track_data
+    assert isinstance(track_data["runId"], str)
+    assert len(track_data["runId"]) == 36  # UUID format
+
+
+def test_run_id_is_consistent_across_track_calls(client: LDClient):
+    context = Context.create("user-key")
+    tracker = LDAIConfigTracker(client, "variation-key", "config-key", 3, "fakeModel", "fakeProvider", context)
+    tracker.track_success()
+    tracker.track_duration(100)
+
+    calls = client.track.mock_calls  # type: ignore
+    run_id_1 = calls[0].args[2]["runId"]
+    run_id_2 = calls[1].args[2]["runId"]
+    assert run_id_1 == run_id_2
