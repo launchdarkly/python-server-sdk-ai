@@ -14,6 +14,7 @@ from typing import (
     Sequence,
     Union,
 )
+from typing_extensions import Protocol
 
 from ldai import AIAgentConfig
 from ldai.models import LDMessage, ModelConfig
@@ -106,6 +107,33 @@ class ToolDefinition:
             input_schema=data.get("input_schema", {}),
             type=data.get("type", "function"),
         )
+
+
+class LLMCallConfig(Protocol):
+    """Structural protocol satisfied by both ``AIAgentConfig`` and ``AIJudgeCallConfig``.
+
+    Use this as the config parameter type when you want a single handler function
+    that can be passed to both ``handle_agent_call`` and ``handle_judge_call``::
+
+        async def handle_llm_call(
+            key: str,
+            config: LLMCallConfig,
+            context: Union[OptimizationContext, OptimizationJudgeContext],
+        ) -> OptimizationResponse:
+            model_name = config.model.name if config.model else "gpt-4o"
+            instructions = config.instructions or ""
+            ...
+
+        OptimizationOptions(
+            handle_agent_call=handle_llm_call,
+            handle_judge_call=handle_llm_call,
+            ...
+        )
+    """
+
+    key: str
+    model: Optional[ModelConfig]
+    instructions: Optional[str]
 
 
 @dataclass

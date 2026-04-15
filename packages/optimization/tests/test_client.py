@@ -3818,6 +3818,16 @@ class TestAutoCommitInOptimizeFromOptions:
 
         mock_commit.assert_not_called()
 
+    async def test_succeeds_without_api_key_when_auto_commit_false(self):
+        client = self._make_client_without_key()
+        options = _make_options()  # auto_commit defaults to False
+
+        with patch("ldai_optimization.client.LDApiClient") as mock_api_cls:
+            result = await client.optimize_from_options("test-agent", options)
+
+        mock_api_cls.assert_not_called()
+        assert result is not None
+
     async def test_raises_when_auto_commit_true_and_no_api_key(self):
         client = self._make_client_without_key()
         options = _make_options(auto_commit=True, project_key="my-project")
