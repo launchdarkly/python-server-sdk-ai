@@ -9,7 +9,7 @@ from ldai import AIAgentConfig, AIJudgeConfig, AIJudgeConfigDefault, LDAIClient
 from ldai.models import LDMessage, ModelConfig
 from ldclient import Context
 
-from ldai_optimization.client import OptimizationClient, _compute_validation_count
+from ldai_optimization.client import OptimizationClient, _compute_validation_count, _find_model_config
 from ldai_optimization.dataclasses import (
     AIJudgeCallConfig,
     GroundTruthOptimizationOptions,
@@ -155,6 +155,59 @@ class TestHandleVariationToolCall:
         )
         assert isinstance(result, str)
         json.loads(result)
+
+
+# ---------------------------------------------------------------------------
+# _find_model_config
+# ---------------------------------------------------------------------------
+
+
+class TestFindModelConfig:
+    def test_returns_none_when_no_configs(self):
+        assert _find_model_config("gpt-4o", []) is None
+
+    def test_returns_none_when_no_id_match(self):
+        configs = [{"id": "claude-3", "key": "Anthropic.claude-3", "global": True}]
+        assert _find_model_config("gpt-4o", configs) is None
+
+    def test_returns_single_match(self):
+        configs = [{"id": "gpt-4o", "key": "OpenAI.gpt-4o", "global": False}]
+        result = _find_model_config("gpt-4o", configs)
+        assert result is not None
+        assert result["key"] == "OpenAI.gpt-4o"
+
+    def test_prefers_global_match_over_non_global(self):
+        configs = [
+            {"id": "gpt-4o", "key": "project.gpt-4o", "global": False},
+            {"id": "gpt-4o", "key": "global.gpt-4o", "global": True},
+        ]
+        result = _find_model_config("gpt-4o", configs)
+        assert result is not None
+        assert result["key"] == "global.gpt-4o"
+
+    def test_prefers_global_match_regardless_of_list_order(self):
+        configs = [
+            {"id": "gpt-4o", "key": "global.gpt-4o", "global": True},
+            {"id": "gpt-4o", "key": "project.gpt-4o", "global": False},
+        ]
+        result = _find_model_config("gpt-4o", configs)
+        assert result["key"] == "global.gpt-4o"
+
+    def test_falls_back_to_non_global_when_no_global_exists(self):
+        configs = [
+            {"id": "gpt-4o", "key": "project.gpt-4o", "global": False},
+        ]
+        result = _find_model_config("gpt-4o", configs)
+        assert result is not None
+        assert result["key"] == "project.gpt-4o"
+
+    def test_treats_missing_global_field_as_non_global(self):
+        configs = [
+            {"id": "gpt-4o", "key": "no-global-field.gpt-4o"},
+            {"id": "gpt-4o", "key": "global.gpt-4o", "global": True},
+        ]
+        result = _find_model_config("gpt-4o", configs)
+        assert result["key"] == "global.gpt-4o"
 
 
 # ---------------------------------------------------------------------------
@@ -1308,6 +1361,69 @@ class TestValidationPhase:
         await client.optimize_from_options("test-agent", opts)
         assert "validating" in statuses
 
+    async def test_turn_completed_after_validation_failure_uses_main_iteration_context(self):
+        """When validation fails, the 'turn completed' event must carry the MAIN iteration's
+        user_input and completion_response — not the failing validation sample's values.
+
+        Regression test for the mismatch where a record stored userInput='hostel near paris'
+        but completionResponse described 'airbmbs near tahoe' (from a validation run with a
+        different user_input that was folded back onto the main iteration's API record).
+        """
+        turn_calls = [0]
+        status_events: list = []
+
+        user_inputs = [f"query-{i}" for i in range(8)]
+
+        def on_turn(ctx):
+            turn_calls[0] += 1
+            # Call 1: main iteration passes. Call 2: first validation sample FAILS.
+            # Call 3+: everything passes (new attempt succeeds).
+            return turn_calls[0] != 2
+
+        def capture_status(status, ctx):
+            status_events.append((status, ctx.user_input, ctx.completion_response))
+
+        client = self._make_client()
+        opts = _make_multi_options(
+            on_turn=on_turn,
+            variable_count=8,
+            user_input_options=user_inputs,
+            handle_agent_call=AsyncMock(side_effect=[
+                OptimizationResponse(output="main-response"),      # main turn (passes)
+                OptimizationResponse(output="val-response"),       # validation sample (fails)
+                OptimizationResponse(output=VARIATION_RESPONSE),   # variation generation
+                OptimizationResponse(output="main-response-2"),    # 2nd attempt main (passes)
+                OptimizationResponse(output="val-response-2"),     # 2nd attempt validation (passes)
+                OptimizationResponse(output="val-response-3"),     # 2nd attempt validation (passes)
+            ]),
+            max_attempts=3,
+        )
+        opts.on_status_update = capture_status
+        await client.optimize_from_options("test-agent", opts)
+
+        # The 'generating' event captures the main iteration's user_input.
+        # The validation run fires 'generating' as well, but with a different user_input.
+        # The first 'generating' is always the main iteration.
+        generating_events = [(u, r) for s, u, r in status_events if s == "generating"]
+        main_user_input = generating_events[0][0]
+
+        # Find the 'turn completed' event from the first attempt (after validation failure)
+        tc_events = [(u, r) for s, u, r in status_events if s == "turn completed"]
+        assert len(tc_events) >= 1, "Expected at least one 'turn completed' event"
+
+        tc_user_input, tc_completion = tc_events[0]
+        # turn completed must use the MAIN iteration's data, not the validation sample's.
+        # If the bug is present, tc_completion would be "val-response" and tc_user_input
+        # would be the validation sample's query (different from main_user_input).
+        assert tc_completion == "main-response", (
+            f"turn completed should carry the main iteration's completion_response "
+            f"('main-response'), not the validation run's (got: {tc_completion!r})"
+        )
+        assert tc_user_input == main_user_input, (
+            f"turn completed should carry the main iteration's user_input "
+            f"('{main_user_input}'), not the validation run's (got: {tc_user_input!r})"
+        )
+
 
 # ---------------------------------------------------------------------------
 # Variation prompt — acceptance criteria section
@@ -1747,7 +1863,9 @@ def _make_from_config_options(**overrides: Any) -> OptimizationFromConfigOptions
 
 def _make_mock_api_client() -> MagicMock:
     mock = MagicMock()
-    mock.post_agent_optimization_result = MagicMock()
+    mock.post_agent_optimization_result = MagicMock(return_value="result-uuid-789")
+    mock.patch_agent_optimization_result = MagicMock()
+    mock.get_model_configs = MagicMock(return_value=[])
     return mock
 
 
@@ -1769,8 +1887,9 @@ class TestBuildOptionsFromConfig:
             config or dict(_API_CONFIG),
             options or _make_from_config_options(),
             self.api_client,
-            optimization_id="opt-uuid-123",
+            optimization_key="opt-key-123",
             run_id="run-uuid-456",
+            model_configs=[],
         )
 
     def test_acceptance_statements_mapped_to_judges(self):
@@ -1904,7 +2023,7 @@ class TestBuildOptionsFromConfig:
         self.api_client.post_agent_optimization_result.assert_called_once()
         call_args = self.api_client.post_agent_optimization_result.call_args
         assert call_args[0][0] == "my-project"
-        assert call_args[0][1] == "opt-uuid-123"
+        assert call_args[0][1] == "opt-key-123"
 
     def test_persist_and_forward_payload_has_correct_field_names(self):
         result = self._build()
@@ -1919,13 +2038,51 @@ class TestBuildOptionsFromConfig:
             iteration=2,
         )
         result.on_status_update("evaluating", ctx)
-        payload = self.api_client.post_agent_optimization_result.call_args[0][2]
-        assert payload["instructions"] == "Be helpful."
-        assert payload["parameters"] == {"temperature": 0.5}
-        assert payload["completion_response"] == "Paris."
-        assert payload["user_input"] == "Capital of France?"
-        assert payload["iteration"] == 2
-        assert "j" in payload["scores"]
+        # POST payload contains the camelCase iteration-level fields
+        post_payload = self.api_client.post_agent_optimization_result.call_args[0][2]
+        assert post_payload["instructions"] == "Be helpful."
+        assert post_payload["parameters"] == {"temperature": 0.5}
+        assert post_payload["userInput"] == "Capital of France?"
+        assert post_payload["iteration"] == 2
+        # Telemetry and scores are in the PATCH payload
+        patch_payload = self.api_client.patch_agent_optimization_result.call_args[0][3]
+        assert patch_payload["completionResponse"] == "Paris."
+        assert "j" in patch_payload["scores"]
+
+    def test_persist_and_forward_scores_include_threshold_for_known_judges(self):
+        # Build with a config that has a known acceptance-statement judge (threshold=0.9)
+        result = self._build()
+        ctx = OptimizationContext(
+            scores={"acceptance-statement-0": JudgeResult(score=0.85, rationale="Close.")},
+            completion_response="An answer.",
+            current_instructions="Be helpful.",
+            current_parameters={},
+            current_variables={},
+            iteration=1,
+        )
+        result.on_status_update("evaluating", ctx)
+        patch_payload = self.api_client.patch_agent_optimization_result.call_args[0][3]
+        score_entry = patch_payload["scores"]["acceptance-statement-0"]
+        assert score_entry["score"] == 0.85
+        assert score_entry["rationale"] == "Close."
+        assert score_entry["threshold"] == 0.9
+
+    def test_persist_and_forward_scores_omit_threshold_for_unknown_judge_key(self):
+        # A score whose key doesn't match any configured judge should not include threshold
+        result = self._build()
+        ctx = OptimizationContext(
+            scores={"unknown-judge": JudgeResult(score=0.5, rationale="Unknown.")},
+            completion_response="Answer.",
+            current_instructions="",
+            current_parameters={},
+            current_variables={},
+            iteration=1,
+        )
+        result.on_status_update("evaluating", ctx)
+        patch_payload = self.api_client.patch_agent_optimization_result.call_args[0][3]
+        score_entry = patch_payload["scores"]["unknown-judge"]
+        assert score_entry["score"] == 0.5
+        assert "threshold" not in score_entry
 
     def test_persist_and_forward_includes_run_id_and_version(self):
         result = self._build()
@@ -1934,15 +2091,43 @@ class TestBuildOptionsFromConfig:
             current_parameters={}, current_variables={}, iteration=1,
         )
         result.on_status_update("generating", ctx)
-        payload = self.api_client.post_agent_optimization_result.call_args[0][2]
-        assert payload["run_id"] == "run-uuid-456"
-        assert payload["config_optimization_version"] == 2
+        post_payload = self.api_client.post_agent_optimization_result.call_args[0][2]
+        assert post_payload["runId"] == "run-uuid-456"
+        assert post_payload["agentOptimizationVersion"] == 2
+
+    def test_second_call_same_iteration_does_not_post_again(self):
+        result = self._build()
+        ctx = OptimizationContext(
+            scores={}, completion_response="", current_instructions="",
+            current_parameters={}, current_variables={}, iteration=1,
+        )
+        result.on_status_update("generating", ctx)
+        result.on_status_update("evaluating", ctx)
+        # POST is called only once (first encounter of iteration 1)
+        assert self.api_client.post_agent_optimization_result.call_count == 1
+        # PATCH is called twice
+        assert self.api_client.patch_agent_optimization_result.call_count == 2
+
+    def test_each_new_iteration_posts_a_new_record(self):
+        result = self._build()
+        ctx1 = OptimizationContext(
+            scores={}, completion_response="", current_instructions="",
+            current_parameters={}, current_variables={}, iteration=1,
+        )
+        ctx2 = OptimizationContext(
+            scores={}, completion_response="", current_instructions="",
+            current_parameters={}, current_variables={}, iteration=2,
+        )
+        result.on_status_update("generating", ctx1)
+        result.on_status_update("generating", ctx2)
+        assert self.api_client.post_agent_optimization_result.call_count == 2
 
     @pytest.mark.parametrize("sdk_status,expected_status,expected_activity", [
         ("init", "RUNNING", "PENDING"),
         ("generating", "RUNNING", "GENERATING"),
         ("evaluating", "RUNNING", "EVALUATING"),
         ("generating variation", "RUNNING", "GENERATING_VARIATION"),
+        ("validating", "RUNNING", "EVALUATING"),
         ("turn completed", "RUNNING", "COMPLETED"),
         ("success", "PASSED", "COMPLETED"),
         ("failure", "FAILED", "COMPLETED"),
@@ -1954,14 +2139,18 @@ class TestBuildOptionsFromConfig:
             current_parameters={}, current_variables={}, iteration=1,
         )
         result.on_status_update(sdk_status, ctx)
-        payload = self.api_client.post_agent_optimization_result.call_args[0][2]
-        assert payload["status"] == expected_status
-        assert payload["activity"] == expected_activity
+        # status and activity are in the PATCH payload, not the POST payload
+        patch_payload = self.api_client.patch_agent_optimization_result.call_args[0][3]
+        assert patch_payload["status"] == expected_status
+        assert patch_payload["activity"] == expected_activity
 
-    def test_user_on_status_update_chained_after_post(self):
+    def test_user_on_status_update_chained_after_post_and_patch(self):
         call_order = []
         self.api_client.post_agent_optimization_result.side_effect = (
-            lambda *a, **kw: call_order.append("post")
+            lambda *a, **kw: call_order.append("post") or "result-id"
+        )
+        self.api_client.patch_agent_optimization_result.side_effect = (
+            lambda *a, **kw: call_order.append("patch")
         )
         user_cb = MagicMock(side_effect=lambda s, c: call_order.append("user"))
         options = _make_from_config_options(on_status_update=user_cb)
@@ -1971,7 +2160,7 @@ class TestBuildOptionsFromConfig:
             current_parameters={}, current_variables={}, iteration=1,
         )
         result.on_status_update("generating", ctx)
-        assert call_order == ["post", "user"]
+        assert call_order == ["post", "patch", "user"]
 
     def test_user_on_status_update_exception_does_not_propagate(self):
         options = _make_from_config_options(
@@ -1984,15 +2173,267 @@ class TestBuildOptionsFromConfig:
         )
         result.on_status_update("generating", ctx)  # must not raise
 
-    def test_payload_history_not_included(self):
+    def test_post_payload_does_not_contain_history(self):
         result = self._build()
         ctx = OptimizationContext(
             scores={}, completion_response="", current_instructions="",
             current_parameters={}, current_variables={}, iteration=1,
         )
         result.on_status_update("generating", ctx)
-        payload = self.api_client.post_agent_optimization_result.call_args[0][2]
-        assert "history" not in payload
+        post_payload = self.api_client.post_agent_optimization_result.call_args[0][2]
+        assert "history" not in post_payload
+
+    @pytest.mark.parametrize("status", [
+        "init", "generating", "evaluating", "generating variation",
+        "validating", "turn completed", "success", "failure",
+    ])
+    def test_variation_included_in_patch_for_all_statuses(self, status):
+        result = self._build()
+        ctx = OptimizationContext(
+            scores={},
+            completion_response="answer",
+            current_instructions="Be concise.",
+            current_parameters={"temperature": 0.3},
+            current_variables={},
+            current_model="gpt-4o",
+            iteration=1,
+        )
+        result.on_status_update(status, ctx)
+        patch_payload = self.api_client.patch_agent_optimization_result.call_args[0][3]
+        assert "variation" in patch_payload
+        assert patch_payload["variation"]["instructions"] == "Be concise."
+        assert patch_payload["variation"]["parameters"] == {"temperature": 0.3}
+
+    @pytest.mark.parametrize("status", ["generating", "evaluating", "success"])
+    def test_model_config_key_prefers_global_in_variation(self, status):
+        model_configs = [
+            {"id": "gpt-4o", "key": "project.gpt-4o", "global": False},
+            {"id": "gpt-4o", "key": "global.gpt-4o", "global": True},
+        ]
+        result = self.client._build_options_from_config(
+            dict(_API_CONFIG),
+            _make_from_config_options(),
+            self.api_client,
+            optimization_key="opt-key-123",
+            run_id="run-uuid-456",
+            model_configs=model_configs,
+        )
+        ctx = OptimizationContext(
+            scores={}, completion_response="", current_instructions="instr",
+            current_parameters={}, current_variables={}, current_model="gpt-4o",
+            iteration=1,
+        )
+        result.on_status_update(status, ctx)
+        patch_payload = self.api_client.patch_agent_optimization_result.call_args[0][3]
+        assert patch_payload["variation"]["modelConfigKey"] == "global.gpt-4o"
+
+    @pytest.mark.parametrize("status", ["generating", "evaluating", "success"])
+    def test_model_config_key_resolved_in_variation(self, status):
+        model_configs = [{"id": "gpt-4o", "key": "OpenAI.gpt-4o"}]
+        result = self.client._build_options_from_config(
+            dict(_API_CONFIG),
+            _make_from_config_options(),
+            self.api_client,
+            optimization_key="opt-key-123",
+            run_id="run-uuid-456",
+            model_configs=model_configs,
+        )
+        ctx = OptimizationContext(
+            scores={}, completion_response="", current_instructions="instr",
+            current_parameters={}, current_variables={}, current_model="gpt-4o",
+            iteration=1,
+        )
+        result.on_status_update(status, ctx)
+        patch_payload = self.api_client.patch_agent_optimization_result.call_args[0][3]
+        assert patch_payload["variation"]["modelConfigKey"] == "OpenAI.gpt-4o"
+
+    def test_generation_latency_cast_to_int(self):
+        result = self._build()
+        ctx = OptimizationContext(
+            scores={}, completion_response="", current_instructions="",
+            current_parameters={}, current_variables={}, duration_ms=123.7,
+            iteration=1,
+        )
+        result.on_status_update("generating", ctx)
+        patch_payload = self.api_client.patch_agent_optimization_result.call_args[0][3]
+        assert patch_payload["generationLatency"] == 123
+        assert isinstance(patch_payload["generationLatency"], int)
+
+    def test_last_optimization_result_id_updated_on_post(self):
+        result = self._build()
+        ctx = OptimizationContext(
+            scores={}, completion_response="", current_instructions="",
+            current_parameters={}, current_variables={}, iteration=1,
+        )
+        result.on_status_update("generating", ctx)
+        assert self.client._last_optimization_result_id == "result-uuid-789"
+
+    def test_validation_sub_iterations_do_not_create_new_records(self):
+        """Validation sub-iterations should be folded into the parent iteration's record."""
+        result = self._build()
+        ctx_main = OptimizationContext(
+            scores={}, completion_response="a", current_instructions="i",
+            current_parameters={}, current_variables={}, iteration=1,
+        )
+        ctx_val1 = OptimizationContext(
+            scores={}, completion_response="b", current_instructions="i",
+            current_parameters={}, current_variables={}, iteration=2,
+        )
+        ctx_val2 = OptimizationContext(
+            scores={}, completion_response="c", current_instructions="i",
+            current_parameters={}, current_variables={}, iteration=3,
+        )
+        result.on_status_update("generating", ctx_main)   # POST iter 1
+        result.on_status_update("evaluating", ctx_main)   # PATCH iter 1
+        result.on_status_update("validating", ctx_main)   # enter validation; PATCH iter 1
+        result.on_status_update("generating", ctx_val1)   # validation sub-iter → folded to iter 1
+        result.on_status_update("evaluating", ctx_val1)   # folded to iter 1
+        result.on_status_update("generating", ctx_val2)   # validation sub-iter → folded to iter 1
+        result.on_status_update("evaluating", ctx_val2)   # folded to iter 1
+        result.on_status_update("success", ctx_val2)      # folded to iter 1; reset validation
+
+        # Only one POST for the single main iteration
+        assert self.api_client.post_agent_optimization_result.call_count == 1
+        post_payload = self.api_client.post_agent_optimization_result.call_args[0][2]
+        assert post_payload["iteration"] == 1
+
+    def test_validation_success_patches_parent_iteration_record(self):
+        """success event during validation should PATCH the main iteration's record, not a new one."""
+        result = self._build()
+        ctx_main = OptimizationContext(
+            scores={}, completion_response="", current_instructions="",
+            current_parameters={}, current_variables={}, iteration=2,
+        )
+        ctx_val = OptimizationContext(
+            scores={}, completion_response="", current_instructions="",
+            current_parameters={}, current_variables={}, iteration=3,
+        )
+        result.on_status_update("generating", ctx_main)
+        result.on_status_update("validating", ctx_main)
+        result.on_status_update("generating", ctx_val)
+        result.on_status_update("success", ctx_val)
+
+        # PATCH for success should use the result_id of the parent (iter 2) record
+        patch_calls = self.api_client.patch_agent_optimization_result.call_args_list
+        success_patch = next(
+            c for c in patch_calls if c[0][3].get("status") == "PASSED"
+        )
+        # Third positional arg is result_id — it should be the one returned from the POST for iter 2
+        assert success_patch[0][2] == "result-uuid-789"
+
+    def test_validation_phase_resets_after_turn_completed(self):
+        """After turn completed, subsequent main-loop iterations create their own records."""
+        result = self._build()
+        ctx1 = OptimizationContext(
+            scores={}, completion_response="", current_instructions="",
+            current_parameters={}, current_variables={}, iteration=1,
+        )
+        ctx_val = OptimizationContext(
+            scores={}, completion_response="", current_instructions="",
+            current_parameters={}, current_variables={}, iteration=2,
+        )
+        ctx2 = OptimizationContext(
+            scores={}, completion_response="", current_instructions="",
+            current_parameters={}, current_variables={}, iteration=2,
+        )
+        result.on_status_update("generating", ctx1)      # POST iter 1
+        result.on_status_update("validating", ctx1)      # enter validation
+        result.on_status_update("generating", ctx_val)   # folded to iter 1
+        result.on_status_update("turn completed", ctx_val)  # reset validation phase
+        result.on_status_update("generating", ctx2)      # POST iter 2 (new main attempt)
+
+        assert self.api_client.post_agent_optimization_result.call_count == 2
+
+    def test_init_iteration_closed_when_first_real_iteration_begins(self):
+        """The init record (iter 0) must receive a RUNNING:COMPLETED patch before iter 1 starts."""
+        result = self._build()
+        ctx0 = OptimizationContext(
+            scores={}, completion_response="", current_instructions="",
+            current_parameters={}, current_variables={}, iteration=0,
+        )
+        ctx1 = OptimizationContext(
+            scores={}, completion_response="", current_instructions="",
+            current_parameters={}, current_variables={}, iteration=1,
+        )
+        result.on_status_update("init", ctx0)       # POST iter 0, PATCH RUNNING:PENDING
+        result.on_status_update("generating", ctx1) # should close iter 0, then POST iter 1
+
+        # iter 0 POSTed + iter 1 POSTed
+        assert self.api_client.post_agent_optimization_result.call_count == 2
+        patch_calls = self.api_client.patch_agent_optimization_result.call_args_list
+        # Patches: (1) init PENDING, (2) auto-close COMPLETED, (3) generating GENERATING
+        assert len(patch_calls) == 3
+        payloads = [c[0][3] for c in patch_calls]
+        assert payloads[0]["status"] == "RUNNING"
+        assert payloads[0]["activity"] == "PENDING"
+        assert "variation" in payloads[0]
+        assert payloads[1] == {"status": "RUNNING", "activity": "COMPLETED"}  # auto-close patch has no variation
+        assert payloads[2]["status"] == "RUNNING"
+        assert payloads[2]["activity"] == "GENERATING"
+        assert "variation" in payloads[2]
+
+    def test_non_final_gt_sample_closed_when_next_sample_begins(self):
+        """In a GT batch, each sample except the last should receive a RUNNING:COMPLETED patch
+        when the next sample's generating event fires."""
+        result = self._build()
+        ctx1 = OptimizationContext(
+            scores={}, completion_response="", current_instructions="",
+            current_parameters={}, current_variables={}, user_input="What is 2+2?", iteration=1,
+        )
+        ctx2 = OptimizationContext(
+            scores={}, completion_response="", current_instructions="",
+            current_parameters={}, current_variables={}, user_input="What is 3+3?", iteration=2,
+        )
+        ctx3 = OptimizationContext(
+            scores={}, completion_response="", current_instructions="",
+            current_parameters={}, current_variables={}, user_input="What is 4+4?", iteration=3,
+        )
+        result.on_status_update("generating", ctx1)  # POST iter 1
+        result.on_status_update("evaluating", ctx1)  # PATCH iter 1 (EVALUATING)
+        result.on_status_update("generating", ctx2)  # should auto-close iter 1, then POST iter 2
+        result.on_status_update("evaluating", ctx2)  # PATCH iter 2 (EVALUATING)
+        result.on_status_update("generating", ctx3)  # should auto-close iter 2, then POST iter 3
+
+        patch_calls = self.api_client.patch_agent_optimization_result.call_args_list
+        activities = [c[0][3].get("activity") for c in patch_calls]
+        # Expected sequence: GENERATING, EVALUATING, COMPLETED (auto-close 1),
+        # GENERATING, EVALUATING, COMPLETED (auto-close 2), GENERATING
+        assert activities.count("COMPLETED") >= 2, (
+            f"Expected at least 2 COMPLETED patches, got: {activities}"
+        )
+        # The auto-close patches must appear BEFORE the subsequent GENERATING patches
+        completed_indices = [i for i, a in enumerate(activities) if a == "COMPLETED"]
+        generating_indices = [i for i, a in enumerate(activities) if a == "GENERATING"]
+        # Each auto-close patch should precede the next generating patch
+        assert completed_indices[0] < generating_indices[1]
+        assert completed_indices[1] < generating_indices[2]
+
+    def test_terminal_event_clears_open_iteration_so_next_generating_does_not_double_close(self):
+        """After a terminal event (turn completed), the next generating should not try to
+        close the already-closed iteration again."""
+        result = self._build()
+        ctx1 = OptimizationContext(
+            scores={}, completion_response="answer", current_instructions="Be helpful.",
+            current_parameters={}, current_variables={}, iteration=1,
+        )
+        ctx2 = OptimizationContext(
+            scores={}, completion_response="", current_instructions="",
+            current_parameters={}, current_variables={}, iteration=2,
+        )
+        result.on_status_update("generating", ctx1)       # open iter 1
+        result.on_status_update("turn completed", ctx1)   # close iter 1 explicitly
+        result.on_status_update("generating", ctx2)       # new iter — should NOT re-close iter 1
+
+        patch_calls = self.api_client.patch_agent_optimization_result.call_args_list
+        # The only RUNNING:COMPLETED patch should be from "turn completed", not from the
+        # auto-close triggered by iter 2's generating event.
+        completed_patches = [
+            c for c in patch_calls
+            if c[0][3].get("status") == "RUNNING" and c[0][3].get("activity") == "COMPLETED"
+        ]
+        assert len(completed_patches) == 1, (
+            "Expected exactly one RUNNING:COMPLETED patch (from turn completed), not a duplicate"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -2489,8 +2930,9 @@ class TestBuildOptionsFromConfigGroundTruth:
             config or dict(_API_CONFIG_WITH_GT),
             options or _make_from_config_options(),
             self.api_client,
-            optimization_id="opt-gt-uuid",
+            optimization_key="opt-gt-key",
             run_id="run-uuid-789",
+            model_configs=[],
         )
 
     def test_returns_ground_truth_options_when_gt_present(self):
@@ -3149,6 +3591,21 @@ class TestCommitVariation:
         payload = api_client.create_ai_config_variation.call_args[0][2]
         assert payload["modelConfigKey"] == "gpt-4o"
 
+    def test_model_config_key_prefers_global_over_non_global(self):
+        client = self._make_client()
+        api_client = _make_api_client_for_commit(model_configs=[
+            {"id": "gpt-4o", "key": "project.gpt-4o", "global": False},
+            {"id": "gpt-4o", "key": "global.gpt-4o", "global": True},
+        ])
+
+        client._commit_variation(
+            _make_winning_context(model="gpt-4o"), project_key="my-project",
+            ai_config_key="my-agent", output_key="k", api_client=api_client,
+        )
+
+        payload = api_client.create_ai_config_variation.call_args[0][2]
+        assert payload["modelConfigKey"] == "global.gpt-4o"
+
     def test_model_config_key_falls_back_when_get_model_configs_raises(self):
         client = self._make_client()
         api_client = _make_api_client_for_commit()
@@ -3233,6 +3690,83 @@ class TestCommitVariation:
             )
 
         MockLDApiClient.assert_not_called()
+
+    # --- tool key propagation ---
+
+    def test_toolkeys_included_in_payload_when_tools_present(self):
+        client = self._make_client()
+        client._initial_tool_keys = ["search-tool", "calculator"]
+        api_client = _make_api_client_for_commit()
+
+        client._commit_variation(
+            _make_winning_context(), project_key="my-project",
+            ai_config_key="my-agent", output_key="k", api_client=api_client,
+        )
+
+        payload = api_client.create_ai_config_variation.call_args[0][2]
+        assert payload["toolKeys"] == ["search-tool", "calculator"]
+
+    def test_toolkeys_not_in_payload_when_no_tools(self):
+        client = self._make_client()
+        client._initial_tool_keys = []
+        api_client = _make_api_client_for_commit()
+
+        client._commit_variation(
+            _make_winning_context(), project_key="my-project",
+            ai_config_key="my-agent", output_key="k", api_client=api_client,
+        )
+
+        payload = api_client.create_ai_config_variation.call_args[0][2]
+        assert "toolKeys" not in payload
+
+
+# ---------------------------------------------------------------------------
+# Tool key extraction from raw variation (_get_agent_config)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+class TestGetAgentConfigToolKeyExtraction:
+    def _make_client_with_variation(self, raw_variation: dict) -> OptimizationClient:
+        mock_ldai = _make_ldai_client()
+        mock_ldai._client.variation.return_value = raw_variation
+        return _make_client(mock_ldai)
+
+    async def test_extracts_tool_keys_from_raw_variation(self):
+        raw = {
+            "instructions": AGENT_INSTRUCTIONS,
+            "tools": [
+                {"key": "search-tool", "version": 1},
+                {"key": "calculator", "version": 2},
+            ],
+        }
+        client = self._make_client_with_variation(raw)
+        await client._get_agent_config("test-agent", LD_CONTEXT)
+        assert client._initial_tool_keys == ["search-tool", "calculator"]
+
+    async def test_initial_tool_keys_empty_when_no_tools_in_variation(self):
+        raw = {"instructions": AGENT_INSTRUCTIONS}
+        client = self._make_client_with_variation(raw)
+        await client._get_agent_config("test-agent", LD_CONTEXT)
+        assert client._initial_tool_keys == []
+
+    async def test_initial_tool_keys_empty_when_tools_is_empty_list(self):
+        raw = {"instructions": AGENT_INSTRUCTIONS, "tools": []}
+        client = self._make_client_with_variation(raw)
+        await client._get_agent_config("test-agent", LD_CONTEXT)
+        assert client._initial_tool_keys == []
+
+    async def test_skips_tool_entries_without_key(self):
+        raw = {
+            "instructions": AGENT_INSTRUCTIONS,
+            "tools": [
+                {"key": "good-tool", "version": 1},
+                {"version": 2},  # missing key — should be skipped
+            ],
+        }
+        client = self._make_client_with_variation(raw)
+        await client._get_agent_config("test-agent", LD_CONTEXT)
+        assert client._initial_tool_keys == ["good-tool"]
 
 
 # ---------------------------------------------------------------------------
@@ -3480,3 +4014,54 @@ class TestAutoCommitInOptimizeFromConfig:
                 )
 
         assert mock_commit.call_args[1]["output_key"] == "my-variation"
+
+    async def test_model_configs_forwarded_to_commit(self):
+        """Pre-fetched model configs are passed to _commit_variation to avoid extra API calls."""
+        client = self._make_client_with_key()
+        mock_api = _make_mock_api_client()
+        mock_api.get_agent_optimization = MagicMock(return_value=dict(_API_CONFIG))
+        mock_api.get_model_configs = MagicMock(return_value=[{"id": "gpt-4o", "key": "OpenAI.gpt-4o"}])
+
+        with patch("ldai_optimization.client.LDApiClient", return_value=mock_api):
+            with patch.object(client, "_commit_variation") as mock_commit:
+                await client.optimize_from_config("my-opt", _make_from_config_options())
+
+        assert mock_commit.call_args[1]["model_configs"] == [{"id": "gpt-4o", "key": "OpenAI.gpt-4o"}]
+
+    async def test_patches_created_variation_key_after_commit(self):
+        """After _commit_variation succeeds, the last result record is PATCHed with createdVariationKey."""
+        client = self._make_client_with_key()
+        mock_api = _make_mock_api_client()
+        mock_api.get_agent_optimization = MagicMock(return_value=dict(_API_CONFIG))
+
+        with patch("ldai_optimization.client.LDApiClient", return_value=mock_api):
+            with patch.object(client, "_commit_variation", return_value="my-new-variation"):
+                client._last_optimization_result_id = "result-id-abc"
+                await client.optimize_from_config("my-opt", _make_from_config_options())
+
+        patch_calls = mock_api.patch_agent_optimization_result.call_args_list
+        variation_key_patch = next(
+            (c for c in patch_calls if c[0][3].get("createdVariationKey") == "my-new-variation"),
+            None,
+        )
+        assert variation_key_patch is not None, "Expected a PATCH with createdVariationKey"
+        # URL path uses the string key ("my-optimization"), not the UUID ("opt-uuid-123")
+        assert variation_key_patch[0][1] == "my-optimization"
+
+    async def test_optimization_key_in_post_url_uses_string_key_not_uuid(self):
+        """post_agent_optimization_result is called with config['key'], not config['id']."""
+        client = self._make_client_with_key()
+        mock_api = _make_mock_api_client()
+        mock_api.get_agent_optimization = MagicMock(return_value=dict(_API_CONFIG))
+
+        with patch("ldai_optimization.client.LDApiClient", return_value=mock_api):
+            await client.optimize_from_config("my-opt", _make_from_config_options())
+
+        post_call_args = mock_api.post_agent_optimization_result.call_args_list
+        assert len(post_call_args) >= 1
+        for call in post_call_args:
+            opt_key_arg = call[0][1]
+            # Must use the string key "my-optimization", never the UUID "opt-uuid-123"
+            assert opt_key_arg == "my-optimization", (
+                f"Expected string key 'my-optimization', got '{opt_key_arg}'"
+            )

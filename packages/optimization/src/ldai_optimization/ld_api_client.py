@@ -80,37 +80,36 @@ class AgentOptimizationConfig(_AgentOptimizationConfigRequired, total=False):
 
 
 # ---------------------------------------------------------------------------
-# POST payload shape
+# Result payload shapes
 # ---------------------------------------------------------------------------
 
-class _OptimizationResultPayloadRequired(TypedDict):
-    run_id: str
-    config_optimization_version: int
-    status: str
-    activity: str
+class _AgentOptimizationResultPostRequired(TypedDict):
+    runId: str
+    agentOptimizationVersion: int
     iteration: int
     instructions: str
+
+
+class AgentOptimizationResultPost(_AgentOptimizationResultPostRequired, total=False):
+    """Payload for POST /agent-optimizations/{key}/results — creates a new result record."""
+
+    userInput: str
     parameters: Dict[str, Any]
-    completion_response: str
+
+
+class AgentOptimizationResultPatch(TypedDict, total=False):
+    """Payload for PATCH /agent-optimizations/{key}/results/{id} — updates a result record."""
+
+    status: str
+    activity: str
+    completionResponse: str
     scores: Dict[str, Any]
-
-
-class OptimizationResultPayload(_OptimizationResultPayloadRequired, total=False):
-    """Typed payload for a single agent_optimization_result POST request.
-
-    Required fields are always sent. Optional fields are omitted when not
-    available.
-
-    created_variation_key is only present on the final result record of a
-    successful run, populated once a winning variation is committed to LD.
-    """
-
-    user_input: Optional[str]
-    created_variation_key: str
-    generation_latency: float
-    generation_tokens: Dict[str, int]
-    evaluation_latencies: Dict[str, float]
-    evaluation_tokens: Dict[str, Dict[str, int]]
+    generationLatency: int
+    generationTokens: Dict[str, int]
+    evaluationLatencies: Dict[str, float]
+    evaluationTokens: Dict[str, Dict[str, int]]
+    variation: Dict[str, Any]
+    createdVariationKey: str
 
 
 # ---------------------------------------------------------------------------
@@ -325,31 +324,64 @@ class LDApiClient:
         return _parse_agent_optimization(raw)
 
     def post_agent_optimization_result(
-        self, project_key: str, optimization_id: str, payload: OptimizationResultPayload
-    ) -> None:
-        """Persist an iteration result record for the given optimization run.
+        self, project_key: str, optimization_key: str, payload: AgentOptimizationResultPost
+    ) -> Optional[str]:
+        """Create an iteration result record for the given optimization run.
 
         Errors are caught and logged rather than raised so that persistence
         failures never abort an in-progress optimization run.
 
         :param project_key: LaunchDarkly project key.
-        :param optimization_id: UUID id of the parent agent_optimization record.
-        :param payload: Typed result payload for this iteration.
+        :param optimization_key: String key of the parent agent_optimization record.
+        :param payload: POST payload for this iteration.
+        :return: The ``id`` of the newly created result record, or None on failure.
         """
-        path = f"/api/v2/projects/{project_key}/agent-optimizations/{optimization_id}/results"
+        path = f"/api/v2/projects/{project_key}/agent-optimizations/{optimization_key}/results"
         try:
-            self._request("POST", path, body=payload)
+            result = self._request("POST", path, body=payload)
+            return result.get("id") if isinstance(result, dict) else None
         except LDApiError as exc:
             logger.debug(
-                "Failed to persist optimization result (optimization_id=%s, iteration=%s): %s",
-                optimization_id,
+                "Failed to persist optimization result (optimization_key=%s, iteration=%s): %s",
+                optimization_key,
                 payload.get("iteration"),
+                exc,
+            )
+            return None
+        except Exception as exc:
+            logger.debug(
+                "Unexpected error persisting optimization result (optimization_key=%s, iteration=%s): %s",
+                optimization_key,
+                payload.get("iteration"),
+                exc,
+            )
+            return None
+
+    def patch_agent_optimization_result(
+        self, project_key: str, optimization_key: str, result_id: str, payload: AgentOptimizationResultPatch
+    ) -> None:
+        """Update an existing iteration result record.
+
+        Errors are caught and logged rather than raised so that persistence
+        failures never abort an in-progress optimization run.
+
+        :param project_key: LaunchDarkly project key.
+        :param optimization_key: String key of the parent agent_optimization record.
+        :param result_id: ID of the result record to update.
+        :param payload: PATCH payload with fields to update.
+        """
+        path = f"/api/v2/projects/{project_key}/agent-optimizations/{optimization_key}/results/{result_id}"
+        try:
+            self._request("PATCH", path, body=payload)
+        except LDApiError as exc:
+            logger.debug(
+                "Failed to update optimization result (result_id=%s): %s",
+                result_id,
                 exc,
             )
         except Exception as exc:
             logger.debug(
-                "Unexpected error persisting optimization result (optimization_id=%s, iteration=%s): %s",
-                optimization_id,
-                payload.get("iteration"),
+                "Unexpected error updating optimization result (result_id=%s): %s",
+                result_id,
                 exc,
             )

@@ -30,8 +30,9 @@ from ldai_optimization.dataclasses import (
 )
 from ldai_optimization.ld_api_client import (
     AgentOptimizationConfig,
+    AgentOptimizationResultPatch,
+    AgentOptimizationResultPost,
     LDApiClient,
-    OptimizationResultPayload,
 )
 from ldai_optimization.prompts import (
     _acceptance_criteria_implies_duration_optimization,
@@ -47,6 +48,26 @@ from ldai_optimization.util import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _find_model_config(
+    model_name: str, configs: List[Dict[str, Any]]
+) -> Optional[Dict[str, Any]]:
+    """Find the best matching model config for a given model name.
+
+    When multiple configs share the same ``id``, the one marked ``global=True``
+    is preferred over project-specific configs. Falls back to the first
+    non-global match if no global entry exists.
+
+    :param model_name: The model id to look up.
+    :param configs: List of model config dicts from the LD API.
+    :return: Best-matching model config dict, or None if no match.
+    """
+    matching = [mc for mc in configs if mc.get("id") == model_name]
+    if not matching:
+        return None
+    global_match = next((mc for mc in matching if mc.get("global") is True), None)
+    return global_match if global_match is not None else matching[0]
 
 
 def _strip_provider_prefix(model: str) -> str:
@@ -96,7 +117,7 @@ _OPTIMIZATION_STATUS_MAP: Dict[str, Dict[str, str]] = {
     "generating": {"status": "RUNNING", "activity": "GENERATING"},
     "evaluating": {"status": "RUNNING", "activity": "EVALUATING"},
     "generating variation": {"status": "RUNNING", "activity": "GENERATING_VARIATION"},
-    "validating": {"status": "RUNNING", "activity": "VALIDATING"},
+    "validating": {"status": "RUNNING", "activity": "EVALUATING"},
     "turn completed": {"status": "RUNNING", "activity": "COMPLETED"},
     "success": {"status": "PASSED", "activity": "COMPLETED"},
     "failure": {"status": "FAILED", "activity": "COMPLETED"},
@@ -116,6 +137,8 @@ class OptimizationClient:
         self._ldClient = ldClient
         self._last_run_succeeded: bool = False
         self._last_succeeded_context: Optional[OptimizationContext] = None
+        self._last_optimization_result_id: Optional[str] = None
+        self._initial_tool_keys: List[str] = []
 
         if os.environ.get("LAUNCHDARKLY_API_KEY"):
             self._has_api_key = True
@@ -804,6 +827,13 @@ class OptimizationClient:
                 )
             self._initial_instructions = raw_instructions
 
+            raw_tools = raw_variation.get("tools", [])
+            self._initial_tool_keys = [
+                t["key"]
+                for t in raw_tools
+                if isinstance(t, dict) and "key" in t
+            ]
+
             agent_config = dataclasses.replace(
                 agent_config, instructions=raw_instructions
             )
@@ -915,6 +945,7 @@ class OptimizationClient:
         self._agent_config = agent_config
         self._last_run_succeeded = False
         self._last_succeeded_context = None
+        self._last_optimization_result_id = None
         self._initialize_class_members_from_config(agent_config)
 
         # Seed from the first model choice on the first iteration
@@ -1342,8 +1373,14 @@ class OptimizationClient:
         config = api_client.get_agent_optimization(options.project_key, optimization_config_key)
 
         self._agent_key = config["aiConfigKey"]
-        optimization_id: str = config["id"]
+        optimization_key: str = config["key"]
         run_id = str(uuid.uuid4())
+
+        model_configs: List[Dict[str, Any]] = []
+        try:
+            model_configs = api_client.get_model_configs(options.project_key)
+        except Exception as exc:
+            logger.debug("Could not pre-fetch model configs: %s", exc)
 
         context = random.choice(options.context_choices)
         # _get_agent_config calls _initialize_class_members_from_config internally;
@@ -1351,7 +1388,7 @@ class OptimizationClient:
         agent_config = await self._get_agent_config(self._agent_key, context)
 
         optimization_options = self._build_options_from_config(
-            config, options, api_client, optimization_id, run_id
+            config, options, api_client, optimization_key, run_id, model_configs
         )
         if isinstance(optimization_options, GroundTruthOptimizationOptions):
             result = await self._run_ground_truth_optimization(agent_config, optimization_options)
@@ -1359,13 +1396,21 @@ class OptimizationClient:
             result = await self._run_optimization(agent_config, optimization_options)
 
         if options.auto_commit and self._last_run_succeeded and self._last_succeeded_context:
-            self._commit_variation(
+            created_key = self._commit_variation(
                 self._last_succeeded_context,
                 project_key=options.project_key,
                 ai_config_key=config["aiConfigKey"],
                 output_key=options.output_key,
                 api_client=api_client,
+                model_configs=model_configs,
             )
+            if created_key and self._last_optimization_result_id:
+                api_client.patch_agent_optimization_result(
+                    options.project_key,
+                    optimization_key,
+                    self._last_optimization_result_id,
+                    {"createdVariationKey": created_key},
+                )
         return result
 
     def _build_options_from_config(
@@ -1373,8 +1418,9 @@ class OptimizationClient:
         config: AgentOptimizationConfig,
         options: OptimizationFromConfigOptions,
         api_client: LDApiClient,
-        optimization_id: str,
+        optimization_key: str,
         run_id: str,
+        model_configs: Optional[List[Dict[str, Any]]] = None,
     ) -> "Union[OptimizationOptions, GroundTruthOptimizationOptions]":
         """Map a fetched AgentOptimization config + user options into the appropriate options type.
 
@@ -1391,8 +1437,9 @@ class OptimizationClient:
         :param config: Validated AgentOptimizationConfig from the API.
         :param options: User-provided options from optimize_from_config.
         :param api_client: Initialised LDApiClient for result persistence.
-        :param optimization_id: UUID id of the parent agent_optimization record.
+        :param optimization_key: String key of the parent agent_optimization record.
         :param run_id: UUID that groups all result records for this run.
+        :param model_configs: Pre-fetched list of model config dicts for resolving modelConfigKey.
         :return: OptimizationOptions or GroundTruthOptimizationOptions.
         """
         judges: Dict[str, OptimizationJudge] = {}
@@ -1421,6 +1468,31 @@ class OptimizationClient:
 
         project_key = options.project_key
         config_version: int = config["version"]
+        _cached_model_configs: List[Dict[str, Any]] = list(model_configs or [])
+
+        # Maps logical iteration number → result record id. Each new main-loop
+        # iteration (plus the init iteration 0) POSTs a fresh record; subsequent
+        # status events for that same iteration PATCH the existing record.
+        _iteration_result_ids: Dict[int, str] = {}
+
+        # Validation phase tracking. When a candidate passes initial checks the
+        # SDK fires validation sub-iterations (val_iter = main_iter + 1, +2, …).
+        # These are internal cross-checks and should NOT create separate records;
+        # instead they are folded back into the parent main-loop iteration's record.
+        _in_validation_phase: bool = False
+        _validation_parent_iteration: int = -1
+
+        # Tracks the most recently opened (POSTed) iteration so we can close it
+        # with a RUNNING:COMPLETED patch when the next iteration begins. Without
+        # this, iterations that don't naturally receive a terminal event (e.g. the
+        # init iteration 0, or non-final GT samples) are left in a stale state.
+        _last_open_iteration: int = -1
+
+        def _resolve_model_config_key(model_name: str) -> str:
+            if not model_name:
+                return ""
+            match = _find_model_config(model_name, _cached_model_configs)
+            return match["key"] if match else model_name
 
         def _persist_and_forward(
             status: Literal[
@@ -1435,47 +1507,120 @@ class OptimizationClient:
             ],
             ctx: OptimizationContext,
         ) -> None:
+            nonlocal _in_validation_phase, _validation_parent_iteration, _last_open_iteration
             # _safe_status_update (the caller) already wraps this entire function in
             # a try/except, so errors here are caught and logged without aborting the run.
             mapped = _OPTIMIZATION_STATUS_MAP.get(
                 status, {"status": "RUNNING", "activity": "PENDING"}
             )
             snapshot = ctx.copy_without_history()
-            payload: OptimizationResultPayload = {
-                "run_id": run_id,
-                "config_optimization_version": config_version,
-                "status": mapped["status"],
-                "activity": mapped["activity"],
-                "iteration": snapshot.iteration,
-                "instructions": snapshot.current_instructions,
-                "parameters": snapshot.current_parameters,
-                "completion_response": snapshot.completion_response,
-                "scores": {k: v.to_json() for k, v in snapshot.scores.items()},
-                "user_input": snapshot.user_input,
-            }
-            if snapshot.duration_ms is not None:
-                payload["generation_latency"] = snapshot.duration_ms
-            if snapshot.usage is not None:
-                payload["generation_tokens"] = {
-                    "total": snapshot.usage.total,
-                    "input": snapshot.usage.input,
-                    "output": snapshot.usage.output,
+
+            # "validating" fires with the parent main-loop iteration's context, so
+            # we capture that number as the anchor for all subsequent validation events.
+            if status == "validating":
+                _in_validation_phase = True
+                _validation_parent_iteration = snapshot.iteration
+
+            # Any event whose ctx.iteration differs from the validation anchor is a
+            # validation sub-iteration; fold it back to the parent's record.
+            if _in_validation_phase and snapshot.iteration != _validation_parent_iteration:
+                logical_iteration = _validation_parent_iteration
+            else:
+                logical_iteration = snapshot.iteration
+
+            # When a new iteration begins (generating), close out whatever iteration
+            # was last open so it doesn't remain in a non-terminal state. This covers
+            # the init iteration (0 → 1) and GT batches where non-final samples never
+            # receive an explicit terminal event.
+            if (
+                status == "generating"
+                and _last_open_iteration >= 0
+                and logical_iteration != _last_open_iteration
+            ):
+                prev_result_id = _iteration_result_ids.get(_last_open_iteration)
+                if prev_result_id:
+                    api_client.patch_agent_optimization_result(
+                        project_key,
+                        optimization_key,
+                        prev_result_id,
+                        {"status": "RUNNING", "activity": "COMPLETED"},
+                    )
+                _last_open_iteration = -1
+
+            # Phase 1: POST to create the record on first encounter of each logical iteration.
+            if logical_iteration not in _iteration_result_ids:
+                post_payload: AgentOptimizationResultPost = {
+                    "runId": run_id,
+                    "agentOptimizationVersion": config_version,
+                    "iteration": logical_iteration,
+                    "instructions": snapshot.current_instructions,
                 }
-            eval_latencies = {
-                k: v.duration_ms
-                for k, v in snapshot.scores.items()
-                if v.duration_ms is not None
-            }
-            if eval_latencies:
-                payload["evaluation_latencies"] = eval_latencies
-            eval_tokens = {
-                k: {"total": v.usage.total, "input": v.usage.input, "output": v.usage.output}
-                for k, v in snapshot.scores.items()
-                if v.usage is not None
-            }
-            if eval_tokens:
-                payload["evaluation_tokens"] = eval_tokens
-            api_client.post_agent_optimization_result(project_key, optimization_id, payload)
+                if snapshot.current_parameters:
+                    post_payload["parameters"] = snapshot.current_parameters
+                if snapshot.user_input:
+                    post_payload["userInput"] = snapshot.user_input
+                result_id = api_client.post_agent_optimization_result(
+                    project_key, optimization_key, post_payload
+                )
+                if result_id:
+                    _iteration_result_ids[logical_iteration] = result_id
+                    self._last_optimization_result_id = result_id
+                    _last_open_iteration = logical_iteration
+
+            # Phase 2: PATCH the record with current status and available telemetry.
+            result_id = _iteration_result_ids.get(logical_iteration)
+            if result_id:
+                patch: AgentOptimizationResultPatch = {
+                    "status": mapped["status"],
+                    "activity": mapped["activity"],
+                }
+                if snapshot.completion_response:
+                    patch["completionResponse"] = snapshot.completion_response
+                if snapshot.scores:
+                    patch["scores"] = {
+                        k: {
+                            **v.to_json(),
+                            **({"threshold": judges[k].threshold} if k in judges else {}),
+                        }
+                        for k, v in snapshot.scores.items()
+                    }
+                if snapshot.duration_ms is not None:
+                    patch["generationLatency"] = int(snapshot.duration_ms)
+                if snapshot.usage is not None:
+                    patch["generationTokens"] = {
+                        "total": snapshot.usage.total,
+                        "input": snapshot.usage.input,
+                        "output": snapshot.usage.output,
+                    }
+                eval_latencies = {
+                    k: v.duration_ms
+                    for k, v in snapshot.scores.items()
+                    if v.duration_ms is not None
+                }
+                if eval_latencies:
+                    patch["evaluationLatencies"] = eval_latencies
+                eval_tokens = {
+                    k: {"total": v.usage.total, "input": v.usage.input, "output": v.usage.output}
+                    for k, v in snapshot.scores.items()
+                    if v.usage is not None
+                }
+                if eval_tokens:
+                    patch["evaluationTokens"] = eval_tokens
+                patch["variation"] = {
+                    "instructions": snapshot.current_instructions,
+                    "parameters": snapshot.current_parameters,
+                    "modelConfigKey": _resolve_model_config_key(snapshot.current_model or ""),
+                }
+                api_client.patch_agent_optimization_result(
+                    project_key, optimization_key, result_id, patch
+                )
+
+            # Reset tracking state after terminal events so the next main-loop
+            # attempt starts fresh.
+            if status in ("turn completed", "success", "failure"):
+                _in_validation_phase = False
+                _validation_parent_iteration = -1
+                _last_open_iteration = -1
 
             if options.on_status_update:
                 try:
@@ -1590,7 +1735,6 @@ class OptimizationClient:
 
         scores: Dict[str, JudgeResult] = {}
         if self._options.judges:
-            self._safe_status_update("evaluating", optimize_context, iteration)
             agent_tools = self._extract_agent_tools(optimize_context.current_parameters)
             scores = await self._call_judges(
                 completion_response,
@@ -1602,13 +1746,22 @@ class OptimizationClient:
                 agent_duration_ms=agent_duration_ms,
             )
 
-        return dataclasses.replace(
+        # Build the fully-populated result context before firing the evaluating event so
+        # the PATCH includes scores, generationLatency, and completionResponse. This is
+        # particularly important for non-final GT samples which receive no further status
+        # events — without this, those fields would never be written to their API records.
+        result_ctx = dataclasses.replace(
             optimize_context,
             completion_response=completion_response,
             scores=scores,
             duration_ms=agent_duration_ms,
             usage=agent_response.usage,
         )
+
+        if self._options.judges:
+            self._safe_status_update("evaluating", result_ctx, iteration)
+
+        return result_ctx
 
     def _evaluate_response(self, optimize_context: OptimizationContext) -> bool:
         """
@@ -1731,6 +1884,7 @@ class OptimizationClient:
         output_key: Optional[str],
         api_client: Optional[LDApiClient] = None,
         base_url: Optional[str] = None,
+        model_configs: Optional[List[Dict[str, Any]]] = None,
     ) -> str:
         """Commit the winning optimization context as a new AI Config variation.
 
@@ -1774,8 +1928,8 @@ class OptimizationClient:
         model_name = optimize_context.current_model or ""
         model_config_key = model_name  # fallback if lookup fails
         try:
-            model_configs = api_client.get_model_configs(project_key)
-            match = next((mc for mc in model_configs if mc.get("id") == model_name), None)
+            configs_to_search = model_configs if model_configs is not None else api_client.get_model_configs(project_key)
+            match = _find_model_config(model_name, configs_to_search)
             if match:
                 model_config_key = match["key"]
             else:
@@ -1792,6 +1946,8 @@ class OptimizationClient:
             "instructions": optimize_context.current_instructions,
             "modelConfigKey": model_config_key,
         }
+        if self._initial_tool_keys:
+            payload["toolKeys"] = list(self._initial_tool_keys)
 
         last_exc: Optional[Exception] = None
         for attempt in range(1, 4):
@@ -1971,6 +2127,7 @@ class OptimizationClient:
         self._agent_config = agent_config
         self._last_run_succeeded = False
         self._last_succeeded_context = None
+        self._last_optimization_result_id = None
         self._initialize_class_members_from_config(agent_config)
 
         # If the LD flag doesn't carry a model name, seed from the first model choice
@@ -2053,7 +2210,11 @@ class OptimizationClient:
                 )
                 if all_valid:
                     return self._handle_success(last_ctx, iteration)
-                # Validation failed — treat as a normal failed attempt
+                # Validation failed — treat as a normal failed attempt.
+                # Use optimize_context (the main iteration) for terminal API events so
+                # the persisted record's completionResponse and userInput stay aligned.
+                # last_ctx (the failing validation run) goes into history so the
+                # variation generator can see what went wrong.
                 logger.info(
                     "[Iteration %d] -> Validation failed — generating new variation (attempt %d/%d)",
                     iteration,
@@ -2061,7 +2222,7 @@ class OptimizationClient:
                     self._options.max_attempts,
                 )
                 if iteration >= self._options.max_attempts:
-                    return self._handle_failure(last_ctx, iteration)
+                    return self._handle_failure(optimize_context, iteration)
                 self._history.append(last_ctx)
                 try:
                     await self._generate_new_variation(
@@ -2071,8 +2232,8 @@ class OptimizationClient:
                     logger.exception(
                         "[Iteration %d] -> variation generation failed", iteration
                     )
-                    return self._handle_failure(last_ctx, iteration)
-                self._safe_status_update("turn completed", last_ctx, iteration)
+                    return self._handle_failure(optimize_context, iteration)
+                self._safe_status_update("turn completed", optimize_context, iteration)
                 continue
 
             # Initial turn failed
