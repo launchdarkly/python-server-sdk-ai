@@ -55,6 +55,7 @@ class TestManagedAgentRun:
     async def test_run_delegates_to_agent_runner(self):
         """Should delegate run() to the underlying AgentRunner."""
         mock_config = MagicMock(spec=AIAgentConfig)
+        mock_config.create_tracker = None  # fall back to passed tracker
         mock_tracker = MagicMock()
         mock_tracker.track_metrics_of_async = AsyncMock(
             return_value=AgentResult(
@@ -78,6 +79,31 @@ class TestManagedAgentRun:
         assert result.output == "Test response"
         assert result.metrics.success is True
         mock_tracker.track_metrics_of_async.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_run_uses_create_tracker_when_available(self):
+        """Should use create_tracker() factory for a fresh tracker per invocation."""
+        mock_config = MagicMock(spec=AIAgentConfig)
+        fresh_tracker = MagicMock()
+        fresh_tracker.track_metrics_of_async = AsyncMock(
+            return_value=AgentResult(
+                output="Fresh tracker response",
+                raw=None,
+                metrics=LDAIMetrics(success=True, usage=None),
+            )
+        )
+        mock_config.create_tracker = MagicMock(return_value=fresh_tracker)
+
+        old_tracker = MagicMock()
+        mock_runner = MagicMock()
+
+        agent = ManagedAgent(mock_config, old_tracker, mock_runner)
+        result = await agent.run("Hello")
+
+        assert result.output == "Fresh tracker response"
+        mock_config.create_tracker.assert_called_once()
+        fresh_tracker.track_metrics_of_async.assert_called_once()
+        old_tracker.track_metrics_of_async.assert_not_called()
 
     def test_get_agent_runner_returns_runner(self):
         """Should return the underlying AgentRunner."""

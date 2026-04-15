@@ -1,4 +1,6 @@
-from typing import Any, Dict, List, Optional, Tuple
+import base64
+import json
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import chevron
 from ldclient import Context
@@ -61,6 +63,45 @@ class LDAIClient:
             1,
         )
 
+    def create_tracker(self, token: str, context: Context) -> LDAIConfigTracker:
+        """
+        Reconstruct a tracker from a resumption token.
+
+        This is used for cross-process scenarios such as deferred feedback,
+        where a different service needs to associate tracking events with the
+        original execution's ``runId``.
+
+        :param token: A URL-safe Base64-encoded resumption token obtained from
+            :attr:`LDAIConfigTracker.resumption_token`.
+        :param context: The context to use for track events.
+        :return: A new :class:`LDAIConfigTracker` bound to the original
+            ``runId`` from the token.
+        :raises ValueError: If the token is invalid or missing required fields.
+        """
+        try:
+            # Add padding back before decoding
+            padded = token + "=" * (-len(token) % 4)
+            payload = json.loads(
+                base64.urlsafe_b64decode(padded.encode("utf-8")).decode("utf-8")
+            )
+        except (json.JSONDecodeError, Exception) as e:
+            raise ValueError(f"Invalid resumption token: {e}") from e
+
+        for field in ("runId", "configKey", "version"):
+            if field not in payload:
+                raise ValueError(f"Invalid resumption token: missing required field '{field}'")
+
+        return LDAIConfigTracker(
+            ld_client=self._client,
+            variation_key=payload.get("variationKey", ""),
+            config_key=payload["configKey"],
+            version=payload["version"],
+            model_name="",
+            provider_name="",
+            context=context,
+            run_id=payload["runId"],
+        )
+
     def _completion_config(
         self,
         key: str,
@@ -68,7 +109,7 @@ class LDAIClient:
         default: AICompletionConfigDefault,
         variables: Optional[Dict[str, Any]] = None,
     ) -> AICompletionConfig:
-        model, provider, messages, instructions, tracker, enabled, judge_configuration, _ = self.__evaluate(
+        model, provider, messages, instructions, tracker, tracker_factory, enabled, judge_configuration, _ = self.__evaluate(
             key, context, default.to_dict(), variables
         )
 
@@ -79,6 +120,7 @@ class LDAIClient:
             messages=messages,
             provider=provider,
             tracker=tracker,
+            create_tracker=tracker_factory if enabled else None,
             judge_configuration=judge_configuration,
         )
 
@@ -134,7 +176,7 @@ class LDAIClient:
         default: AIJudgeConfigDefault,
         variables: Optional[Dict[str, Any]] = None,
     ) -> AIJudgeConfig:
-        model, provider, messages, instructions, tracker, enabled, judge_configuration, variation = self.__evaluate(
+        model, provider, messages, instructions, tracker, tracker_factory, enabled, judge_configuration, variation = self.__evaluate(
             key, context, default.to_dict(), variables
         )
 
@@ -163,6 +205,7 @@ class LDAIClient:
             messages=messages,
             provider=provider,
             tracker=tracker,
+            create_tracker=tracker_factory if enabled else None,
         )
 
         return config
@@ -248,14 +291,14 @@ class LDAIClient:
                 key, context, default or AIJudgeConfigDefault.disabled(), extended_variables
             )
 
-            if not judge_config.enabled or not judge_config.tracker:
+            if not judge_config.enabled or not judge_config.create_tracker:
                 return None
 
             provider = RunnerFactory.create_model(judge_config, default_ai_provider)
             if not provider:
                 return None
 
-            return Judge(judge_config, judge_config.tracker, provider)
+            return Judge(judge_config, judge_config.create_tracker(), provider)
         except Exception as error:
             return None
 
@@ -345,7 +388,7 @@ class LDAIClient:
         log.debug(f"Creating managed model for key: {key}")
         config = self._completion_config(key, context, default or AICompletionConfigDefault.disabled(), variables)
 
-        if not config.enabled or not config.tracker:
+        if not config.enabled or not config.create_tracker:
             return None
 
         runner = RunnerFactory.create_model(config, default_ai_provider)
@@ -361,7 +404,7 @@ class LDAIClient:
                 default_ai_provider,
             )
 
-        return ManagedModel(config, config.tracker, runner, judges)
+        return ManagedModel(config, config.create_tracker(), runner, judges)
 
     async def create_chat(
         self,
@@ -428,14 +471,14 @@ class LDAIClient:
         log.debug(f"Creating managed agent for key: {key}")
         config = self.__evaluate_agent(key, context, default or AIAgentConfigDefault.disabled(), variables)
 
-        if not config.enabled or not config.tracker:
+        if not config.enabled or not config.create_tracker:
             return None
 
         runner = RunnerFactory.create_agent(config, tools or {}, default_ai_provider)
         if not runner:
             return None
 
-        return ManagedAgent(config, config.tracker, runner)
+        return ManagedAgent(config, config.create_tracker(), runner)
 
     def agent_config(
         self,
@@ -754,7 +797,7 @@ class LDAIClient:
         graph_key: Optional[str] = None,
     ) -> Tuple[
         Optional[ModelConfig], Optional[ProviderConfig], Optional[List[LDMessage]],
-        Optional[str], LDAIConfigTracker, bool, Optional[Any], Dict[str, Any]
+        Optional[str], LDAIConfigTracker, Callable[[], LDAIConfigTracker], bool, Optional[Any], Dict[str, Any]
     ]:
         """
         Internal method to evaluate a configuration and extract components.
@@ -806,16 +849,24 @@ class LDAIClient:
                 custom=custom
             )
 
-        tracker = LDAIConfigTracker(
-            self._client,
-            variation.get('_ldMeta', {}).get('variationKey', ''),
-            key,
-            int(variation.get('_ldMeta', {}).get('version', 1)),
-            model.name if model else '',
-            provider_config.name if provider_config else '',
-            context,
-            graph_key=graph_key,
-        )
+        variation_key = variation.get('_ldMeta', {}).get('variationKey', '')
+        version = int(variation.get('_ldMeta', {}).get('version', 1))
+        model_name = model.name if model else ''
+        provider_name = provider_config.name if provider_config else ''
+
+        def tracker_factory() -> LDAIConfigTracker:
+            return LDAIConfigTracker(
+                self._client,
+                variation_key,
+                key,
+                version,
+                model_name,
+                provider_name,
+                context,
+                graph_key=graph_key,
+            )
+
+        tracker = tracker_factory()
 
         enabled = variation.get('_ldMeta', {}).get('enabled', False)
 
@@ -834,7 +885,7 @@ class LDAIClient:
                 if judges:
                     judge_configuration = JudgeConfiguration(judges=judges)
 
-        return model, provider_config, messages, instructions, tracker, enabled, judge_configuration, variation
+        return model, provider_config, messages, instructions, tracker, tracker_factory, enabled, judge_configuration, variation
 
     def __evaluate_agent(
         self,
@@ -854,7 +905,7 @@ class LDAIClient:
         :param graph_key: When set, passed to the tracker so all events include ``graphKey``.
         :return: Configured AIAgentConfig instance.
         """
-        model, provider, messages, instructions, tracker, enabled, judge_configuration, _ = self.__evaluate(
+        model, provider, messages, instructions, tracker, tracker_factory, enabled, judge_configuration, _ = self.__evaluate(
             key, context, default.to_dict(), variables, graph_key=graph_key
         )
 
@@ -868,6 +919,7 @@ class LDAIClient:
             provider=provider or default.provider,
             instructions=final_instructions,
             tracker=tracker,
+            create_tracker=tracker_factory if enabled else None,
             judge_configuration=judge_configuration or default.judge_configuration,
         )
 

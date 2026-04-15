@@ -1,6 +1,6 @@
 import warnings
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Literal, Optional, Union
+from typing import Any, Callable, Dict, List, Literal, Optional, Union
 
 
 @dataclass
@@ -181,6 +181,7 @@ class AIConfig:
     model: Optional[ModelConfig] = None
     provider: Optional[ProviderConfig] = None
     tracker: Optional[Any] = None
+    create_tracker: Optional[Callable[[], Any]] = None
 
     def _base_to_dict(self) -> Dict[str, Any]:
         """

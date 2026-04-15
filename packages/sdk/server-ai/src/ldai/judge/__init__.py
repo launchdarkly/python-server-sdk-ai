@@ -73,6 +73,7 @@ class Judge:
                 return judge_result
 
             judge_result.sampled = True
+
             messages = self._construct_evaluation_messages(input_text, output_text)
             assert self._evaluation_response_structure is not None
 

@@ -1,3 +1,5 @@
+import base64
+import json
 import logging
 import time
 import uuid
@@ -82,6 +84,7 @@ class LDAIConfigTracker:
         provider_name: str,
         context: Context,
         graph_key: Optional[str] = None,
+        run_id: Optional[str] = None,
     ):
         """
         Initialize an AI Config tracker.
@@ -95,6 +98,7 @@ class LDAIConfigTracker:
         :param context: Context for evaluation.
         :param graph_key: When set, include ``graphKey`` in all event payloads
             (e.g. config-level metrics inside a graph).
+        :param run_id: Optional run ID. When not provided, a new UUID is generated.
         """
         self._ld_client = ld_client
         self._variation_key = variation_key
@@ -105,8 +109,25 @@ class LDAIConfigTracker:
         self._context = context
         self._graph_key = graph_key
         self._summary = LDAIMetricSummary()
-        self._run_id = str(uuid.uuid4())
+        self._run_id = run_id or str(uuid.uuid4())
         self._tracked: Dict[str, bool] = {}
+
+    @property
+    def resumption_token(self) -> str:
+        """
+        A URL-safe Base64-encoded JSON string that can be used to reconstruct
+        a tracker in a different process (e.g. for deferred feedback).
+
+        The token contains ``runId``, ``configKey``, ``variationKey``, and
+        ``version``.  ``modelName`` and ``providerName`` are **not** included.
+        """
+        payload = json.dumps({
+            "runId": self._run_id,
+            "configKey": self._config_key,
+            "variationKey": self._variation_key,
+            "version": self._version,
+        })
+        return base64.urlsafe_b64encode(payload.encode("utf-8")).rstrip(b"=").decode("utf-8")
 
     def __get_track_data(self) -> dict:
         """

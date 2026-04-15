@@ -76,13 +76,12 @@ def test_tracks_duration_of(client: LDClient):
     assert len(calls) == 1
     assert calls[0].args[0] == "$ld:ai:duration:total"
     assert calls[0].args[1] == context
-    assert calls[0].args[2] == {
-        "variationKey": "variation-key",
-        "configKey": "config-key",
-        "version": 3,
-        "modelName": "fakeModel",
-        "providerName": "fakeProvider",
-    }
+    assert calls[0].args[2]["variationKey"] == "variation-key"
+    assert calls[0].args[2]["configKey"] == "config-key"
+    assert calls[0].args[2]["version"] == 3
+    assert calls[0].args[2]["modelName"] == "fakeModel"
+    assert calls[0].args[2]["providerName"] == "fakeProvider"
+    assert "runId" in calls[0].args[2]
     assert calls[0].args[3] == pytest.approx(10, rel=10)
 
 
@@ -120,13 +119,12 @@ def test_tracks_duration_of_with_exception(client: LDClient):
     assert len(calls) == 1
     assert calls[0].args[0] == "$ld:ai:duration:total"
     assert calls[0].args[1] == context
-    assert calls[0].args[2] == {
-        "variationKey": "variation-key",
-        "configKey": "config-key",
-        "version": 3,
-        "modelName": "fakeModel",
-        "providerName": "fakeProvider",
-    }
+    assert calls[0].args[2]["variationKey"] == "variation-key"
+    assert calls[0].args[2]["configKey"] == "config-key"
+    assert calls[0].args[2]["version"] == 3
+    assert calls[0].args[2]["modelName"] == "fakeModel"
+    assert calls[0].args[2]["providerName"] == "fakeProvider"
+    assert "runId" in calls[0].args[2]
     assert calls[0].args[3] == pytest.approx(10, rel=10)
 
 
@@ -672,3 +670,148 @@ def test_run_id_is_consistent_across_track_calls(client: LDClient):
     run_id_1 = calls[0].args[2]["runId"]
     run_id_2 = calls[1].args[2]["runId"]
     assert run_id_1 == run_id_2
+
+
+# --- Resumption token tests ---
+
+
+def test_resumption_token_round_trip(client: LDClient):
+    import base64
+    import json
+
+    context = Context.create("user-key")
+    tracker = LDAIConfigTracker(client, "var-key", "cfg-key", 5, "gpt-4", "openai", context)
+
+    token = tracker.resumption_token
+    # Token has no padding — add it back before decoding
+    padded = token + "=" * (-len(token) % 4)
+    decoded = json.loads(base64.urlsafe_b64decode(padded.encode("utf-8")).decode("utf-8"))
+
+    assert decoded["runId"] == tracker._run_id
+    assert decoded["configKey"] == "cfg-key"
+    assert decoded["variationKey"] == "var-key"
+    assert decoded["version"] == 5
+    # modelName and providerName should NOT be in the token
+    assert "modelName" not in decoded
+    assert "providerName" not in decoded
+
+
+def test_resumption_token_has_no_padding(client: LDClient):
+    context = Context.create("user-key")
+    tracker = LDAIConfigTracker(client, "var-key", "cfg-key", 1, "model", "provider", context)
+
+    token = tracker.resumption_token
+    assert "=" not in token
+
+
+def test_resumption_token_is_url_safe_base64(client: LDClient):
+    import base64
+
+    context = Context.create("user-key")
+    tracker = LDAIConfigTracker(client, "var-key", "cfg-key", 1, "model", "provider", context)
+
+    token = tracker.resumption_token
+    # Should decode without error using urlsafe variant (with padding restored)
+    padded = token + "=" * (-len(token) % 4)
+    base64.urlsafe_b64decode(padded.encode("utf-8"))
+
+
+def test_tracker_with_explicit_run_id(client: LDClient):
+    context = Context.create("user-key")
+    tracker = LDAIConfigTracker(
+        client, "var-key", "cfg-key", 1, "model", "provider", context,
+        run_id="custom-run-id-123",
+    )
+    tracker.track_success()
+
+    track_data = client.track.call_args[0][2]  # type: ignore
+    assert track_data["runId"] == "custom-run-id-123"
+
+
+def test_client_create_tracker_from_resumption_token():
+    from unittest.mock import Mock
+
+    from ldai.client import LDAIClient
+
+    mock_client = Mock()
+    ai_client = LDAIClient(mock_client)
+    context = Context.create("feedback-user")
+
+    # Create an original tracker and get its token
+    original = LDAIConfigTracker(
+        mock_client, "var-abc", "my-config", 7, "gpt-4", "openai", Context.create("original-user"),
+    )
+    token = original.resumption_token
+
+    # Reconstruct from token
+    restored = ai_client.create_tracker(token, context)
+
+    # The restored tracker should use the same runId
+    restored.track_feedback({"kind": FeedbackKind.Positive})
+
+    feedback_calls = [
+        c for c in mock_client.track.call_args_list
+        if c.args[0] == "$ld:ai:feedback:user:positive"
+    ]
+    assert len(feedback_calls) == 1
+    track_data = feedback_calls[0].args[2]
+    assert track_data["runId"] == original._run_id
+    assert track_data["configKey"] == "my-config"
+    assert track_data["variationKey"] == "var-abc"
+    assert track_data["version"] == 7
+    # modelName and providerName are empty when reconstructed from token
+    assert track_data["modelName"] == ""
+    assert track_data["providerName"] == ""
+    # Context should be the new one, not the original
+    assert feedback_calls[0].args[1] == context
+
+
+def test_client_create_tracker_raises_on_invalid_base64():
+    from unittest.mock import Mock
+
+    from ldai.client import LDAIClient
+
+    mock_client = Mock()
+    ai_client = LDAIClient(mock_client)
+    context = Context.create("user-key")
+
+    with pytest.raises(ValueError, match="Invalid resumption token"):
+        ai_client.create_tracker("not-valid-base64!!!", context)
+
+
+def test_client_create_tracker_raises_on_missing_fields():
+    import base64
+    import json
+
+    from unittest.mock import Mock
+
+    from ldai.client import LDAIClient
+
+    mock_client = Mock()
+    ai_client = LDAIClient(mock_client)
+    context = Context.create("user-key")
+
+    # Token missing runId
+    incomplete = base64.urlsafe_b64encode(
+        json.dumps({"configKey": "k", "version": 1}).encode()
+    ).rstrip(b"=").decode()
+
+    with pytest.raises(ValueError, match="missing required field 'runId'"):
+        ai_client.create_tracker(incomplete, context)
+
+
+def test_client_create_tracker_raises_on_invalid_json():
+    import base64
+
+    from unittest.mock import Mock
+
+    from ldai.client import LDAIClient
+
+    mock_client = Mock()
+    ai_client = LDAIClient(mock_client)
+    context = Context.create("user-key")
+
+    bad_token = base64.urlsafe_b64encode(b"not json").rstrip(b"=").decode()
+
+    with pytest.raises(ValueError, match="Invalid resumption token"):
+        ai_client.create_tracker(bad_token, context)
