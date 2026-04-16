@@ -395,7 +395,7 @@ class TestEvaluateAcceptanceJudge:
             user_input="What time is it?",
         )
         call_args = self.handle_judge_call.call_args
-        key, config, ctx = call_args.args
+        key, config, ctx, _ = call_args.args
         assert key == "relevance"
         assert isinstance(config, AIJudgeCallConfig)
         assert isinstance(ctx, OptimizationJudgeContext)
@@ -412,7 +412,7 @@ class TestEvaluateAcceptanceJudge:
             reasoning_history="",
             user_input="What colour is the sky?",
         )
-        _, config, _ = self.handle_judge_call.call_args.args
+        _, config, _, _ = self.handle_judge_call.call_args.args
         roles = [m.role for m in config.messages]
         assert roles == ["system", "user"]
 
@@ -428,7 +428,7 @@ class TestEvaluateAcceptanceJudge:
             reasoning_history="",
             user_input="Is Paris in France?",
         )
-        _, config, _ = self.handle_judge_call.call_args.args
+        _, config, _, _ = self.handle_judge_call.call_args.args
         system_msg = next(m for m in config.messages if m.role == "system")
         assert system_msg.content == config.instructions
 
@@ -444,7 +444,7 @@ class TestEvaluateAcceptanceJudge:
             reasoning_history="",
             user_input="Capital of France?",
         )
-        _, config, ctx = self.handle_judge_call.call_args.args
+        _, config, ctx, _ = self.handle_judge_call.call_args.args
         user_msg = next(m for m in config.messages if m.role == "user")
         assert user_msg.content == ctx.user_input
 
@@ -460,7 +460,7 @@ class TestEvaluateAcceptanceJudge:
             user_input="Tell me about Paris.",
         )
         call_args = self.handle_judge_call.call_args
-        _, config, _ = call_args.args
+        _, config, _, _ = call_args.args
         assert statement in config.instructions
 
     async def test_no_structured_output_tool_in_judge_config(self):
@@ -475,7 +475,7 @@ class TestEvaluateAcceptanceJudge:
             user_input="Is Paris in France?",
         )
         call_args = self.handle_judge_call.call_args
-        _, config, _ = call_args.args
+        _, config, _, _ = call_args.args
         tools = config.model.get_parameter("tools") or []
         assert tools == []
 
@@ -494,7 +494,7 @@ class TestEvaluateAcceptanceJudge:
             agent_tools=[agent_tool],
         )
         call_args = self.handle_judge_call.call_args
-        _, config, _ = call_args.args
+        _, config, _, _ = call_args.args
         tools = config.model.get_parameter("tools") or []
         tool_names = [t["name"] for t in tools]
         assert tool_names == ["lookup"]
@@ -512,7 +512,7 @@ class TestEvaluateAcceptanceJudge:
             variables=variables,
         )
         call_args = self.handle_judge_call.call_args
-        _, _, ctx = call_args.args
+        _, _, ctx, _ = call_args.args
         assert ctx.current_variables == variables
 
     async def test_duration_context_added_to_instructions_when_latency_keyword_present(self):
@@ -531,7 +531,7 @@ class TestEvaluateAcceptanceJudge:
             user_input="Tell me something.",
             agent_duration_ms=1500.0,
         )
-        _, config, _ = self.handle_judge_call.call_args.args
+        _, config, _, _ = self.handle_judge_call.call_args.args
         assert "1500ms" in config.instructions
         assert "mention the duration" in config.instructions
 
@@ -561,7 +561,7 @@ class TestEvaluateAcceptanceJudge:
             user_input="Tell me something.",
             agent_duration_ms=1500.0,
         )
-        _, config, _ = self.handle_judge_call.call_args.args
+        _, config, _, _ = self.handle_judge_call.call_args.args
         assert "1500ms" in config.instructions
         assert "2000ms" in config.instructions
         assert "faster" in config.instructions
@@ -592,7 +592,7 @@ class TestEvaluateAcceptanceJudge:
             user_input="Tell me something.",
             agent_duration_ms=1800.0,
         )
-        _, config, _ = self.handle_judge_call.call_args.args
+        _, config, _, _ = self.handle_judge_call.call_args.args
         assert "slower" in config.instructions
 
     async def test_duration_context_not_added_when_no_latency_keyword(self):
@@ -610,7 +610,7 @@ class TestEvaluateAcceptanceJudge:
             user_input="Capital of France?",
             agent_duration_ms=2000.0,
         )
-        _, config, _ = self.handle_judge_call.call_args.args
+        _, config, _, _ = self.handle_judge_call.call_args.args
         assert "2000ms" not in config.instructions
         assert "duration" not in config.instructions.lower() or "acceptance" in config.instructions.lower()
 
@@ -629,7 +629,7 @@ class TestEvaluateAcceptanceJudge:
             user_input="Tell me something.",
             agent_duration_ms=None,
         )
-        _, config, _ = self.handle_judge_call.call_args.args
+        _, config, _, _ = self.handle_judge_call.call_args.args
         assert "mention the duration" not in config.instructions
 
     async def test_returns_zero_score_on_missing_acceptance_statement(self):
@@ -698,7 +698,7 @@ class TestEvaluateConfigJudge:
             user_input="What is X?",
         )
         call_args = self.handle_judge_call.call_args
-        key, config, ctx = call_args.args
+        key, config, ctx, _ = call_args.args
         assert key == "quality"
         assert isinstance(config, AIJudgeCallConfig)
         assert "You are an evaluator." in config.instructions
@@ -715,7 +715,7 @@ class TestEvaluateConfigJudge:
             reasoning_history="",
             user_input="What is X?",
         )
-        _, config, _ = self.handle_judge_call.call_args.args
+        _, config, _, _ = self.handle_judge_call.call_args.args
         roles = [m.role for m in config.messages]
         assert roles == ["system", "user"]
 
@@ -730,7 +730,7 @@ class TestEvaluateConfigJudge:
             reasoning_history="",
             user_input="What is X?",
         )
-        _, config, _ = self.handle_judge_call.call_args.args
+        _, config, _, _ = self.handle_judge_call.call_args.args
         system_msg = next(m for m in config.messages if m.role == "system")
         assert system_msg.content == config.instructions
 
@@ -745,7 +745,7 @@ class TestEvaluateConfigJudge:
             reasoning_history="",
             user_input="What is X?",
         )
-        _, config, ctx = self.handle_judge_call.call_args.args
+        _, config, ctx, _ = self.handle_judge_call.call_args.args
         user_msg = next(m for m in config.messages if m.role == "user")
         assert user_msg.content == ctx.user_input
 
@@ -760,7 +760,7 @@ class TestEvaluateConfigJudge:
             reasoning_history="",
             user_input="What is X?",
         )
-        _, config, _ = self.handle_judge_call.call_args.args
+        _, config, _, _ = self.handle_judge_call.call_args.args
         user_msg = next(m for m in config.messages if m.role == "user")
         assert "Evaluate this response." in user_msg.content
 
@@ -830,7 +830,7 @@ class TestEvaluateConfigJudge:
             user_input="Q?",
             agent_tools=[agent_tool],
         )
-        _, config, _ = self.handle_judge_call.call_args.args
+        _, config, _, _ = self.handle_judge_call.call_args.args
         tools = config.model.get_parameter("tools") or []
         names = [t["name"] for t in tools]
         assert names == ["search"]
@@ -872,7 +872,7 @@ class TestExecuteAgentTurn:
         ctx = self._make_context()
         await self.client._execute_agent_turn(ctx, iteration=1)
         self.handle_agent_call.assert_called_once()
-        key, config, passed_ctx = self.handle_agent_call.call_args.args
+        key, config, passed_ctx, _ = self.handle_agent_call.call_args.args
         assert key == "test-agent"
         assert isinstance(config, AIAgentConfig)
         assert passed_ctx is ctx
@@ -891,7 +891,7 @@ class TestExecuteAgentTurn:
     async def test_variables_interpolated_into_agent_config_instructions(self):
         ctx = self._make_context()
         await self.client._execute_agent_turn(ctx, iteration=1)
-        _, config, _ = self.handle_agent_call.call_args.args
+        _, config, _, _ = self.handle_agent_call.call_args.args
         assert "{{language}}" not in config.instructions
         assert "English" in config.instructions
 
@@ -933,14 +933,14 @@ class TestGenerateNewVariation:
     async def test_no_structured_output_tool_in_variation_config(self):
         """Variation turn must not inject the structured-output tool — prompts use plain JSON."""
         await self.client._generate_new_variation(iteration=1, variables={})
-        _, config, _ = self.handle_agent_call.call_args.args
+        _, config, _, _ = self.handle_agent_call.call_args.args
         tools = config.model.get_parameter("tools") or []
         assert tools == []
 
     async def test_variation_call_uses_three_arg_signature(self):
         """handle_agent_call receives exactly (key, config, context) — no tools arg."""
         await self.client._generate_new_variation(iteration=1, variables={})
-        assert len(self.handle_agent_call.call_args.args) == 3
+        assert len(self.handle_agent_call.call_args.args) == 4
 
     async def test_model_not_updated_when_not_in_model_choices(self):
         bad_response = json.dumps({
@@ -1220,7 +1220,7 @@ class TestValidationPhase:
         """With 8 variable choices, validation runs 2 extra agent calls after the initial pass."""
         call_count = [0]
 
-        async def counting_agent(key, config, ctx):
+        async def counting_agent(key, config, ctx, is_evaluation=False):
             call_count[0] += 1
             return OptimizationResponse(output="answer")
 
@@ -1265,7 +1265,7 @@ class TestValidationPhase:
         """The variable set used in the initial passing turn must not appear in validation."""
         seen_variables = []
 
-        async def capture_agent(key, config, ctx):
+        async def capture_agent(key, config, ctx, is_evaluation=False):
             seen_variables.append(ctx.current_variables)
             return OptimizationResponse(output="answer")
 
@@ -1285,7 +1285,7 @@ class TestValidationPhase:
         """When user_input_options is provided, validation samples from that pool."""
         seen_inputs = []
 
-        async def capture_agent(key, config, ctx):
+        async def capture_agent(key, config, ctx, is_evaluation=False):
             seen_inputs.append(ctx.user_input)
             return OptimizationResponse(output="answer")
 
@@ -1308,7 +1308,7 @@ class TestValidationPhase:
         """When fewer distinct items remain than validation_count, all available ones are used."""
         call_count = [0]
 
-        async def counting_agent(key, config, ctx):
+        async def counting_agent(key, config, ctx, is_evaluation=False):
             call_count[0] += 1
             return OptimizationResponse(output="answer")
 
@@ -1324,7 +1324,7 @@ class TestValidationPhase:
         """With only 1 variable choice validation still runs 1 sample (repeated draw)."""
         call_count = [0]
 
-        async def counting_agent(key, config, ctx):
+        async def counting_agent(key, config, ctx, is_evaluation=False):
             call_count[0] += 1
             return OptimizationResponse(output="answer")
 
@@ -2780,7 +2780,7 @@ class TestRunGroundTruthOptimization:
     async def test_variables_from_samples_used_per_evaluation(self):
         client = self._make_client()
         received_contexts = []
-        async def capture_agent_call(key, config, ctx):
+        async def capture_agent_call(key, config, ctx, is_evaluation=False):
             received_contexts.append(ctx)
             return OptimizationResponse(output="response")
 
@@ -2802,7 +2802,7 @@ class TestRunGroundTruthOptimization:
         client = _make_client(mock_ldai)
 
         observed_models = []
-        async def capture(key, config, ctx):
+        async def capture(key, config, ctx, is_evaluation=False):
             observed_models.append(config.model.name if config.model else None)
             return OptimizationResponse(output="answer")
 
@@ -2844,7 +2844,7 @@ class TestExpectedResponseInJudges:
     async def test_expected_response_included_in_acceptance_judge_user_message(self):
         captured_configs = []
 
-        async def capture_judge_call(key, config, ctx):
+        async def capture_judge_call(key, config, ctx, is_evaluation=False):
             captured_configs.append(config)
             return OptimizationResponse(output=JUDGE_PASS_RESPONSE)
 
@@ -2866,7 +2866,7 @@ class TestExpectedResponseInJudges:
     async def test_expected_response_in_acceptance_judge_user_message(self):
         captured_configs = []
 
-        async def capture_judge_call(key, config, ctx):
+        async def capture_judge_call(key, config, ctx, is_evaluation=False):
             captured_configs.append(config)
             return OptimizationResponse(output=JUDGE_PASS_RESPONSE)
 
@@ -2891,7 +2891,7 @@ class TestExpectedResponseInJudges:
     async def test_no_expected_response_leaves_judge_messages_unchanged(self):
         captured_configs = []
 
-        async def capture_judge_call(key, config, ctx):
+        async def capture_judge_call(key, config, ctx, is_evaluation=False):
             captured_configs.append(config)
             return OptimizationResponse(output=JUDGE_PASS_RESPONSE)
 

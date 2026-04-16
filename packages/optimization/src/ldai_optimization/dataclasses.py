@@ -282,12 +282,12 @@ class OptimizationJudgeContext:
 # the concrete types (AIAgentConfig / AIJudgeCallConfig) continue to work
 # because those types structurally satisfy the Protocols.
 HandleAgentCall = Union[
-    Callable[[str, LLMCallConfig, LLMCallContext], OptimizationResponse],
-    Callable[[str, LLMCallConfig, LLMCallContext], Awaitable[OptimizationResponse]],
+    Callable[[str, LLMCallConfig, LLMCallContext, bool], OptimizationResponse],
+    Callable[[str, LLMCallConfig, LLMCallContext, bool], Awaitable[OptimizationResponse]],
 ]
 HandleJudgeCall = Union[
-    Callable[[str, LLMCallConfig, LLMCallContext], OptimizationResponse],
-    Callable[[str, LLMCallConfig, LLMCallContext], Awaitable[OptimizationResponse]],
+    Callable[[str, LLMCallConfig, LLMCallContext, bool], OptimizationResponse],
+    Callable[[str, LLMCallConfig, LLMCallContext, bool], Awaitable[OptimizationResponse]],
 ]
 
 _StatusLiteral = Literal[
@@ -315,7 +315,8 @@ class OptimizationOptions:
     ]  # choices of interpolated variables to be chosen at random per turn, 1 min required
     # Actual agent/completion (judge) calls - Required
     handle_agent_call: HandleAgentCall
-    handle_judge_call: HandleJudgeCall
+    # Optional; falls back to handle_agent_call when omitted (both share the same signature)
+    handle_judge_call: Optional[HandleJudgeCall] = None
     # Criteria for pass/fail - Optional
     user_input_options: Optional[List[str]] = (
         None  # optional list of user input messages to randomly select from
@@ -401,7 +402,8 @@ class GroundTruthOptimizationOptions:
     model_choices: List[str]
     judge_model: str
     handle_agent_call: HandleAgentCall
-    handle_judge_call: HandleJudgeCall
+    # Optional; falls back to handle_agent_call when omitted (both share the same signature)
+    handle_judge_call: Optional[HandleJudgeCall] = None
     judges: Optional[Dict[str, OptimizationJudge]] = None
     on_turn: Optional[Callable[[OptimizationContext], bool]] = None
     on_sample_result: Optional[Callable[[OptimizationContext], None]] = None
@@ -461,7 +463,8 @@ class OptimizationFromConfigOptions:
 
     project_key: str
     handle_agent_call: HandleAgentCall
-    handle_judge_call: HandleJudgeCall
+    # Optional; falls back to handle_agent_call when omitted (both share the same signature)
+    handle_judge_call: Optional[HandleJudgeCall] = None
     on_turn: Optional[Callable[["OptimizationContext"], bool]] = None
     on_sample_result: Optional[Callable[["OptimizationContext"], None]] = None
     on_passing_result: Optional[Callable[["OptimizationContext"], None]] = None

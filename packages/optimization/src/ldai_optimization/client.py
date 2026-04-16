@@ -19,6 +19,7 @@ from ldai_optimization.dataclasses import (
     AIJudgeCallConfig,
     GroundTruthOptimizationOptions,
     GroundTruthSample,
+    HandleJudgeCall,
     JudgeResult,
     OptimizationContext,
     OptimizationFromConfigOptions,
@@ -227,6 +228,11 @@ class OptimizationClient:
             history=tuple(flat_history),
             iteration=iteration,
         )
+
+    @property
+    def _judge_call(self) -> HandleJudgeCall:
+        """Return the judge callable, falling back to handle_agent_call when not set."""
+        return self._options.handle_judge_call or self._options.handle_agent_call
 
     def _safe_status_update(
         self,
@@ -569,10 +575,9 @@ class OptimizationClient:
             LDMessage(role="user", content=judge_user_input),
         ]
 
-        # Collect model parameters from the judge config, separating out any existing tools
-        model_name = (
-            judge_config.model.name if judge_config.model else self._options.judge_model
-        )
+        # Always use the global judge_model; model parameters (temperature, etc.) from
+        # the judge flag are still forwarded, but the model name is never overridden.
+        model_name = self._options.judge_model
         model_params: Dict[str, Any] = {}
         tools: List[ToolDefinition] = []
         if judge_config.model and judge_config.model._parameters:
@@ -615,8 +620,8 @@ class OptimizationClient:
         )
 
         _judge_start = time.monotonic()
-        result = self._options.handle_judge_call(
-            judge_key, judge_call_config, judge_ctx
+        result = self._judge_call(
+            judge_key, judge_call_config, judge_ctx, True
         )
         judge_response: OptimizationResponse = await await_if_needed(result)
         judge_duration_ms = (time.monotonic() - _judge_start) * 1000
@@ -776,8 +781,8 @@ class OptimizationClient:
         )
 
         _judge_start = time.monotonic()
-        result = self._options.handle_judge_call(
-            judge_key, judge_call_config, judge_ctx
+        result = self._judge_call(
+            judge_key, judge_call_config, judge_ctx, True
         )
         judge_response: OptimizationResponse = await await_if_needed(result)
         judge_duration_ms = (time.monotonic() - _judge_start) * 1000
@@ -1318,6 +1323,7 @@ class OptimizationClient:
                 self._agent_key,
                 agent_config,
                 variation_ctx,
+                False,
             )
             variation_response: OptimizationResponse = await await_if_needed(result)
             response_str = variation_response.output
@@ -1717,6 +1723,7 @@ class OptimizationClient:
                 self._agent_key,
                 self._build_agent_config_for_context(optimize_context),
                 optimize_context,
+                False,
             )
             agent_response: OptimizationResponse = await await_if_needed(result)
             agent_duration_ms = (time.monotonic() - _agent_start) * 1000
