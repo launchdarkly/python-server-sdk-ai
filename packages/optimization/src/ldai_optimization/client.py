@@ -2209,7 +2209,7 @@ class OptimizationClient:
                     optimize_context, iteration
                 )
                 if all_valid:
-                    return self._handle_success(last_ctx, iteration)
+                    return self._handle_success(optimize_context, iteration)
                 # Validation failed — treat as a normal failed attempt.
                 # Use optimize_context (the main iteration) for terminal API events so
                 # the persisted record's completionResponse and userInput stay aligned.

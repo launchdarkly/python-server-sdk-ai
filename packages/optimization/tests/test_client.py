@@ -1101,6 +1101,24 @@ class TestRunOptimization:
         result = await client.optimize_from_options("test-agent", options)
         assert result.completion_response == "Answer."
 
+    async def test_success_result_carries_main_iteration_context_not_validation_context(self):
+        # The main iteration returns "Main answer." but the validation run returns
+        # "Validation answer.". The result should reflect the main iteration so that
+        # completion_response and user_input are consistent with what was POSTed to the API.
+        agent_responses = [
+            OptimizationResponse(output="Main answer."),       # main iteration
+            OptimizationResponse(output="Validation answer."), # validation sample
+        ]
+        handle_agent_call = AsyncMock(side_effect=agent_responses)
+        handle_judge_call = AsyncMock(return_value=OptimizationResponse(output=JUDGE_PASS_RESPONSE))
+        client = _make_client(self.mock_ldai)
+        options = _make_options(
+            handle_agent_call=handle_agent_call,
+            handle_judge_call=handle_judge_call,
+        )
+        result = await client.optimize_from_options("test-agent", options)
+        assert result.completion_response == "Main answer."
+
     async def test_status_update_callback_called_at_each_stage(self):
         statuses = []
         handle_agent_call = AsyncMock(return_value=OptimizationResponse(output="Good answer."))
