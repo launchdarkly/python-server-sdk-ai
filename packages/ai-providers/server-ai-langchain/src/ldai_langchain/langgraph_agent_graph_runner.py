@@ -300,7 +300,7 @@ class LangGraphAgentGraphRunner(AgentGraphRunner):
             output = extract_last_message_content(messages)
 
             # Flush per-node metrics to LD trackers
-            handler.flush(self._graph, tracker)
+            handler.flush(self._graph)
 
             # Graph-level metrics
             if tracker:

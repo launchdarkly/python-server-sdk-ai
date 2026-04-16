@@ -326,7 +326,7 @@ def test_flush_emits_token_events_to_ld_tracker():
     node_run_id = uuid4()
     handler.on_chain_start({}, {}, run_id=node_run_id, name='root-agent')
     handler.on_llm_end(_llm_result(15, 10, 5), run_id=uuid4(), parent_run_id=node_run_id)
-    handler.flush(graph, tracker)
+    handler.flush(graph)
 
     ev = _events(mock_ld_client)
     assert ev['$ld:ai:tokens:total'][0][1] == 15
@@ -345,7 +345,7 @@ def test_flush_emits_duration():
     run_id = uuid4()
     handler.on_chain_start({}, {}, run_id=run_id, name='root-agent')
     handler.on_chain_end({}, run_id=run_id)
-    handler.flush(graph, tracker)
+    handler.flush(graph)
 
     ev = _events(mock_ld_client)
     assert '$ld:ai:duration:total' in ev
@@ -365,7 +365,7 @@ def test_flush_emits_tool_calls():
     tools_run_id = uuid4()
     handler.on_chain_start({}, {}, run_id=tools_run_id, name='root-agent__tools')
     handler.on_tool_end('r', run_id=uuid4(), parent_run_id=tools_run_id, name='fn_search')
-    handler.flush(graph, tracker)
+    handler.flush(graph)
 
     ev = _events(mock_ld_client)
     tool_events = ev.get('$ld:ai:tool_call', [])
@@ -383,7 +383,7 @@ def test_flush_includes_graph_key_in_node_events():
     node_run_id = uuid4()
     handler.on_chain_start({}, {}, run_id=node_run_id, name='root-agent')
     handler.on_llm_end(_llm_result(5, 3, 2), run_id=uuid4(), parent_run_id=node_run_id)
-    handler.flush(graph, tracker)
+    handler.flush(graph)
 
     ev = _events(mock_ld_client)
     token_data = ev['$ld:ai:tokens:total'][0][0]
@@ -430,7 +430,7 @@ def test_flush_with_no_graph_key_on_node_tracker():
     node_run_id = uuid4()
     handler.on_chain_start({}, {}, run_id=node_run_id, name='root-agent')
     handler.on_llm_end(_llm_result(5, 3, 2), run_id=uuid4(), parent_run_id=node_run_id)
-    handler.flush(graph, None)
+    handler.flush(graph)
 
     ev = _events(mock_ld_client)
     token_data = ev['$ld:ai:tokens:total'][0][0]
@@ -445,7 +445,7 @@ def test_flush_skips_nodes_not_in_path():
 
     # Handler with 'root-agent' in node_keys but never started
     handler = LDMetricsCallbackHandler({'root-agent'}, {})
-    handler.flush(graph, tracker)
+    handler.flush(graph)
 
     ev = _events(mock_ld_client)
     assert '$ld:ai:tokens:total' not in ev
@@ -481,7 +481,7 @@ def test_flush_skips_node_without_tracker():
     node_run_id = uuid4()
     handler.on_chain_start({}, {}, run_id=node_run_id, name='no-track')
     handler.on_llm_end(_llm_result(5, 3, 2), run_id=uuid4(), parent_run_id=node_run_id)
-    handler.flush(graph, None)  # should not raise
+    handler.flush(graph)  # should not raise
 
     mock_ld_client.track.assert_not_called()
 

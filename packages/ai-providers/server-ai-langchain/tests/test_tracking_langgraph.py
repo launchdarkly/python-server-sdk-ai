@@ -243,7 +243,7 @@ async def test_tracks_node_and_graph_tokens_on_success():
     )
     handler.on_llm_end(llm_result, run_id=uuid4(), parent_run_id=node_run_id)
     handler.on_chain_end({}, run_id=node_run_id)
-    handler.flush(graph2, tracker2)
+    handler.flush(graph2)
 
     ev2 = _events(mock_ld_client2)
     assert ev2['$ld:ai:tokens:total'][0][1] == 15
@@ -317,7 +317,7 @@ async def test_tracks_tool_calls():
     tools_run_id = uuid4()
     handler.on_chain_start({}, {}, run_id=tools_run_id, name='root-agent__tools')
     handler.on_tool_end('sunny', run_id=uuid4(), parent_run_id=tools_run_id, name='get_weather')
-    handler.flush(graph2, tracker2)
+    handler.flush(graph2)
 
     ev2 = _events(mock_ld_client2)
     tool_events = ev2.get('$ld:ai:tool_call', [])
@@ -371,7 +371,7 @@ async def test_tracks_multiple_tool_calls():
     handler.on_chain_start({}, {}, run_id=tools_run_id, name='root-agent__tools')
     handler.on_tool_end('result', run_id=uuid4(), parent_run_id=tools_run_id, name='search')
     handler.on_tool_end('summary', run_id=uuid4(), parent_run_id=tools_run_id, name='summarize')
-    handler.flush(graph2, tracker2)
+    handler.flush(graph2)
 
     ev2 = _events(mock_ld_client2)
     tool_keys = [data['toolKey'] for data, _ in ev2.get('$ld:ai:tool_call', [])]
@@ -402,7 +402,7 @@ async def test_tracks_graph_key_on_node_events():
         llm_output={},
     )
     handler.on_llm_end(llm_result, run_id=uuid4(), parent_run_id=node_run_id)
-    handler.flush(graph, tracker)
+    handler.flush(graph)
 
     ev = _events(mock_ld_client)
     token_data = ev['$ld:ai:tokens:total'][0][0]
@@ -487,7 +487,7 @@ async def test_multi_node_tracks_per_node_tokens_and_path():
     )
     handler.on_llm_end(child_llm_result, run_id=uuid4(), parent_run_id=child_run_id)
 
-    handler.flush(graph2, tracker2)
+    handler.flush(graph2)
 
     ev2 = _events(mock_ld_client2)
 

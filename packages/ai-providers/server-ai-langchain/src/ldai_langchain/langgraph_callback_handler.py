@@ -188,14 +188,13 @@ class LDMetricsCallbackHandler(BaseCallbackHandler):
     # Flush
     # ------------------------------------------------------------------
 
-    def flush(self, graph: AgentGraphDefinition, graph_tracker: Any) -> None:
+    def flush(self, graph: AgentGraphDefinition) -> None:
         """
         Emit all collected per-node metrics to the LaunchDarkly trackers.
 
         Call this once after the graph run completes.
 
         :param graph: The AgentGraphDefinition whose nodes hold the LD config trackers.
-        :param graph_tracker: The AIGraphTracker for the overall graph (may be None).
         """
         for node_key in self._path:
             node = graph.get_node(node_key)
