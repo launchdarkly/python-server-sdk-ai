@@ -2,6 +2,19 @@
 
 All notable changes to the LaunchDarkly Python AI package will be documented in this file. This project adheres to [Semantic Versioning](http://semver.org).
 
+## [0.18.0](https://github.com/launchdarkly/python-server-sdk-ai/compare/launchdarkly-server-sdk-ai-0.17.0...launchdarkly-server-sdk-ai-0.18.0) (2026-04-16)
+
+
+### ⚠ BREAKING CHANGES
+
+* Move graph_key to AIConfigTracker instantiation ([#134](https://github.com/launchdarkly/python-server-sdk-ai/issues/134))
+* Flatten JudgeResponse and EvalScore into new JudgeResult ([#132](https://github.com/launchdarkly/python-server-sdk-ai/issues/132))
+
+### Features
+
+* Flatten JudgeResponse and EvalScore into new JudgeResult ([#132](https://github.com/launchdarkly/python-server-sdk-ai/issues/132)) ([af4e463](https://github.com/launchdarkly/python-server-sdk-ai/commit/af4e46332c5d9a668a7172012c89871d0fb90b56))
+* Move graph_key to AIConfigTracker instantiation ([#134](https://github.com/launchdarkly/python-server-sdk-ai/issues/134)) ([20fff24](https://github.com/launchdarkly/python-server-sdk-ai/commit/20fff24fcd02aa101d7f9a6c21dc6a25e7916a1c))
+
 ## [0.17.0](https://github.com/launchdarkly/python-server-sdk-ai/compare/launchdarkly-server-sdk-ai-0.16.1...launchdarkly-server-sdk-ai-0.17.0) (2026-04-02)
 
 
