@@ -456,31 +456,31 @@ def _base_td() -> dict:
 def test_config_tracker_includes_graph_key_when_provided(client: LDClient):
     context = Context.create("user-key")
     tracker = LDAIConfigTracker(
-        client, "variation-key", "config-key", 3, "fakeModel", "fakeProvider", context
+        client, "variation-key", "config-key", 3, "fakeModel", "fakeProvider", context, graph_key="my-graph"
     )
     expected = {**_base_td(), "graphKey": "my-graph"}
-    tracker.track_success(graph_key="my-graph")
+    tracker.track_success()
     client.track.assert_called_with("$ld:ai:generation:success", context, expected, 1)  # type: ignore
 
 
 def test_config_tracker_track_tokens_with_graph_key(client: LDClient):
     context = Context.create("user-key")
     tracker = LDAIConfigTracker(
-        client, "variation-key", "config-key", 3, "fakeModel", "fakeProvider", context
+        client, "variation-key", "config-key", 3, "fakeModel", "fakeProvider", context, graph_key="g1"
     )
     tokens = TokenUsage(10, 4, 6)
     expected = {**_base_td(), "graphKey": "g1"}
-    tracker.track_tokens(tokens, graph_key="g1")
+    tracker.track_tokens(tokens)
     client.track.assert_any_call("$ld:ai:tokens:total", context, expected, 10)  # type: ignore
 
 
 def test_config_tracker_track_feedback_with_graph_key(client: LDClient):
     context = Context.create("user-key")
     tracker = LDAIConfigTracker(
-        client, "variation-key", "config-key", 3, "fakeModel", "fakeProvider", context
+        client, "variation-key", "config-key", 3, "fakeModel", "fakeProvider", context, graph_key="gx"
     )
     expected = {**_base_td(), "graphKey": "gx"}
-    tracker.track_feedback({"kind": FeedbackKind.Positive}, graph_key="gx")
+    tracker.track_feedback({"kind": FeedbackKind.Positive})
     client.track.assert_called_with(
         "$ld:ai:feedback:user:positive", context, expected, 1
     )  # type: ignore
@@ -499,19 +499,19 @@ def test_config_tracker_track_tool_call(client: LDClient):
 def test_config_tracker_track_tool_call_with_graph_key(client: LDClient):
     context = Context.create("user-key")
     tracker = LDAIConfigTracker(
-        client, "variation-key", "config-key", 3, "fakeModel", "fakeProvider", context
+        client, "variation-key", "config-key", 3, "fakeModel", "fakeProvider", context, graph_key="my-graph"
     )
     expected = {**_base_td(), "graphKey": "my-graph", "toolKey": "calc"}
-    tracker.track_tool_call("calc", graph_key="my-graph")
+    tracker.track_tool_call("calc")
     client.track.assert_called_with("$ld:ai:tool_call", context, expected, 1)  # type: ignore
 
 
 def test_config_tracker_track_tool_calls(client: LDClient):
     context = Context.create("user-key")
     tracker = LDAIConfigTracker(
-        client, "variation-key", "config-key", 3, "fakeModel", "fakeProvider", context
+        client, "variation-key", "config-key", 3, "fakeModel", "fakeProvider", context, graph_key="g"
     )
-    tracker.track_tool_calls(["a", "b"], graph_key="g")
+    tracker.track_tool_calls(["a", "b"])
     assert client.track.call_count == 2  # type: ignore
     client.track.assert_any_call(
         "$ld:ai:tool_call",
@@ -550,7 +550,7 @@ def test_config_tracker_track_metrics_of(client: LDClient):
 async def test_config_tracker_track_metrics_of_async_passes_graph_key(client: LDClient):
     context = Context.create("user-key")
     tracker = LDAIConfigTracker(
-        client, "variation-key", "config-key", 3, "fakeModel", "fakeProvider", context
+        client, "variation-key", "config-key", 3, "fakeModel", "fakeProvider", context, graph_key="gg"
     )
 
     async def fn():
@@ -559,7 +559,7 @@ async def test_config_tracker_track_metrics_of_async_passes_graph_key(client: LD
     def extract(r):
         return LDAIMetrics(success=True, usage=TokenUsage(5, 2, 3))
 
-    await tracker.track_metrics_of_async(fn, extract, graph_key="gg")
+    await tracker.track_metrics_of_async(fn, extract)
     gk_td = {**_base_td(), "graphKey": "gg"}
     calls = client.track.mock_calls  # type: ignore
     assert any(

@@ -40,6 +40,7 @@ def _make_graph(
         model_name='gpt-4',
         provider_name='openai',
         context=context,
+        graph_key=graph_key,
     )
 
     graph_tracker = AIGraphTracker(
@@ -178,6 +179,7 @@ def _make_two_node_graph(mock_ld_client: MagicMock) -> AgentGraphDefinition:
         model_name='gpt-4',
         provider_name='openai',
         context=context,
+        graph_key='two-node-graph',
     )
     child_tracker = LDAIConfigTracker(
         ld_client=mock_ld_client,
@@ -187,6 +189,7 @@ def _make_two_node_graph(mock_ld_client: MagicMock) -> AgentGraphDefinition:
         model_name='gpt-4',
         provider_name='openai',
         context=context,
+        graph_key='two-node-graph',
     )
     graph_tracker = AIGraphTracker(
         ld_client=mock_ld_client,
