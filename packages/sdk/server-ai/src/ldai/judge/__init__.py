@@ -51,7 +51,7 @@ class Judge:
         :param input_text: The input prompt or question that was provided to the AI
         :param output_text: The AI-generated response to be evaluated
         :param sampling_rate: Sampling rate (0-1) to determine if evaluation should be processed (defaults to 1)
-        :return: Evaluation result; ``sampled=True`` when the evaluation was sampled and run
+        :return: The result of the judge evaluation.
         """
         judge_result = JudgeResult(judge_config_key=self._ai_config.key)
 
@@ -110,7 +110,7 @@ class Judge:
         :param messages: Array of messages representing the conversation history
         :param response: The AI response to be evaluated
         :param sampling_ratio: Sampling ratio (0-1) to determine if evaluation should be processed (defaults to 1)
-        :return: Evaluation result; ``sampled=True`` when the evaluation was sampled and run
+        :return: The result of the judge evaluation.
         """
         input_text = '\r\n'.join([msg.content for msg in messages]) if messages else ''
         output_text = response.message.content
