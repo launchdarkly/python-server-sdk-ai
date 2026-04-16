@@ -109,7 +109,6 @@ class LDAIConfigTracker:
         self._graph_key = graph_key
         self._summary = LDAIMetricSummary()
         self._run_id = run_id
-        self._tracked: Dict[str, bool] = {}
 
     @property
     def resumption_token(self) -> str:
@@ -152,10 +151,9 @@ class LDAIConfigTracker:
 
         :param duration: Duration in milliseconds.
         """
-        if 'duration' in self._tracked:
+        if self._summary.duration is not None:
             logger.warning("Duration has already been tracked for this execution.")
             return
-        self._tracked['duration'] = True
         self._summary._duration = duration
         self._ld_client.track(
             "$ld:ai:duration:total", self._context, self.__get_track_data(), duration
@@ -167,10 +165,9 @@ class LDAIConfigTracker:
 
         :param time_to_first_token: Time to first token in milliseconds.
         """
-        if 'time_to_first_token' in self._tracked:
+        if self._summary.time_to_first_token is not None:
             logger.warning("Time to first token has already been tracked for this execution.")
             return
-        self._tracked['time_to_first_token'] = True
         self._summary._time_to_first_token = time_to_first_token
         self._ld_client.track(
             "$ld:ai:tokens:ttf",
@@ -296,10 +293,9 @@ class LDAIConfigTracker:
 
         :param feedback: Dictionary containing feedback kind.
         """
-        if 'feedback' in self._tracked:
+        if self._summary.feedback is not None:
             logger.warning("Feedback has already been tracked for this execution.")
             return
-        self._tracked['feedback'] = True
         self._summary._feedback = feedback
         if feedback["kind"] == FeedbackKind.Positive:
             self._ld_client.track(
@@ -320,10 +316,9 @@ class LDAIConfigTracker:
         """
         Track a successful AI generation.
         """
-        if 'success' in self._tracked:
+        if self._summary.success is not None:
             logger.warning("Success has already been tracked for this execution.")
             return
-        self._tracked['success'] = True
         self._summary._success = True
         self._ld_client.track(
             "$ld:ai:generation:success", self._context, self.__get_track_data(), 1
@@ -333,10 +328,9 @@ class LDAIConfigTracker:
         """
         Track an unsuccessful AI generation attempt.
         """
-        if 'success' in self._tracked:
+        if self._summary.success is not None:
             logger.warning("Success has already been tracked for this execution.")
             return
-        self._tracked['success'] = True
         self._summary._success = False
         self._ld_client.track(
             "$ld:ai:generation:error", self._context, self.__get_track_data(), 1
@@ -403,10 +397,9 @@ class LDAIConfigTracker:
 
         :param tokens: Token usage data from either custom, OpenAI, or Bedrock sources.
         """
-        if 'tokens' in self._tracked:
+        if self._summary.usage is not None:
             logger.warning("Tokens have already been tracked for this execution.")
             return
-        self._tracked['tokens'] = True
         self._summary._usage = tokens
         td = self.__get_track_data()
         if tokens.total > 0:
