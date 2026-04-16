@@ -130,6 +130,48 @@ class LDAIConfigTracker:
         payload = json.dumps(data)
         return base64.urlsafe_b64encode(payload.encode("utf-8")).rstrip(b"=").decode("utf-8")
 
+    @classmethod
+    def from_resumption_token(cls, token: str, ld_client: LDClient, context: Context) -> 'LDAIConfigTracker':
+        """
+        Reconstruct a tracker from a resumption token.
+
+        This is used for cross-process scenarios such as deferred feedback,
+        where a different service needs to associate tracking events with the
+        original execution's ``runId``.
+
+        :param token: A URL-safe Base64-encoded resumption token obtained from
+            :attr:`resumption_token`.
+        :param ld_client: LaunchDarkly client instance.
+        :param context: The context to use for track events.
+        :return: A new :class:`LDAIConfigTracker` bound to the original
+            ``runId`` from the token.
+        :raises ValueError: If the token is invalid or missing required fields.
+        """
+        try:
+            padded = token + "=" * (-len(token) % 4)
+            payload = json.loads(
+                base64.urlsafe_b64decode(padded.encode("utf-8")).decode("utf-8")
+            )
+        except (json.JSONDecodeError, Exception) as e:
+            raise ValueError(f"Invalid resumption token: {e}") from e
+
+        for field in ("runId", "configKey", "version"):
+            if field not in payload:
+                raise ValueError(
+                    f"Invalid resumption token: missing required field '{field}'"
+                )
+
+        return cls(
+            ld_client=ld_client,
+            run_id=payload["runId"],
+            config_key=payload["configKey"],
+            variation_key=payload.get("variationKey") or "",
+            version=payload["version"],
+            context=context,
+            model_name="",
+            provider_name="",
+        )
+
     def __get_track_data(self) -> dict:
         """
         Get tracking data for events.

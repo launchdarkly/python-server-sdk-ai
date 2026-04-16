@@ -1,5 +1,3 @@
-import base64
-import json
 import uuid
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
@@ -68,9 +66,7 @@ class LDAIClient:
         """
         Reconstruct a tracker from a resumption token.
 
-        This is used for cross-process scenarios such as deferred feedback,
-        where a different service needs to associate tracking events with the
-        original execution's ``runId``.
+        Delegates to :meth:`LDAIConfigTracker.from_resumption_token`.
 
         :param token: A URL-safe Base64-encoded resumption token obtained from
             :attr:`LDAIConfigTracker.resumption_token`.
@@ -79,29 +75,7 @@ class LDAIClient:
             ``runId`` from the token.
         :raises ValueError: If the token is invalid or missing required fields.
         """
-        try:
-            # Add padding back before decoding
-            padded = token + "=" * (-len(token) % 4)
-            payload = json.loads(
-                base64.urlsafe_b64decode(padded.encode("utf-8")).decode("utf-8")
-            )
-        except (json.JSONDecodeError, Exception) as e:
-            raise ValueError(f"Invalid resumption token: {e}") from e
-
-        for field in ("runId", "configKey", "version"):
-            if field not in payload:
-                raise ValueError(f"Invalid resumption token: missing required field '{field}'")
-
-        return LDAIConfigTracker(
-            ld_client=self._client,
-            run_id=payload["runId"],
-            config_key=payload["configKey"],
-            variation_key=payload.get("variationKey") or "",
-            version=payload["version"],
-            context=context,
-            model_name="",
-            provider_name="",
-        )
+        return LDAIConfigTracker.from_resumption_token(token, self._client, context)
 
     def _completion_config(
         self,
