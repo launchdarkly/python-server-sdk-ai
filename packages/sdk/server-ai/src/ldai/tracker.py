@@ -515,7 +515,7 @@ class AIGraphTracker:
         :param duration: Duration in milliseconds.
         """
         self._ld_client.track(
-            "$ld:ai:duration:total",
+            "$ld:ai:graph:duration:total",
             self._context,
             self.__get_track_data(),
             duration,
