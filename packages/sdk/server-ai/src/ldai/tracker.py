@@ -180,12 +180,13 @@ class LDAIConfigTracker:
         """
         data = {
             "runId": self._run_id,
-            "variationKey": self._variation_key,
             "configKey": self._config_key,
             "version": self._version,
             "modelName": self._model_name,
             "providerName": self._provider_name,
         }
+        if self._variation_key:
+            data["variationKey"] = self._variation_key
         if self._graph_key is not None:
             data['graphKey'] = self._graph_key
         return data
