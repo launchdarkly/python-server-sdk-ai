@@ -513,7 +513,7 @@ class TestEvaluateAcceptanceJudge:
         )
         call_args = self.handle_judge_call.call_args
         _, _, ctx = call_args.args
-        assert ctx.variables == variables
+        assert ctx.current_variables == variables
 
     async def test_duration_context_added_to_instructions_when_latency_keyword_present(self):
         """When acceptance statement has a latency keyword and agent_duration_ms is provided,
@@ -2580,10 +2580,6 @@ class TestGroundTruthOptimizationOptionsValidation:
     def test_valid_options_created(self):
         opts = self._make()
         assert len(opts.ground_truth_responses) == 1
-
-    def test_raises_empty_context_choices(self):
-        with pytest.raises(ValueError, match="context_choices"):
-            self._make(context_choices=[])
 
     def test_raises_empty_model_choices(self):
         with pytest.raises(ValueError, match="model_choices"):

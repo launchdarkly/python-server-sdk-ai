@@ -118,10 +118,11 @@ class LLMCallConfig(Protocol):
         async def handle_llm_call(
             key: str,
             config: LLMCallConfig,
-            context: Union[OptimizationContext, OptimizationJudgeContext],
+            context: LLMCallContext,
         ) -> OptimizationResponse:
             model_name = config.model.name if config.model else "gpt-4o"
             instructions = config.instructions or ""
+            tools = config.model.get_parameter("tools") if config.model else []
             ...
 
         OptimizationOptions(
@@ -134,6 +135,17 @@ class LLMCallConfig(Protocol):
     key: str
     model: Optional[ModelConfig]
     instructions: Optional[str]
+
+
+class LLMCallContext(Protocol):
+    """Structural protocol satisfied by both ``OptimizationContext`` and ``OptimizationJudgeContext``.
+
+    Use alongside ``LLMCallConfig`` when writing a single handler for both
+    ``handle_agent_call`` and ``handle_judge_call``.
+    """
+
+    user_input: Optional[str]
+    current_variables: Dict[str, Any]
 
 
 @dataclass
@@ -257,20 +269,25 @@ class OptimizationJudgeContext:
     """Context for a single judge evaluation turn."""
 
     user_input: str  # the agent response being evaluated
-    variables: Dict[str, Any] = field(default_factory=dict)  # variable set used during agent generation
+    current_variables: Dict[str, Any] = field(default_factory=dict)  # variable set used during agent generation
 
 
 # Shared callback type aliases used by both OptimizationOptions and
 # OptimizationFromConfigOptions to avoid duplicating the full signatures.
 # Placed here so all referenced types (OptimizationContext, AIJudgeCallConfig,
 # OptimizationJudgeContext) are already defined above.
+#
+# Both aliases use the LLMCallConfig / LLMCallContext Protocols so callers can
+# write a single handler for both agent and judge calls.  Handlers typed with
+# the concrete types (AIAgentConfig / AIJudgeCallConfig) continue to work
+# because those types structurally satisfy the Protocols.
 HandleAgentCall = Union[
-    Callable[[str, AIAgentConfig, OptimizationContext], OptimizationResponse],
-    Callable[[str, AIAgentConfig, OptimizationContext], Awaitable[OptimizationResponse]],
+    Callable[[str, LLMCallConfig, LLMCallContext], OptimizationResponse],
+    Callable[[str, LLMCallConfig, LLMCallContext], Awaitable[OptimizationResponse]],
 ]
 HandleJudgeCall = Union[
-    Callable[[str, AIJudgeCallConfig, OptimizationJudgeContext], OptimizationResponse],
-    Callable[[str, AIJudgeCallConfig, OptimizationJudgeContext], Awaitable[OptimizationResponse]],
+    Callable[[str, LLMCallConfig, LLMCallContext], OptimizationResponse],
+    Callable[[str, LLMCallConfig, LLMCallContext], Awaitable[OptimizationResponse]],
 ]
 
 _StatusLiteral = Literal[
@@ -289,9 +306,7 @@ _StatusLiteral = Literal[
 class OptimizationOptions:
     """Options for agent optimization."""
 
-    # Required
-    context_choices: List[Context]  # choices of contexts to be used, 1 min required
-    # Configuration
+    # Configuration - Required
     max_attempts: int
     model_choices: List[str]  # model ids the LLM can choose from, 1 min required
     judge_model: str  # which model to use as judge; this should remain consistent
@@ -311,6 +326,10 @@ class OptimizationOptions:
     on_turn: Optional[Callable[[OptimizationContext], bool]] = (
         None  # if you want manual control of pass/fail
     )
+    # Context - Optional; defaults to a single anonymous context
+    context_choices: List[Context] = field(
+        default_factory=lambda: [Context.builder("anonymous").anonymous(True).build()]
+    )
     # Auto-commit - Optional
     auto_commit: bool = False
     project_key: Optional[str] = None  # required when auto_commit=True
@@ -323,8 +342,6 @@ class OptimizationOptions:
 
     def __post_init__(self):
         """Validate required options."""
-        if len(self.context_choices) < 1:
-            raise ValueError("context_choices must have at least 1 context")
         if len(self.model_choices) < 1:
             raise ValueError("model_choices must have at least 1 model")
         if self.judges is None and self.on_turn is None:
@@ -379,7 +396,6 @@ class GroundTruthOptimizationOptions:
     :param on_status_update: Called on each status transition during the run.
     """
 
-    context_choices: List[Context]
     ground_truth_responses: List[GroundTruthSample]
     max_attempts: int
     model_choices: List[str]
@@ -400,6 +416,10 @@ class GroundTruthOptimizationOptions:
             None,
         ]
     ] = None
+    # Context - Optional; defaults to a single anonymous context
+    context_choices: List[Context] = field(
+        default_factory=lambda: [Context.builder("anonymous").anonymous(True).build()]
+    )
     # Auto-commit - Optional
     auto_commit: bool = False
     project_key: Optional[str] = None  # required when auto_commit=True
@@ -408,8 +428,6 @@ class GroundTruthOptimizationOptions:
 
     def __post_init__(self):
         """Validate required options."""
-        if len(self.context_choices) < 1:
-            raise ValueError("context_choices must have at least 1 context")
         if len(self.model_choices) < 1:
             raise ValueError("model_choices must have at least 1 model")
         if len(self.ground_truth_responses) < 1:
@@ -442,7 +460,6 @@ class OptimizationFromConfigOptions:
     """
 
     project_key: str
-    context_choices: List[Context]
     handle_agent_call: HandleAgentCall
     handle_judge_call: HandleJudgeCall
     on_turn: Optional[Callable[["OptimizationContext"], bool]] = None
@@ -450,12 +467,11 @@ class OptimizationFromConfigOptions:
     on_passing_result: Optional[Callable[["OptimizationContext"], None]] = None
     on_failing_result: Optional[Callable[["OptimizationContext"], None]] = None
     on_status_update: Optional[Callable[[_StatusLiteral, "OptimizationContext"], None]] = None
+    # Context - Optional; defaults to a single anonymous context
+    context_choices: List[Context] = field(
+        default_factory=lambda: [Context.builder("anonymous").anonymous(True).build()]
+    )
     base_url: Optional[str] = None
     # Auto-commit defaults to True for config-driven runs; set False to disable
     auto_commit: bool = True
     output_key: Optional[str] = None  # variation key/name; auto-generated if omitted
-
-    def __post_init__(self):
-        """Validate required options."""
-        if len(self.context_choices) < 1:
-            raise ValueError("context_choices must have at least 1 context")

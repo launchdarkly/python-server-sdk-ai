@@ -611,7 +611,7 @@ class OptimizationClient:
 
         judge_ctx = OptimizationJudgeContext(
             user_input=judge_user_input,
-            variables=variables or {},
+            current_variables=variables or {},
         )
 
         _judge_start = time.monotonic()
@@ -772,7 +772,7 @@ class OptimizationClient:
 
         judge_ctx = OptimizationJudgeContext(
             user_input=judge_user_input,
-            variables=resolved_variables,
+            current_variables=resolved_variables,
         )
 
         _judge_start = time.monotonic()
