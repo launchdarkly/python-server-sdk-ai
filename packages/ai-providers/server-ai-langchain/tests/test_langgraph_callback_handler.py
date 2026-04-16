@@ -35,6 +35,7 @@ def _make_graph(mock_ld_client: MagicMock, node_key: str = 'root-agent', graph_k
         model_name='gpt-4',
         provider_name='openai',
         context=context,
+        run_id='test-run-id',
         graph_key=graph_key,
     )
     graph_tracker = AIGraphTracker(
@@ -402,6 +403,7 @@ def test_flush_with_no_graph_key_on_node_tracker():
         model_name='gpt-4',
         provider_name='openai',
         context=context,
+        run_id='test-run-id',
     )
     node_config = AIAgentConfig(
         key='root-agent',

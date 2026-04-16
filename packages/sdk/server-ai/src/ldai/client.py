@@ -110,7 +110,8 @@ class LDAIClient:
         default: AICompletionConfigDefault,
         variables: Optional[Dict[str, Any]] = None,
     ) -> AICompletionConfig:
-        model, provider, messages, instructions, tracker, tracker_factory, enabled, judge_configuration, _ = self.__evaluate(
+        (model, provider, messages, instructions, tracker,
+         tracker_factory, enabled, judge_configuration, _) = self.__evaluate(
             key, context, default.to_dict(), variables
         )
 
@@ -177,7 +178,8 @@ class LDAIClient:
         default: AIJudgeConfigDefault,
         variables: Optional[Dict[str, Any]] = None,
     ) -> AIJudgeConfig:
-        model, provider, messages, instructions, tracker, tracker_factory, enabled, judge_configuration, variation = self.__evaluate(
+        (model, provider, messages, instructions, tracker,
+         tracker_factory, enabled, judge_configuration, variation) = self.__evaluate(
             key, context, default.to_dict(), variables
         )
 
@@ -887,7 +889,10 @@ class LDAIClient:
                 if judges:
                     judge_configuration = JudgeConfiguration(judges=judges)
 
-        return model, provider_config, messages, instructions, tracker, tracker_factory, enabled, judge_configuration, variation
+        return (
+            model, provider_config, messages, instructions, tracker,
+            tracker_factory, enabled, judge_configuration, variation,
+        )
 
     def __evaluate_agent(
         self,
@@ -907,7 +912,8 @@ class LDAIClient:
         :param graph_key: When set, passed to the tracker so all events include ``graphKey``.
         :return: Configured AIAgentConfig instance.
         """
-        model, provider, messages, instructions, tracker, tracker_factory, enabled, judge_configuration, _ = self.__evaluate(
+        (model, provider, messages, instructions, tracker,
+         tracker_factory, enabled, judge_configuration, _) = self.__evaluate(
             key, context, default.to_dict(), variables, graph_key=graph_key
         )
 
