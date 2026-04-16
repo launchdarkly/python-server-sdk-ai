@@ -168,6 +168,7 @@ class TestJudgeEvaluate:
         
         assert isinstance(result, JudgeResult)
         assert result.success is True
+        assert result.sampled is True
         assert result.metric_key == '$ld:ai:judge:relevance'
         assert result.score == 0.85
         assert result.reasoning is not None
@@ -194,6 +195,7 @@ class TestJudgeEvaluate:
 
         assert isinstance(result, JudgeResult)
         assert result.success is True
+        assert result.sampled is True
         assert result.metric_key == '$ld:ai:judge:relevance'
         assert result.score == 0.9
         assert result.reasoning is not None
@@ -288,13 +290,13 @@ class TestJudgeEvaluate:
     async def test_evaluate_respects_sampling_rate(
         self, judge_config_with_key: AIJudgeConfig, tracker: LDAIConfigTracker, mock_runner
     ):
-        """Evaluate should return sampled=True when skipped due to sampling rate."""
+        """Evaluate should return sampled=False when skipped due to sampling rate."""
         judge = Judge(judge_config_with_key, tracker, mock_runner)
 
         result = await judge.evaluate("input", "output", sampling_rate=0.0)
 
         assert isinstance(result, JudgeResult)
-        assert result.sampled is True
+        assert result.sampled is False
         assert result.success is False
         mock_runner.invoke_structured_model.assert_not_called()
 

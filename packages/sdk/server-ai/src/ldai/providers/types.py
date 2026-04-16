@@ -65,10 +65,10 @@ class JudgeResult:
     judge_config_key: Optional[str] = None
     success: bool = False
     error_message: Optional[str] = None
-    sampled: bool = False  # True when the judge was skipped due to sampling rate
+    sampled: bool = False  # True when the evaluation was sampled and run
+    metric_key: Optional[str] = None
     score: Optional[float] = None
     reasoning: Optional[str] = None
-    metric_key: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         """
