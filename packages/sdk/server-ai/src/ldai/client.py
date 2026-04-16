@@ -96,11 +96,11 @@ class LDAIClient:
             ld_client=self._client,
             run_id=payload["runId"],
             config_key=payload["configKey"],
-            variation_key=payload.get("variationKey", ""),
+            variation_key=payload.get("variationKey") or "",
             version=payload["version"],
+            context=context,
             model_name="",
             provider_name="",
-            context=context,
         )
 
     def _completion_config(
@@ -864,9 +864,9 @@ class LDAIClient:
                 config_key=key,
                 variation_key=variation_key,
                 version=version,
+                context=context,
                 model_name=model_name,
                 provider_name=provider_name,
-                context=context,
                 graph_key=graph_key,
             )
 

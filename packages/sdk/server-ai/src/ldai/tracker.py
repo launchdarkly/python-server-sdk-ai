@@ -80,9 +80,9 @@ class LDAIConfigTracker:
         config_key: str,
         variation_key: str,
         version: int,
+        context: Context,
         model_name: str,
         provider_name: str,
-        context: Context,
         graph_key: Optional[str] = None,
     ):
         """
@@ -93,9 +93,9 @@ class LDAIConfigTracker:
         :param config_key: Configuration key for tracking.
         :param variation_key: Variation key for tracking.
         :param version: Version of the variation.
+        :param context: Context for evaluation.
         :param model_name: Name of the model used.
         :param provider_name: Name of the provider used.
-        :param context: Context for evaluation.
         :param graph_key: When set, include ``graphKey`` in all event payloads
             (e.g. config-level metrics inside a graph).
         """
@@ -116,15 +116,18 @@ class LDAIConfigTracker:
         A URL-safe Base64-encoded JSON string that can be used to reconstruct
         a tracker in a different process (e.g. for deferred feedback).
 
-        The token contains ``runId``, ``configKey``, ``variationKey``, and
-        ``version``.  ``modelName`` and ``providerName`` are **not** included.
+        The token contains ``runId``, ``configKey``, ``version``, and
+        optionally ``variationKey`` (omitted when empty).
+        ``modelName`` and ``providerName`` are **not** included.
         """
-        payload = json.dumps({
+        data: dict = {
             "runId": self._run_id,
             "configKey": self._config_key,
-            "variationKey": self._variation_key,
-            "version": self._version,
-        })
+        }
+        if self._variation_key:
+            data["variationKey"] = self._variation_key
+        data["version"] = self._version
+        payload = json.dumps(data)
         return base64.urlsafe_b64encode(payload.encode("utf-8")).rstrip(b"=").decode("utf-8")
 
     def __get_track_data(self) -> dict:

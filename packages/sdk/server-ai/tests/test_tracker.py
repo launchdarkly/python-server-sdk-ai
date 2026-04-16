@@ -716,6 +716,27 @@ def test_resumption_token_is_url_safe_base64(client: LDClient):
     base64.urlsafe_b64decode(padded.encode("utf-8"))
 
 
+def test_resumption_token_omits_variation_key_when_empty(client: LDClient):
+    import base64
+    import json
+
+    context = Context.create("user-key")
+    tracker = LDAIConfigTracker(
+        ld_client=client, run_id="test-run-id", config_key="cfg-key",
+        variation_key="", version=1, context=context,
+        model_name="model", provider_name="provider",
+    )
+
+    token = tracker.resumption_token
+    padded = token + "=" * (-len(token) % 4)
+    decoded = json.loads(base64.urlsafe_b64decode(padded.encode("utf-8")).decode("utf-8"))
+
+    assert "variationKey" not in decoded
+    assert decoded["runId"] == "test-run-id"
+    assert decoded["configKey"] == "cfg-key"
+    assert decoded["version"] == 1
+
+
 def test_tracker_with_explicit_run_id(client: LDClient):
     context = Context.create("user-key")
     tracker = LDAIConfigTracker(
