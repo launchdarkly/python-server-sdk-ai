@@ -89,7 +89,7 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
 
             if tracker:
                 tracker.track_path(path)
-                tracker.track_latency(duration)
+                tracker.track_duration(duration)
                 tracker.track_invocation_success()
                 token_usage = get_ai_usage_from_response(result)
                 if token_usage is not None:
@@ -110,7 +110,7 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
                 log.warning(f'OpenAIAgentGraphRunner run failed: {exc}')
             duration = (time.perf_counter_ns() - start_ns) // 1_000_000
             if tracker:
-                tracker.track_latency(duration)
+                tracker.track_duration(duration)
                 tracker.track_invocation_failure()
             return AgentGraphResult(
                 output='',

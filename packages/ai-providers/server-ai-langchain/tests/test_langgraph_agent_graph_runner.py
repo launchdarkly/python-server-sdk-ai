@@ -86,7 +86,7 @@ async def test_langgraph_runner_run_tracks_failure_on_exception():
 
     assert result.metrics.success is False
     tracker.track_invocation_failure.assert_called_once()
-    tracker.track_latency.assert_called_once()
+    tracker.track_duration.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -148,4 +148,4 @@ async def test_langgraph_runner_run_success():
     assert result.metrics.success is True
     tracker.track_path.assert_called_once_with([])
     tracker.track_invocation_success.assert_called_once()
-    tracker.track_latency.assert_called_once()
+    tracker.track_duration.assert_called_once()
