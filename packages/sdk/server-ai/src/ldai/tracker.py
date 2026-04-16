@@ -253,6 +253,9 @@ class LDAIConfigTracker:
         :param judge_result: JudgeResult object containing score, metric key, and success status
         :param graph_key: When set, include ``graphKey`` in the event payload.
         """
+        if not judge_result.sampled:
+            return
+
         if judge_result.success and judge_result.metric_key:
             track_data = self.__get_track_data(graph_key=graph_key)
             if judge_result.judge_config_key:

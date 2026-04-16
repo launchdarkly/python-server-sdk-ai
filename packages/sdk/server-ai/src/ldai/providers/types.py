@@ -65,7 +65,7 @@ class JudgeResult:
     judge_config_key: Optional[str] = None
     success: bool = False
     error_message: Optional[str] = None
-    sampled: bool = False  # True when the judge was skipped due to sampling rate
+    sampled: bool = False  # True when the evaluation was sampled and run
     score: Optional[float] = None
     reasoning: Optional[str] = None
     metric_key: Optional[str] = None
