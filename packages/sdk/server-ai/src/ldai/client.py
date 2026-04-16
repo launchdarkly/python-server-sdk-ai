@@ -94,13 +94,13 @@ class LDAIClient:
 
         return LDAIConfigTracker(
             ld_client=self._client,
-            variation_key=payload.get("variationKey", ""),
+            run_id=payload["runId"],
             config_key=payload["configKey"],
+            variation_key=payload.get("variationKey", ""),
             version=payload["version"],
             model_name="",
             provider_name="",
             context=context,
-            run_id=payload["runId"],
         )
 
     def _completion_config(
@@ -859,14 +859,14 @@ class LDAIClient:
 
         def tracker_factory() -> LDAIConfigTracker:
             return LDAIConfigTracker(
-                self._client,
-                variation_key,
-                key,
-                version,
-                model_name,
-                provider_name,
-                context,
+                ld_client=self._client,
                 run_id=str(uuid.uuid4()),
+                config_key=key,
+                variation_key=variation_key,
+                version=version,
+                model_name=model_name,
+                provider_name=provider_name,
+                context=context,
                 graph_key=graph_key,
             )
 

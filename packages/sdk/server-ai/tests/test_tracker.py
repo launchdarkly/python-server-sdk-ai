@@ -43,7 +43,7 @@ def client(td: TestData) -> LDClient:
 
 def test_summary_starts_empty(client: LDClient):
     context = Context.create("user-key")
-    tracker = LDAIConfigTracker(client, "variation-key", "config-key", 1, "fakeModel", "fakeProvider", context, run_id="test-run-id")
+    tracker = LDAIConfigTracker(ld_client=client, run_id="test-run-id", config_key="config-key", variation_key="variation-key", version=1, model_name="fakeModel", provider_name="fakeProvider", context=context)
 
     assert tracker.get_summary().duration is None
     assert tracker.get_summary().feedback is None
@@ -53,7 +53,7 @@ def test_summary_starts_empty(client: LDClient):
 
 def test_tracks_duration(client: LDClient):
     context = Context.create("user-key")
-    tracker = LDAIConfigTracker(client, "variation-key", "config-key", 3, "fakeModel", "fakeProvider", context, run_id="test-run-id")
+    tracker = LDAIConfigTracker(ld_client=client, run_id="test-run-id", config_key="config-key", variation_key="variation-key", version=3, model_name="fakeModel", provider_name="fakeProvider", context=context)
     tracker.track_duration(100)
 
     client.track.assert_called_with(  # type: ignore
@@ -68,7 +68,7 @@ def test_tracks_duration(client: LDClient):
 
 def test_tracks_duration_of(client: LDClient):
     context = Context.create("user-key")
-    tracker = LDAIConfigTracker(client, "variation-key", "config-key", 3, "fakeModel", "fakeProvider", context, run_id="test-run-id")
+    tracker = LDAIConfigTracker(ld_client=client, run_id="test-run-id", config_key="config-key", variation_key="variation-key", version=3, model_name="fakeModel", provider_name="fakeProvider", context=context)
     tracker.track_duration_of(lambda: sleep(0.01))
 
     calls = client.track.mock_calls  # type: ignore
@@ -87,7 +87,7 @@ def test_tracks_duration_of(client: LDClient):
 
 def test_tracks_time_to_first_token(client: LDClient):
     context = Context.create("user-key")
-    tracker = LDAIConfigTracker(client, "variation-key", "config-key", 3, "fakeModel", "fakeProvider", context, run_id="test-run-id")
+    tracker = LDAIConfigTracker(ld_client=client, run_id="test-run-id", config_key="config-key", variation_key="variation-key", version=3, model_name="fakeModel", provider_name="fakeProvider", context=context)
     tracker.track_time_to_first_token(100)
 
     client.track.assert_called_with(  # type: ignore
@@ -102,7 +102,7 @@ def test_tracks_time_to_first_token(client: LDClient):
 
 def test_tracks_duration_of_with_exception(client: LDClient):
     context = Context.create("user-key")
-    tracker = LDAIConfigTracker(client, "variation-key", "config-key", 3, "fakeModel", "fakeProvider", context, run_id="test-run-id")
+    tracker = LDAIConfigTracker(ld_client=client, run_id="test-run-id", config_key="config-key", variation_key="variation-key", version=3, model_name="fakeModel", provider_name="fakeProvider", context=context)
 
     def sleep_and_throw():
         sleep(0.01)
@@ -130,7 +130,7 @@ def test_tracks_duration_of_with_exception(client: LDClient):
 
 def test_tracks_token_usage(client: LDClient):
     context = Context.create("user-key")
-    tracker = LDAIConfigTracker(client, "variation-key", "config-key", 3, "fakeModel", "fakeProvider", context, run_id="test-run-id")
+    tracker = LDAIConfigTracker(ld_client=client, run_id="test-run-id", config_key="config-key", variation_key="variation-key", version=3, model_name="fakeModel", provider_name="fakeProvider", context=context)
 
     tokens = TokenUsage(300, 200, 100)
     tracker.track_tokens(tokens)
@@ -163,7 +163,7 @@ def test_tracks_token_usage(client: LDClient):
 
 def test_tracks_bedrock_metrics(client: LDClient):
     context = Context.create("user-key")
-    tracker = LDAIConfigTracker(client, "variation-key", "config-key", 3, "fakeModel", "fakeProvider", context, run_id="test-run-id")
+    tracker = LDAIConfigTracker(ld_client=client, run_id="test-run-id", config_key="config-key", variation_key="variation-key", version=3, model_name="fakeModel", provider_name="fakeProvider", context=context)
 
     bedrock_result = {
         "ResponseMetadata": {"HTTPStatusCode": 200},
@@ -220,7 +220,7 @@ def test_tracks_bedrock_metrics(client: LDClient):
 
 def test_tracks_bedrock_metrics_with_error(client: LDClient):
     context = Context.create("user-key")
-    tracker = LDAIConfigTracker(client, "variation-key", "config-key", 3, "fakeModel", "fakeProvider", context, run_id="test-run-id")
+    tracker = LDAIConfigTracker(ld_client=client, run_id="test-run-id", config_key="config-key", variation_key="variation-key", version=3, model_name="fakeModel", provider_name="fakeProvider", context=context)
 
     bedrock_result = {
         "ResponseMetadata": {"HTTPStatusCode": 500},
@@ -277,7 +277,7 @@ def test_tracks_bedrock_metrics_with_error(client: LDClient):
 
 def test_tracks_openai_metrics(client: LDClient):
     context = Context.create("user-key")
-    tracker = LDAIConfigTracker(client, "variation-key", "config-key", 3, "fakeModel", "fakeProvider", context, run_id="test-run-id")
+    tracker = LDAIConfigTracker(ld_client=client, run_id="test-run-id", config_key="config-key", variation_key="variation-key", version=3, model_name="fakeModel", provider_name="fakeProvider", context=context)
 
     class Result:
         def __init__(self):
@@ -330,7 +330,7 @@ def test_tracks_openai_metrics(client: LDClient):
 
 def test_tracks_openai_metrics_with_exception(client: LDClient):
     context = Context.create("user-key")
-    tracker = LDAIConfigTracker(client, "variation-key", "config-key", 3, "fakeModel", "fakeProvider", context, run_id="test-run-id")
+    tracker = LDAIConfigTracker(ld_client=client, run_id="test-run-id", config_key="config-key", variation_key="variation-key", version=3, model_name="fakeModel", provider_name="fakeProvider", context=context)
 
     def raise_exception():
         raise ValueError("Something went wrong")
@@ -364,7 +364,7 @@ def test_tracks_openai_metrics_with_exception(client: LDClient):
 )
 def test_tracks_feedback(client: LDClient, kind: FeedbackKind, label: str):
     context = Context.create("user-key")
-    tracker = LDAIConfigTracker(client, "variation-key", "config-key", 3, "fakeModel", "fakeProvider", context, run_id="test-run-id")
+    tracker = LDAIConfigTracker(ld_client=client, run_id="test-run-id", config_key="config-key", variation_key="variation-key", version=3, model_name="fakeModel", provider_name="fakeProvider", context=context)
 
     tracker.track_feedback({"kind": kind})
 
@@ -379,7 +379,7 @@ def test_tracks_feedback(client: LDClient, kind: FeedbackKind, label: str):
 
 def test_tracks_success(client: LDClient):
     context = Context.create("user-key")
-    tracker = LDAIConfigTracker(client, "variation-key", "config-key", 3, "fakeModel", "fakeProvider", context, run_id="test-run-id")
+    tracker = LDAIConfigTracker(ld_client=client, run_id="test-run-id", config_key="config-key", variation_key="variation-key", version=3, model_name="fakeModel", provider_name="fakeProvider", context=context)
     tracker.track_success()
 
     calls = [
@@ -398,7 +398,7 @@ def test_tracks_success(client: LDClient):
 
 def test_tracks_error(client: LDClient):
     context = Context.create("user-key")
-    tracker = LDAIConfigTracker(client, "variation-key", "config-key", 3, "fakeModel", "fakeProvider", context, run_id="test-run-id")
+    tracker = LDAIConfigTracker(ld_client=client, run_id="test-run-id", config_key="config-key", variation_key="variation-key", version=3, model_name="fakeModel", provider_name="fakeProvider", context=context)
     tracker.track_error()
 
     calls = [
@@ -417,7 +417,7 @@ def test_tracks_error(client: LDClient):
 
 def test_error_after_success_is_blocked(client: LDClient):
     context = Context.create("user-key")
-    tracker = LDAIConfigTracker(client, "variation-key", "config-key", 3, "fakeModel", "fakeProvider", context, run_id="test-run-id")
+    tracker = LDAIConfigTracker(ld_client=client, run_id="test-run-id", config_key="config-key", variation_key="variation-key", version=3, model_name="fakeModel", provider_name="fakeProvider", context=context)
     tracker.track_success()
     tracker.track_error()
 
@@ -446,7 +446,7 @@ def _base_td() -> dict:
 def test_config_tracker_includes_graph_key_when_provided(client: LDClient):
     context = Context.create("user-key")
     tracker = LDAIConfigTracker(
-        client, "variation-key", "config-key", 3, "fakeModel", "fakeProvider", context, run_id="test-run-id", graph_key="my-graph"
+        ld_client=client, run_id="test-run-id", config_key="config-key", variation_key="variation-key", version=3, model_name="fakeModel", provider_name="fakeProvider", context=context, graph_key="my-graph"
     )
     expected = {**_base_td(), "graphKey": "my-graph"}
     tracker.track_success()
@@ -456,7 +456,7 @@ def test_config_tracker_includes_graph_key_when_provided(client: LDClient):
 def test_config_tracker_track_tokens_with_graph_key(client: LDClient):
     context = Context.create("user-key")
     tracker = LDAIConfigTracker(
-        client, "variation-key", "config-key", 3, "fakeModel", "fakeProvider", context, run_id="test-run-id", graph_key="g1"
+        ld_client=client, run_id="test-run-id", config_key="config-key", variation_key="variation-key", version=3, model_name="fakeModel", provider_name="fakeProvider", context=context, graph_key="g1"
     )
     tokens = TokenUsage(10, 4, 6)
     expected = {**_base_td(), "graphKey": "g1"}
@@ -467,7 +467,7 @@ def test_config_tracker_track_tokens_with_graph_key(client: LDClient):
 def test_config_tracker_track_feedback_with_graph_key(client: LDClient):
     context = Context.create("user-key")
     tracker = LDAIConfigTracker(
-        client, "variation-key", "config-key", 3, "fakeModel", "fakeProvider", context, run_id="test-run-id", graph_key="gx"
+        ld_client=client, run_id="test-run-id", config_key="config-key", variation_key="variation-key", version=3, model_name="fakeModel", provider_name="fakeProvider", context=context, graph_key="gx"
     )
     expected = {**_base_td(), "graphKey": "gx"}
     tracker.track_feedback({"kind": FeedbackKind.Positive})
@@ -479,7 +479,8 @@ def test_config_tracker_track_feedback_with_graph_key(client: LDClient):
 def test_config_tracker_track_tool_call(client: LDClient):
     context = Context.create("user-key")
     tracker = LDAIConfigTracker(
-        client, "variation-key", "config-key", 3, "fakeModel", "fakeProvider", context, run_id="test-run-id"
+        ld_client=client, run_id="test-run-id", config_key="config-key", variation_key="variation-key",
+        version=3, model_name="fakeModel", provider_name="fakeProvider", context=context,
     )
     expected = {**_base_td(), "toolKey": "search"}
     tracker.track_tool_call("search")
@@ -489,7 +490,7 @@ def test_config_tracker_track_tool_call(client: LDClient):
 def test_config_tracker_track_tool_call_with_graph_key(client: LDClient):
     context = Context.create("user-key")
     tracker = LDAIConfigTracker(
-        client, "variation-key", "config-key", 3, "fakeModel", "fakeProvider", context, run_id="test-run-id", graph_key="my-graph"
+        ld_client=client, run_id="test-run-id", config_key="config-key", variation_key="variation-key", version=3, model_name="fakeModel", provider_name="fakeProvider", context=context, graph_key="my-graph"
     )
     expected = {**_base_td(), "graphKey": "my-graph", "toolKey": "calc"}
     tracker.track_tool_call("calc")
@@ -499,7 +500,7 @@ def test_config_tracker_track_tool_call_with_graph_key(client: LDClient):
 def test_config_tracker_track_tool_calls(client: LDClient):
     context = Context.create("user-key")
     tracker = LDAIConfigTracker(
-        client, "variation-key", "config-key", 3, "fakeModel", "fakeProvider", context, run_id="test-run-id", graph_key="g"
+        ld_client=client, run_id="test-run-id", config_key="config-key", variation_key="variation-key", version=3, model_name="fakeModel", provider_name="fakeProvider", context=context, graph_key="g"
     )
     tracker.track_tool_calls(["a", "b"])
     assert client.track.call_count == 2  # type: ignore
@@ -520,7 +521,8 @@ def test_config_tracker_track_tool_calls(client: LDClient):
 def test_config_tracker_track_metrics_of(client: LDClient):
     context = Context.create("user-key")
     tracker = LDAIConfigTracker(
-        client, "variation-key", "config-key", 3, "fakeModel", "fakeProvider", context, run_id="test-run-id"
+        ld_client=client, run_id="test-run-id", config_key="config-key", variation_key="variation-key",
+        version=3, model_name="fakeModel", provider_name="fakeProvider", context=context,
     )
 
     def fn():
@@ -540,7 +542,7 @@ def test_config_tracker_track_metrics_of(client: LDClient):
 async def test_config_tracker_track_metrics_of_async_passes_graph_key(client: LDClient):
     context = Context.create("user-key")
     tracker = LDAIConfigTracker(
-        client, "variation-key", "config-key", 3, "fakeModel", "fakeProvider", context, run_id="test-run-id", graph_key="gg"
+        ld_client=client, run_id="test-run-id", config_key="config-key", variation_key="variation-key", version=3, model_name="fakeModel", provider_name="fakeProvider", context=context, graph_key="gg"
     )
 
     async def fn():
@@ -588,7 +590,7 @@ def test_ai_graph_tracker_track_total_tokens_tracks_when_positive(client: LDClie
 
 def test_duplicate_track_duration_is_ignored(client: LDClient):
     context = Context.create("user-key")
-    tracker = LDAIConfigTracker(client, "variation-key", "config-key", 3, "fakeModel", "fakeProvider", context, run_id="test-run-id")
+    tracker = LDAIConfigTracker(ld_client=client, run_id="test-run-id", config_key="config-key", variation_key="variation-key", version=3, model_name="fakeModel", provider_name="fakeProvider", context=context)
     tracker.track_duration(100)
     tracker.track_duration(200)
 
@@ -598,7 +600,7 @@ def test_duplicate_track_duration_is_ignored(client: LDClient):
 
 def test_duplicate_track_time_to_first_token_is_ignored(client: LDClient):
     context = Context.create("user-key")
-    tracker = LDAIConfigTracker(client, "variation-key", "config-key", 3, "fakeModel", "fakeProvider", context, run_id="test-run-id")
+    tracker = LDAIConfigTracker(ld_client=client, run_id="test-run-id", config_key="config-key", variation_key="variation-key", version=3, model_name="fakeModel", provider_name="fakeProvider", context=context)
     tracker.track_time_to_first_token(50)
     tracker.track_time_to_first_token(75)
 
@@ -608,7 +610,7 @@ def test_duplicate_track_time_to_first_token_is_ignored(client: LDClient):
 
 def test_duplicate_track_tokens_is_ignored(client: LDClient):
     context = Context.create("user-key")
-    tracker = LDAIConfigTracker(client, "variation-key", "config-key", 3, "fakeModel", "fakeProvider", context, run_id="test-run-id")
+    tracker = LDAIConfigTracker(ld_client=client, run_id="test-run-id", config_key="config-key", variation_key="variation-key", version=3, model_name="fakeModel", provider_name="fakeProvider", context=context)
     tokens1 = TokenUsage(300, 200, 100)
     tokens2 = TokenUsage(600, 400, 200)
     tracker.track_tokens(tokens1)
@@ -621,7 +623,7 @@ def test_duplicate_track_tokens_is_ignored(client: LDClient):
 
 def test_duplicate_track_success_is_ignored(client: LDClient):
     context = Context.create("user-key")
-    tracker = LDAIConfigTracker(client, "variation-key", "config-key", 3, "fakeModel", "fakeProvider", context, run_id="test-run-id")
+    tracker = LDAIConfigTracker(ld_client=client, run_id="test-run-id", config_key="config-key", variation_key="variation-key", version=3, model_name="fakeModel", provider_name="fakeProvider", context=context)
     tracker.track_success()
     tracker.track_success()
 
@@ -631,7 +633,7 @@ def test_duplicate_track_success_is_ignored(client: LDClient):
 
 def test_duplicate_track_error_is_ignored(client: LDClient):
     context = Context.create("user-key")
-    tracker = LDAIConfigTracker(client, "variation-key", "config-key", 3, "fakeModel", "fakeProvider", context, run_id="test-run-id")
+    tracker = LDAIConfigTracker(ld_client=client, run_id="test-run-id", config_key="config-key", variation_key="variation-key", version=3, model_name="fakeModel", provider_name="fakeProvider", context=context)
     tracker.track_error()
     tracker.track_error()
 
@@ -641,7 +643,7 @@ def test_duplicate_track_error_is_ignored(client: LDClient):
 
 def test_duplicate_track_feedback_is_ignored(client: LDClient):
     context = Context.create("user-key")
-    tracker = LDAIConfigTracker(client, "variation-key", "config-key", 3, "fakeModel", "fakeProvider", context, run_id="test-run-id")
+    tracker = LDAIConfigTracker(ld_client=client, run_id="test-run-id", config_key="config-key", variation_key="variation-key", version=3, model_name="fakeModel", provider_name="fakeProvider", context=context)
     tracker.track_feedback({"kind": FeedbackKind.Positive})
     tracker.track_feedback({"kind": FeedbackKind.Negative})
 
@@ -651,7 +653,7 @@ def test_duplicate_track_feedback_is_ignored(client: LDClient):
 
 def test_track_data_includes_run_id(client: LDClient):
     context = Context.create("user-key")
-    tracker = LDAIConfigTracker(client, "variation-key", "config-key", 3, "fakeModel", "fakeProvider", context, run_id="my-run-id")
+    tracker = LDAIConfigTracker(ld_client=client, run_id="my-run-id", config_key="config-key", variation_key="variation-key", version=3, model_name="fakeModel", provider_name="fakeProvider", context=context)
     tracker.track_success()
 
     track_data = client.track.call_args[0][2]  # type: ignore
@@ -660,7 +662,7 @@ def test_track_data_includes_run_id(client: LDClient):
 
 def test_run_id_is_consistent_across_track_calls(client: LDClient):
     context = Context.create("user-key")
-    tracker = LDAIConfigTracker(client, "variation-key", "config-key", 3, "fakeModel", "fakeProvider", context, run_id="test-run-id")
+    tracker = LDAIConfigTracker(ld_client=client, run_id="test-run-id", config_key="config-key", variation_key="variation-key", version=3, model_name="fakeModel", provider_name="fakeProvider", context=context)
     tracker.track_success()
     tracker.track_duration(100)
 
@@ -678,7 +680,7 @@ def test_resumption_token_round_trip(client: LDClient):
     import json
 
     context = Context.create("user-key")
-    tracker = LDAIConfigTracker(client, "var-key", "cfg-key", 5, "gpt-4", "openai", context, run_id="test-run-id")
+    tracker = LDAIConfigTracker(ld_client=client, run_id="test-run-id", config_key="cfg-key", variation_key="var-key", version=5, model_name="gpt-4", provider_name="openai", context=context)
 
     token = tracker.resumption_token
     # Token has no padding — add it back before decoding
@@ -696,7 +698,7 @@ def test_resumption_token_round_trip(client: LDClient):
 
 def test_resumption_token_has_no_padding(client: LDClient):
     context = Context.create("user-key")
-    tracker = LDAIConfigTracker(client, "var-key", "cfg-key", 1, "model", "provider", context, run_id="test-run-id")
+    tracker = LDAIConfigTracker(ld_client=client, run_id="test-run-id", config_key="cfg-key", variation_key="var-key", version=1, model_name="model", provider_name="provider", context=context)
 
     token = tracker.resumption_token
     assert "=" not in token
@@ -706,7 +708,7 @@ def test_resumption_token_is_url_safe_base64(client: LDClient):
     import base64
 
     context = Context.create("user-key")
-    tracker = LDAIConfigTracker(client, "var-key", "cfg-key", 1, "model", "provider", context, run_id="test-run-id")
+    tracker = LDAIConfigTracker(ld_client=client, run_id="test-run-id", config_key="cfg-key", variation_key="var-key", version=1, model_name="model", provider_name="provider", context=context)
 
     token = tracker.resumption_token
     # Should decode without error using urlsafe variant (with padding restored)
@@ -717,8 +719,9 @@ def test_resumption_token_is_url_safe_base64(client: LDClient):
 def test_tracker_with_explicit_run_id(client: LDClient):
     context = Context.create("user-key")
     tracker = LDAIConfigTracker(
-        client, "var-key", "cfg-key", 1, "model", "provider", context,
-        run_id="custom-run-id-123",
+        ld_client=client, run_id="custom-run-id-123", config_key="cfg-key",
+        variation_key="var-key", version=1, model_name="model",
+        provider_name="provider", context=context,
     )
     tracker.track_success()
 
@@ -737,8 +740,10 @@ def test_client_create_tracker_from_resumption_token():
 
     # Create an original tracker and get its token
     original = LDAIConfigTracker(
-        mock_client, "var-abc", "my-config", 7, "gpt-4", "openai", Context.create("original-user"),
-        run_id="original-run-id-123",
+        ld_client=mock_client, run_id="original-run-id-123",
+        config_key="my-config", variation_key="var-abc", version=7,
+        model_name="gpt-4", provider_name="openai",
+        context=Context.create("original-user"),
     )
     token = original.resumption_token
 

@@ -54,8 +54,9 @@ def context() -> Context:
 @pytest.fixture
 def tracker(client: LDClient, context: Context) -> LDAIConfigTracker:
     return LDAIConfigTracker(
-        client, 'judge-v1', 'judge-config', 1, 'gpt-4', 'openai', context,
-        run_id='test-run-id',
+        ld_client=client, run_id='test-run-id', config_key='judge-config',
+        variation_key='judge-v1', version=1, model_name='gpt-4',
+        provider_name='openai', context=context,
     )
 
 

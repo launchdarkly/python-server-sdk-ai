@@ -76,26 +76,26 @@ class LDAIConfigTracker:
     def __init__(
         self,
         ld_client: LDClient,
-        variation_key: str,
+        run_id: str,
         config_key: str,
+        variation_key: str,
         version: int,
         model_name: str,
         provider_name: str,
         context: Context,
-        run_id: str,
         graph_key: Optional[str] = None,
     ):
         """
         Initialize an AI Config tracker.
 
         :param ld_client: LaunchDarkly client instance.
-        :param variation_key: Variation key for tracking.
+        :param run_id: Unique identifier for this execution.
         :param config_key: Configuration key for tracking.
+        :param variation_key: Variation key for tracking.
         :param version: Version of the variation.
         :param model_name: Name of the model used.
         :param provider_name: Name of the provider used.
         :param context: Context for evaluation.
-        :param run_id: Unique identifier for this execution.
         :param graph_key: When set, include ``graphKey`` in all event payloads
             (e.g. config-level metrics inside a graph).
         """
