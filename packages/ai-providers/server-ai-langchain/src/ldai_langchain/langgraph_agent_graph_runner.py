@@ -305,7 +305,7 @@ class LangGraphAgentGraphRunner(AgentGraphRunner):
             # Graph-level metrics
             if tracker:
                 tracker.track_path(handler.path)
-                tracker.track_latency(duration)
+                tracker.track_duration(duration)
                 tracker.track_invocation_success()
                 tracker.track_total_tokens(sum_token_usage_from_messages(messages))
 
@@ -325,7 +325,7 @@ class LangGraphAgentGraphRunner(AgentGraphRunner):
                 log.warning(f'LangGraphAgentGraphRunner run failed: {exc}')
             duration = (time.perf_counter_ns() - start_ns) // 1_000_000
             if tracker:
-                tracker.track_latency(duration)
+                tracker.track_duration(duration)
                 tracker.track_invocation_failure()
             return AgentGraphResult(
                 output='',

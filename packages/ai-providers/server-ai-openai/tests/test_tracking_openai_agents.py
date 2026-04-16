@@ -266,7 +266,7 @@ async def test_tracks_graph_invocation_success_and_latency():
 
     ev = _events(mock_ld_client)
     assert ev['$ld:ai:graph:invocation_success'][0][1] == 1
-    assert '$ld:ai:graph:latency' in ev
+    assert '$ld:ai:duration:total' in ev
     assert '$ld:ai:graph:path' in ev
 
 
@@ -404,7 +404,7 @@ async def test_tracks_failure_and_latency_on_runner_error():
 
     ev = _events(mock_ld_client)
     assert '$ld:ai:graph:invocation_failure' in ev
-    assert '$ld:ai:graph:latency' in ev
+    assert '$ld:ai:duration:total' in ev
     assert '$ld:ai:graph:invocation_success' not in ev
 
 

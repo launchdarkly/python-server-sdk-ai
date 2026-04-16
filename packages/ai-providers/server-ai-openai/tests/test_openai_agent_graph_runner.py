@@ -89,7 +89,7 @@ async def test_openai_agent_graph_runner_run_tracks_invocation_failure_on_except
 
     assert result.metrics.success is False
     tracker.track_invocation_failure.assert_called_once()
-    tracker.track_latency.assert_called_once()
+    tracker.track_duration.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -134,7 +134,7 @@ async def test_openai_agent_graph_runner_run_success():
     assert result.metrics.success is True
     tracker.track_invocation_success.assert_called_once()
     tracker.track_path.assert_called_once()
-    tracker.track_latency.assert_called_once()
+    tracker.track_duration.assert_called_once()
 
     root_tracker = graph.get_node('root-agent').get_config().tracker
     root_tracker.track_duration.assert_called_once()

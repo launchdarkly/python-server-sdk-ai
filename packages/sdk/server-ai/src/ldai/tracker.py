@@ -508,14 +508,14 @@ class AIGraphTracker:
             1,
         )
 
-    def track_latency(self, duration: int) -> None:
+    def track_duration(self, duration: int) -> None:
         """
-        Track the total latency of graph execution.
+        Track the total duration of graph execution.
 
         :param duration: Duration in milliseconds.
         """
         self._ld_client.track(
-            "$ld:ai:graph:latency",
+            "$ld:ai:duration:total",
             self._context,
             self.__get_track_data(),
             duration,
