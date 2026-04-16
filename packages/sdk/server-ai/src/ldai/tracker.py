@@ -2,7 +2,6 @@ import base64
 import json
 import logging
 import time
-import uuid
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Callable, Dict, Iterable, List, Optional
@@ -83,8 +82,8 @@ class LDAIConfigTracker:
         model_name: str,
         provider_name: str,
         context: Context,
+        run_id: str,
         graph_key: Optional[str] = None,
-        run_id: Optional[str] = None,
     ):
         """
         Initialize an AI Config tracker.
@@ -96,9 +95,9 @@ class LDAIConfigTracker:
         :param model_name: Name of the model used.
         :param provider_name: Name of the provider used.
         :param context: Context for evaluation.
+        :param run_id: Unique identifier for this execution.
         :param graph_key: When set, include ``graphKey`` in all event payloads
             (e.g. config-level metrics inside a graph).
-        :param run_id: Optional run ID. When not provided, a new UUID is generated.
         """
         self._ld_client = ld_client
         self._variation_key = variation_key
@@ -109,7 +108,7 @@ class LDAIConfigTracker:
         self._context = context
         self._graph_key = graph_key
         self._summary = LDAIMetricSummary()
-        self._run_id = run_id or str(uuid.uuid4())
+        self._run_id = run_id
         self._tracked: Dict[str, bool] = {}
 
     @property

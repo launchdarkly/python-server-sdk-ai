@@ -1,5 +1,6 @@
 import base64
 import json
+import uuid
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import chevron
@@ -863,6 +864,7 @@ class LDAIClient:
                 model_name,
                 provider_name,
                 context,
+                run_id=str(uuid.uuid4()),
                 graph_key=graph_key,
             )
 
