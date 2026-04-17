@@ -1949,7 +1949,7 @@ class TestBuildOptionsFromConfig:
 
     def test_raises_when_no_judges_no_ground_truth_no_on_turn(self):
         config = dict(_API_CONFIG, acceptanceStatements=[], judges=[])
-        with pytest.raises(ValueError, match="no acceptance statements, judges, or ground truth"):
+        with pytest.raises(ValueError, match="no acceptance statements or judges"):
             self._build(config=config)
 
     def test_ground_truth_responses_alone_does_not_pass_no_criteria_check(self):

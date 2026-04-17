@@ -14,12 +14,12 @@ from typing import (
     Sequence,
     Union,
 )
-from typing_extensions import Protocol
 
 from ldai import AIAgentConfig
 from ldai.models import LDMessage, ModelConfig
 from ldai.tracker import TokenUsage
 from ldclient import Context
+from typing_extensions import Protocol
 
 
 @dataclass

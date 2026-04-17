@@ -10,7 +10,6 @@ import uuid
 from typing import Any, Dict, List, Literal, Optional, Union
 
 from coolname import generate_slug
-
 from ldai import AIAgentConfig, AIJudgeConfig, AIJudgeConfigDefault, LDAIClient
 from ldai.models import LDMessage, ModelConfig
 from ldclient import Context
@@ -1366,10 +1365,6 @@ class OptimizationClient:
             raise ValueError(
                 "LAUNCHDARKLY_API_KEY is not set, so optimize_from_config is not available"
             )
-        if options.auto_commit and not self._has_api_key:
-            raise ValueError(
-                "auto_commit requires LAUNCHDARKLY_API_KEY to be set"
-            )
 
         assert self._api_key is not None
         api_client = LDApiClient(
@@ -1465,11 +1460,10 @@ class OptimizationClient:
 
         raw_ground_truth: List[str] = config.get("groundTruthResponses") or []
         has_ground_truth = bool(raw_ground_truth)
-        if not judges and not has_ground_truth and options.on_turn is None:
+        if not judges and options.on_turn is None:
             raise ValueError(
-                "The optimization config has no acceptance statements, judges, or ground truth "
-                "responses, and no on_turn callback was provided. At least one is required to "
-                "evaluate optimization results."
+                "The optimization config has no acceptance statements or judges, and no on_turn "
+                "callback was provided. At least one is required to evaluate optimization results."
             )
 
         project_key = options.project_key

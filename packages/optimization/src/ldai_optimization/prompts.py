@@ -204,7 +204,7 @@ def variation_prompt_acceptance_criteria(
         "## *** ACCEPTANCE CRITERIA (MUST BE MET) ***",
         "The improved configuration MUST produce responses that satisfy ALL of the following criteria.",
         "These criteria are non-negotiable — every generated variation will be evaluated against them.",
-        "All variables must be used in the new instructions."
+        "All variables must be used in the new instructions.",
         "",
     ]
     for key, statement in statements:
