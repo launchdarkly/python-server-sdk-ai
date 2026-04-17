@@ -737,6 +737,66 @@ def test_resumption_token_omits_variation_key_when_empty(client: LDClient):
     assert decoded["version"] == 1
 
 
+def test_resumption_token_includes_graph_key_when_set(client: LDClient):
+    import base64
+    import json
+
+    context = Context.create("user-key")
+    tracker = LDAIConfigTracker(
+        ld_client=client, run_id="test-run-id", config_key="cfg-key",
+        variation_key="var-key", version=2, context=context,
+        model_name="model", provider_name="provider", graph_key="my-graph",
+    )
+
+    token = tracker.resumption_token
+    padded = token + "=" * (-len(token) % 4)
+    decoded = json.loads(base64.urlsafe_b64decode(padded.encode("utf-8")).decode("utf-8"))
+
+    assert decoded["runId"] == "test-run-id"
+    assert decoded["configKey"] == "cfg-key"
+    assert decoded["variationKey"] == "var-key"
+    assert decoded["version"] == 2
+    assert decoded["graphKey"] == "my-graph"
+    # Key order: runId, configKey, variationKey, version, graphKey
+    assert list(decoded.keys()) == ["runId", "configKey", "variationKey", "version", "graphKey"]
+
+
+def test_resumption_token_omits_graph_key_when_not_set(client: LDClient):
+    import base64
+    import json
+
+    context = Context.create("user-key")
+    tracker = LDAIConfigTracker(
+        ld_client=client, run_id="test-run-id", config_key="cfg-key",
+        variation_key="var-key", version=1, context=context,
+        model_name="model", provider_name="provider",
+    )
+
+    token = tracker.resumption_token
+    padded = token + "=" * (-len(token) % 4)
+    decoded = json.loads(base64.urlsafe_b64decode(padded.encode("utf-8")).decode("utf-8"))
+
+    assert "graphKey" not in decoded
+
+
+def test_resumption_token_round_trip_with_graph_key(client: LDClient):
+    context = Context.create("user-key")
+    tracker = LDAIConfigTracker(
+        ld_client=client, run_id="test-run-id", config_key="cfg-key",
+        variation_key="var-key", version=3, context=context,
+        model_name="model", provider_name="provider", graph_key="my-graph",
+    )
+
+    token = tracker.resumption_token
+    restored = LDAIConfigTracker.from_resumption_token(token, client, context)
+
+    assert restored._run_id == "test-run-id"
+    assert restored._config_key == "cfg-key"
+    assert restored._variation_key == "var-key"
+    assert restored._version == 3
+    assert restored._graph_key == "my-graph"
+
+
 def test_tracker_with_explicit_run_id(client: LDClient):
     context = Context.create("user-key")
     tracker = LDAIConfigTracker(

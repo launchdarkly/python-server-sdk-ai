@@ -117,7 +117,7 @@ class LDAIConfigTracker:
         a tracker in a different process (e.g. for deferred feedback).
 
         The token contains ``runId``, ``configKey``, ``version``, and
-        optionally ``variationKey`` (omitted when empty).
+        optionally ``variationKey`` and ``graphKey`` (omitted when empty).
         ``modelName`` and ``providerName`` are **not** included.
         """
         data: dict = {
@@ -127,6 +127,8 @@ class LDAIConfigTracker:
         if self._variation_key:
             data["variationKey"] = self._variation_key
         data["version"] = self._version
+        if self._graph_key:
+            data["graphKey"] = self._graph_key
         payload = json.dumps(data)
         return base64.urlsafe_b64encode(payload.encode("utf-8")).rstrip(b"=").decode("utf-8")
 
@@ -170,6 +172,7 @@ class LDAIConfigTracker:
             context=context,
             model_name="",
             provider_name="",
+            graph_key=payload.get("graphKey"),
         )
 
     def __get_track_data(self) -> dict:
