@@ -10,7 +10,6 @@ from ldai.judge.evaluation_schema_builder import EvaluationSchemaBuilder
 from ldai.models import AIJudgeConfig, LDMessage
 from ldai.providers.model_runner import ModelRunner
 from ldai.providers.types import JudgeResult, ModelResponse
-from ldai.tracker import LDAIConfigTracker
 
 
 class Judge:
@@ -24,18 +23,15 @@ class Judge:
     def __init__(
         self,
         ai_config: AIJudgeConfig,
-        ai_config_tracker: LDAIConfigTracker,
         model_runner: ModelRunner,
     ):
         """
         Initialize the Judge.
 
         :param ai_config: The judge AI configuration
-        :param ai_config_tracker: The tracker for the judge configuration
         :param model_runner: The model runner to use for evaluation
         """
         self._ai_config = ai_config
-        self._ai_config_tracker = ai_config_tracker
         self._model_runner = model_runner
         self._evaluation_response_structure = EvaluationSchemaBuilder.build()
 
@@ -74,10 +70,11 @@ class Judge:
 
             judge_result.sampled = True
 
+            tracker = self._ai_config.create_tracker()
             messages = self._construct_evaluation_messages(input_text, output_text)
             assert self._evaluation_response_structure is not None
 
-            response = await self._ai_config_tracker.track_metrics_of_async(
+            response = await tracker.track_metrics_of_async(
                 lambda: self._model_runner.invoke_structured_model(messages, self._evaluation_response_structure),
                 lambda result: result.metrics,
             )
@@ -125,14 +122,6 @@ class Judge:
         :return: The judge AI configuration
         """
         return self._ai_config
-
-    def get_tracker(self) -> LDAIConfigTracker:
-        """
-        Returns the tracker associated with this judge.
-
-        :return: The tracker for the judge configuration
-        """
-        return self._ai_config_tracker
 
     def get_model_runner(self) -> ModelRunner:
         """

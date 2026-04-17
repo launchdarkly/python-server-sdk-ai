@@ -273,7 +273,7 @@ class LDAIClient:
             if not provider:
                 return None
 
-            return Judge(judge_config, judge_config.create_tracker(), provider)
+            return Judge(judge_config, provider)
         except Exception as error:
             return None
 
@@ -747,7 +747,7 @@ class LDAIClient:
         if not runner:
             return None
 
-        return ManagedAgentGraph(runner, graph.get_tracker())
+        return ManagedAgentGraph(runner)
 
     def agents(
         self,
