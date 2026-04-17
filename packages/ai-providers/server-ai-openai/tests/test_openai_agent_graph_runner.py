@@ -13,6 +13,7 @@ from ldai_openai.openai_runner_factory import OpenAIRunnerFactory
 def _make_graph(enabled: bool = True) -> AgentGraphDefinition:
     """Build a minimal single-node AgentGraphDefinition for testing."""
     node_tracker = MagicMock()
+    graph_tracker = MagicMock()
     root_config = AIAgentConfig(
         key='root-agent',
         enabled=enabled,
@@ -33,7 +34,7 @@ def _make_graph(enabled: bool = True) -> AgentGraphDefinition:
         nodes=nodes,
         context=MagicMock(),
         enabled=enabled,
-        tracker=MagicMock(),
+        create_tracker=lambda: graph_tracker,
     )
 
 
@@ -82,7 +83,7 @@ async def test_openai_agent_graph_runner_run_raises_when_agents_not_installed():
 @pytest.mark.asyncio
 async def test_openai_agent_graph_runner_run_tracks_invocation_failure_on_exception():
     graph = _make_graph()
-    tracker = graph.get_tracker()
+    tracker = graph.create_tracker()
     runner = OpenAIAgentGraphRunner(graph, {})
 
     with patch.dict('sys.modules', {'agents': None}):
@@ -96,7 +97,7 @@ async def test_openai_agent_graph_runner_run_tracks_invocation_failure_on_except
 @pytest.mark.asyncio
 async def test_openai_agent_graph_runner_run_success():
     graph = _make_graph()
-    tracker = graph.get_tracker()
+    tracker = graph.create_tracker()
 
     mock_result = MagicMock()
     mock_result.final_output = "agent answer"

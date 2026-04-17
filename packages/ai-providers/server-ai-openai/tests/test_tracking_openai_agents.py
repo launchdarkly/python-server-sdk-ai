@@ -80,7 +80,7 @@ def _make_graph(
         nodes=nodes,
         context=context,
         enabled=True,
-        tracker=graph_tracker,
+        create_tracker=lambda: graph_tracker,
     )
 
 
@@ -236,7 +236,7 @@ def _make_two_node_graph(mock_ld_client: MagicMock) -> AgentGraphDefinition:
         nodes=nodes,
         context=context,
         enabled=True,
-        tracker=graph_tracker,
+        create_tracker=lambda: graph_tracker,
     )
 
 

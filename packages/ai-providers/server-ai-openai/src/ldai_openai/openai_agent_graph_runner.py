@@ -69,7 +69,7 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
         :param input: The string prompt to send to the agent graph
         :return: AgentGraphResult with the final output and metrics
         """
-        tracker = self._graph.get_tracker()
+        tracker = self._graph.create_tracker()
         path: List[str] = []
         root_node = self._graph.root()
         root_key = root_node.get_key() if root_node else ''
@@ -142,7 +142,7 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
                 "Install it with: pip install openai-agents"
             ) from exc
 
-        tracker = self._graph.get_tracker()
+        tracker = self._graph.create_tracker()
         name_map: Dict[str, str] = {}
         tool_name_map: Dict[str, str] = {}
 

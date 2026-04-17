@@ -11,6 +11,7 @@ from ldai_langchain.langchain_runner_factory import LangChainRunnerFactory
 
 
 def _make_graph(enabled: bool = True) -> AgentGraphDefinition:
+    graph_tracker = MagicMock()
     root_config = AIAgentConfig(
         key='root-agent',
         enabled=enabled,
@@ -30,7 +31,7 @@ def _make_graph(enabled: bool = True) -> AgentGraphDefinition:
         nodes=nodes,
         context=MagicMock(),
         enabled=enabled,
-        tracker=MagicMock(),
+        create_tracker=lambda: graph_tracker,
     )
 
 
@@ -77,7 +78,7 @@ async def test_langgraph_runner_run_raises_when_langgraph_not_installed():
 @pytest.mark.asyncio
 async def test_langgraph_runner_run_tracks_failure_on_exception():
     graph = _make_graph()
-    tracker = graph.get_tracker()
+    tracker = graph.create_tracker()
     runner = LangGraphAgentGraphRunner(graph, {})
 
     with patch.dict('sys.modules', {'langgraph': None, 'langgraph.graph': None}):
@@ -91,7 +92,7 @@ async def test_langgraph_runner_run_tracks_failure_on_exception():
 @pytest.mark.asyncio
 async def test_langgraph_runner_run_success():
     graph = _make_graph()
-    tracker = graph.get_tracker()
+    tracker = graph.create_tracker()
 
     mock_message = MagicMock()
     mock_message.content = "langgraph answer"

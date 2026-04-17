@@ -85,7 +85,7 @@ def _make_graph(
         nodes=nodes,
         context=context,
         enabled=True,
-        tracker=graph_tracker,
+        create_tracker=lambda: graph_tracker,
     )
 
 
@@ -199,7 +199,7 @@ def _make_two_node_graph(mock_ld_client: MagicMock) -> 'AgentGraphDefinition':
         nodes=nodes,
         context=context,
         enabled=True,
-        tracker=graph_tracker,
+        create_tracker=lambda: graph_tracker,
     )
 
 
@@ -231,7 +231,7 @@ async def test_tracks_node_and_graph_tokens_on_success():
     # (mock models don't fire LangChain callbacks, so we test flush directly)
     mock_ld_client2 = MagicMock()
     graph2 = _make_graph(mock_ld_client2)
-    tracker2 = graph2.get_tracker()
+    tracker2 = graph2.create_tracker()
 
     handler = LDMetricsCallbackHandler({'root-agent'}, {})
     node_run_id = uuid4()
@@ -311,7 +311,7 @@ async def test_tracks_tool_calls():
     # Simulate tool call tracking via the callback handler directly
     mock_ld_client2 = MagicMock()
     graph2 = _make_graph(mock_ld_client2, tool_names=['get_weather'])
-    tracker2 = graph2.get_tracker()
+    tracker2 = graph2.create_tracker()
 
     handler = LDMetricsCallbackHandler({'root-agent'}, {'get_weather': 'get_weather'})
     # Agent node must appear in path for flush() to emit its events
@@ -363,7 +363,7 @@ async def test_tracks_multiple_tool_calls():
     # Simulate multiple tool calls via the callback handler directly
     mock_ld_client2 = MagicMock()
     graph2 = _make_graph(mock_ld_client2, tool_names=['search', 'summarize'])
-    tracker2 = graph2.get_tracker()
+    tracker2 = graph2.create_tracker()
 
     fn_map = {'search': 'search', 'summarize': 'summarize'}
     handler = LDMetricsCallbackHandler({'root-agent'}, fn_map)
@@ -391,7 +391,7 @@ async def test_tracks_graph_key_on_node_events():
 
     mock_ld_client = MagicMock()
     graph = _make_graph(mock_ld_client, graph_key='my-graph')
-    tracker = graph.get_tracker()
+    tracker = graph.create_tracker()
 
     handler = LDMetricsCallbackHandler({'root-agent'}, {})
     node_run_id = uuid4()
@@ -464,7 +464,7 @@ async def test_multi_node_tracks_per_node_tokens_and_path():
     # Simulate per-node token events via callback handler (mock models don't fire callbacks)
     mock_ld_client2 = MagicMock()
     graph2 = _make_two_node_graph(mock_ld_client2)
-    tracker2 = graph2.get_tracker()
+    tracker2 = graph2.create_tracker()
 
     handler = LDMetricsCallbackHandler({'root-agent', 'child-agent'}, {})
 
@@ -578,7 +578,7 @@ def _make_multi_child_graph(mock_ld_client: MagicMock) -> 'AgentGraphDefinition'
         nodes=nodes,
         context=context,
         enabled=True,
-        tracker=graph_tracker,
+        create_tracker=lambda: graph_tracker,
     )
 
 
@@ -691,7 +691,7 @@ def _make_multi_child_graph_with_tools(mock_ld_client: MagicMock, tool_names: li
         nodes=nodes,
         context=context,
         enabled=True,
-        tracker=graph_tracker,
+        create_tracker=lambda: graph_tracker,
     )
 
 

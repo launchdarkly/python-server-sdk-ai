@@ -65,7 +65,7 @@ def _make_graph(mock_ld_client: MagicMock, node_key: str = 'root-agent', graph_k
         nodes=nodes,
         context=context,
         enabled=True,
-        tracker=graph_tracker,
+        create_tracker=lambda: graph_tracker,
     )
 
 
@@ -321,7 +321,7 @@ def test_flush_emits_token_events_to_ld_tracker():
     """flush() calls track_tokens on the node's config tracker."""
     mock_ld_client = MagicMock()
     graph = _make_graph(mock_ld_client, node_key='root-agent', graph_key='g1')
-    tracker = graph.get_tracker()
+    tracker = graph.create_tracker()
 
     handler = LDMetricsCallbackHandler({'root-agent'}, {})
     node_run_id = uuid4()
@@ -340,7 +340,7 @@ def test_flush_emits_duration():
     """flush() calls track_duration when duration was recorded."""
     mock_ld_client = MagicMock()
     graph = _make_graph(mock_ld_client)
-    tracker = graph.get_tracker()
+    tracker = graph.create_tracker()
 
     handler = LDMetricsCallbackHandler({'root-agent'}, {})
     run_id = uuid4()
@@ -356,7 +356,7 @@ def test_flush_emits_tool_calls():
     """flush() calls track_tool_call for each recorded tool invocation."""
     mock_ld_client = MagicMock()
     graph = _make_graph(mock_ld_client)
-    tracker = graph.get_tracker()
+    tracker = graph.create_tracker()
 
     handler = LDMetricsCallbackHandler({'root-agent'}, {'fn_search': 'search'})
     # The agent node must be started first so it appears in the path for flush()
@@ -378,7 +378,7 @@ def test_flush_includes_graph_key_in_node_events():
     """flush() passes graph_key to the node tracker so graphKey appears in events."""
     mock_ld_client = MagicMock()
     graph = _make_graph(mock_ld_client, graph_key='my-graph')
-    tracker = graph.get_tracker()
+    tracker = graph.create_tracker()
 
     handler = LDMetricsCallbackHandler({'root-agent'}, {})
     node_run_id = uuid4()
@@ -425,7 +425,7 @@ def test_flush_with_no_graph_key_on_node_tracker():
         nodes=nodes,
         context=context,
         enabled=True,
-        tracker=None,
+        create_tracker=lambda: None,
     )
 
     handler = LDMetricsCallbackHandler({'root-agent'}, {})
@@ -443,7 +443,7 @@ def test_flush_skips_nodes_not_in_path():
     """flush() only emits events for nodes that were actually executed."""
     mock_ld_client = MagicMock()
     graph = _make_graph(mock_ld_client)
-    tracker = graph.get_tracker()
+    tracker = graph.create_tracker()
 
     # Handler with 'root-agent' in node_keys but never started
     handler = LDMetricsCallbackHandler({'root-agent'}, {})
@@ -475,7 +475,7 @@ def test_flush_skips_node_without_tracker():
         nodes=nodes,
         context=context,
         enabled=True,
-        tracker=None,
+        create_tracker=lambda: None,
     )
 
     handler = LDMetricsCallbackHandler({'no-track'}, {})
