@@ -54,7 +54,7 @@ class AgentGraphDefinition:
         nodes: Dict[str, AgentGraphNode],
         context: Context,
         enabled: bool,
-        create_tracker: Callable[[], AIGraphTracker] = lambda: None,
+        create_tracker: Optional[Callable[[], AIGraphTracker]] = None,
     ):
         self._agent_graph = agent_graph
         self._context = context

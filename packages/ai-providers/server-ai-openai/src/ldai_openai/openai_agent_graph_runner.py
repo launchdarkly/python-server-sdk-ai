@@ -70,7 +70,7 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
         :param input: The string prompt to send to the agent graph
         :return: AgentGraphResult with the final output and metrics
         """
-        tracker = self._graph.create_tracker()
+        tracker = self._graph.create_tracker() if self._graph.create_tracker is not None else None
         path: List[str] = []
         root_node = self._graph.root()
         root_key = root_node.get_key() if root_node else ''
