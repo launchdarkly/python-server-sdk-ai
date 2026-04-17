@@ -14,13 +14,15 @@ def _make_graph(enabled: bool = True) -> AgentGraphDefinition:
     """Build a minimal single-node AgentGraphDefinition for testing."""
     node_tracker = MagicMock()
     graph_tracker = MagicMock()
+    node_factory = MagicMock(return_value=node_tracker)
+    graph_factory = MagicMock(return_value=graph_tracker)
     root_config = AIAgentConfig(
         key='root-agent',
         enabled=enabled,
         model=ModelConfig(name='gpt-4'),
         provider=ProviderConfig(name='openai'),
         instructions='You are a helpful assistant.',
-        create_tracker=lambda: node_tracker,
+        create_tracker=node_factory,
     )
     graph_config = AIAgentGraphConfig(
         key='test-graph',
@@ -34,7 +36,7 @@ def _make_graph(enabled: bool = True) -> AgentGraphDefinition:
         nodes=nodes,
         context=MagicMock(),
         enabled=enabled,
-        create_tracker=lambda: graph_tracker,
+        create_tracker=graph_factory,
     )
 
 
@@ -83,7 +85,7 @@ async def test_openai_agent_graph_runner_run_raises_when_agents_not_installed():
 @pytest.mark.asyncio
 async def test_openai_agent_graph_runner_run_tracks_invocation_failure_on_exception():
     graph = _make_graph()
-    tracker = graph.create_tracker()
+    tracker = graph.create_tracker.return_value
     runner = OpenAIAgentGraphRunner(graph, {})
 
     with patch.dict('sys.modules', {'agents': None}):
@@ -97,7 +99,7 @@ async def test_openai_agent_graph_runner_run_tracks_invocation_failure_on_except
 @pytest.mark.asyncio
 async def test_openai_agent_graph_runner_run_success():
     graph = _make_graph()
-    tracker = graph.create_tracker()
+    tracker = graph.create_tracker.return_value
 
     mock_result = MagicMock()
     mock_result.final_output = "agent answer"
@@ -140,8 +142,19 @@ async def test_openai_agent_graph_runner_run_success():
 
     # The runner caches one tracker per node — verify it is the same instance
     # returned by create_tracker() and that all tracking calls hit it.
+    node_factory = graph.get_node('root-agent').get_config().create_tracker
+
+    # The runner caches one tracker per node — verify it is the same instance
+    # returned by create_tracker and that all tracking calls hit it.
     cached = runner._node_trackers['root-agent']
-    assert cached is graph.get_node('root-agent').get_config().create_tracker()
+    assert cached is node_factory.return_value
     cached.track_duration.assert_called_once()
     cached.track_tokens.assert_called_once()
     cached.track_success.assert_called_once()
+
+    # Graph-level create_tracker is called exactly once per run (not twice)
+    # so that handoff callbacks and run() share the same tracker instance.
+    graph.create_tracker.assert_called_once()
+
+    # Node-level create_tracker is called exactly once per node.
+    node_factory.assert_called_once()

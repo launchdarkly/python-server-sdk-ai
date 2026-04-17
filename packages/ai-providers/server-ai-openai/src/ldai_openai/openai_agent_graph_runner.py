@@ -81,7 +81,7 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
         state = _RunState(last_handoff_ns=start_ns, last_node_key=root_key)
         try:
             from agents import Runner
-            root_agent = self._build_agents(path, state)
+            root_agent = self._build_agents(path, state, tracker)
             result = await Runner.run(root_agent, str(input))
             self._flush_final_segment(state, result)
             self._track_tool_calls(result)
@@ -119,7 +119,9 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
                 metrics=LDAIMetrics(success=False),
             )
 
-    def _build_agents(self, path: List[str], state: _RunState) -> Any:
+    def _build_agents(
+        self, path: List[str], state: _RunState, tracker: Any
+    ) -> Any:
         """
         Build the agent tree from the graph definition via reverse_traverse.
 
@@ -128,6 +130,7 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
 
         :param path: Mutable list to accumulate the execution path
         :param state: Shared run state for tracking handoff timing and last node
+        :param tracker: Graph-level tracker shared across the entire run
         :return: The root Agent instance
         """
         try:
@@ -143,7 +146,6 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
                 "Install it with: pip install openai-agents"
             ) from exc
 
-        tracker = self._graph.create_tracker()
         name_map: Dict[str, str] = {}
         tool_name_map: Dict[str, str] = {}
         node_trackers: Dict[str, Any] = {}
