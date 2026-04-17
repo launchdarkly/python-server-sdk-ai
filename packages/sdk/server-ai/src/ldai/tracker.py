@@ -1,6 +1,5 @@
 import base64
 import json
-import logging
 import time
 from dataclasses import dataclass
 from enum import Enum
@@ -8,7 +7,7 @@ from typing import Any, Callable, Dict, Iterable, List, Optional
 
 from ldclient import Context, LDClient
 
-logger = logging.getLogger(__name__)
+from ldai import log
 
 
 class FeedbackKind(Enum):
@@ -201,7 +200,7 @@ class LDAIConfigTracker:
         :param duration: Duration in milliseconds.
         """
         if self._summary.duration is not None:
-            logger.warning("Duration has already been tracked for this execution. %s", self.__get_track_data())
+            log.warning("Duration has already been tracked for this execution. %s", self.__get_track_data())
             return
         self._summary._duration = duration
         self._ld_client.track(
@@ -215,7 +214,7 @@ class LDAIConfigTracker:
         :param time_to_first_token: Time to first token in milliseconds.
         """
         if self._summary.time_to_first_token is not None:
-            logger.warning(
+            log.warning(
                 "Time to first token has already been tracked for this execution. %s",
                 self.__get_track_data(),
             )
@@ -346,7 +345,7 @@ class LDAIConfigTracker:
         :param feedback: Dictionary containing feedback kind.
         """
         if self._summary.feedback is not None:
-            logger.warning("Feedback has already been tracked for this execution. %s", self.__get_track_data())
+            log.warning("Feedback has already been tracked for this execution. %s", self.__get_track_data())
             return
         self._summary._feedback = feedback
         if feedback["kind"] == FeedbackKind.Positive:
@@ -369,7 +368,7 @@ class LDAIConfigTracker:
         Track a successful AI generation.
         """
         if self._summary.success is not None:
-            logger.warning("Success has already been tracked for this execution. %s", self.__get_track_data())
+            log.warning("Success has already been tracked for this execution. %s", self.__get_track_data())
             return
         self._summary._success = True
         self._ld_client.track(
@@ -381,7 +380,7 @@ class LDAIConfigTracker:
         Track an unsuccessful AI generation attempt.
         """
         if self._summary.success is not None:
-            logger.warning("Success has already been tracked for this execution. %s", self.__get_track_data())
+            log.warning("Success has already been tracked for this execution. %s", self.__get_track_data())
             return
         self._summary._success = False
         self._ld_client.track(
@@ -450,7 +449,7 @@ class LDAIConfigTracker:
         :param tokens: Token usage data from either custom, OpenAI, or Bedrock sources.
         """
         if self._summary.usage is not None:
-            logger.warning("Tokens have already been tracked for this execution. %s", self.__get_track_data())
+            log.warning("Tokens have already been tracked for this execution. %s", self.__get_track_data())
             return
         self._summary._usage = tokens
         td = self.__get_track_data()
