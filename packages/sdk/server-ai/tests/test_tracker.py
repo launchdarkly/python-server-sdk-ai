@@ -788,7 +788,9 @@ def test_resumption_token_round_trip_with_graph_key(client: LDClient):
     )
 
     token = tracker.resumption_token
-    restored = LDAIConfigTracker.from_resumption_token(token, client, context)
+    result = LDAIConfigTracker.from_resumption_token(token, client, context)
+    assert result.is_success()
+    restored = result.value
 
     assert restored._run_id == "test-run-id"
     assert restored._config_key == "cfg-key"
@@ -829,7 +831,9 @@ def test_client_create_tracker_from_resumption_token():
     token = original.resumption_token
 
     # Reconstruct from token
-    restored = ai_client.create_tracker(token, context)
+    result = ai_client.create_tracker(token, context)
+    assert result.is_success()
+    restored = result.value
 
     # The restored tracker should use the same runId
     restored.track_feedback({"kind": FeedbackKind.Positive})
@@ -851,7 +855,7 @@ def test_client_create_tracker_from_resumption_token():
     assert feedback_calls[0].args[1] == context
 
 
-def test_client_create_tracker_raises_on_invalid_base64():
+def test_client_create_tracker_fails_on_invalid_base64():
     from unittest.mock import Mock
 
     from ldai.client import LDAIClient
@@ -860,11 +864,12 @@ def test_client_create_tracker_raises_on_invalid_base64():
     ai_client = LDAIClient(mock_client)
     context = Context.create("user-key")
 
-    with pytest.raises(ValueError, match="Invalid resumption token"):
-        ai_client.create_tracker("not-valid-base64!!!", context)
+    result = ai_client.create_tracker("not-valid-base64!!!", context)
+    assert not result.is_success()
+    assert "Invalid resumption token" in result.error
 
 
-def test_client_create_tracker_raises_on_missing_fields():
+def test_client_create_tracker_fails_on_missing_fields():
     import base64
     import json
 
@@ -881,11 +886,12 @@ def test_client_create_tracker_raises_on_missing_fields():
         json.dumps({"configKey": "k", "version": 1}).encode()
     ).rstrip(b"=").decode()
 
-    with pytest.raises(ValueError, match="missing required field 'runId'"):
-        ai_client.create_tracker(incomplete, context)
+    result = ai_client.create_tracker(incomplete, context)
+    assert not result.is_success()
+    assert "missing required field 'runId'" in result.error
 
 
-def test_client_create_tracker_raises_on_invalid_json():
+def test_client_create_tracker_fails_on_invalid_json():
     import base64
 
     from unittest.mock import Mock
@@ -898,5 +904,6 @@ def test_client_create_tracker_raises_on_invalid_json():
 
     bad_token = base64.urlsafe_b64encode(b"not json").rstrip(b"=").decode()
 
-    with pytest.raises(ValueError, match="Invalid resumption token"):
-        ai_client.create_tracker(bad_token, context)
+    result = ai_client.create_tracker(bad_token, context)
+    assert not result.is_success()
+    assert "Invalid resumption token" in result.error

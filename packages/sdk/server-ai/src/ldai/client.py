@@ -2,7 +2,7 @@ import uuid
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import chevron
-from ldclient import Context
+from ldclient import Context, Result
 from ldclient.client import LDClient
 
 from ldai import log
@@ -62,7 +62,7 @@ class LDAIClient:
             1,
         )
 
-    def create_tracker(self, token: str, context: Context) -> LDAIConfigTracker:
+    def create_tracker(self, token: str, context: Context) -> Result:
         """
         Reconstruct a tracker from a resumption token.
 
@@ -71,9 +71,9 @@ class LDAIClient:
         :param token: A URL-safe Base64-encoded resumption token obtained from
             :attr:`LDAIConfigTracker.resumption_token`.
         :param context: The context to use for track events.
-        :return: A new :class:`LDAIConfigTracker` bound to the original
-            ``runId`` from the token.
-        :raises ValueError: If the token is invalid or missing required fields.
+        :return: A :class:`Result` whose ``value`` is a new
+            :class:`LDAIConfigTracker` on success, or whose ``error`` describes
+            the problem on failure.
         """
         return LDAIConfigTracker.from_resumption_token(token, self._client, context)
 

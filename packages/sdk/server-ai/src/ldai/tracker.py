@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Callable, Dict, Iterable, List, Optional
 
-from ldclient import Context, LDClient
+from ldclient import Context, LDClient, Result
 
 from ldai import log
 
@@ -132,7 +132,7 @@ class LDAIConfigTracker:
         return base64.urlsafe_b64encode(payload.encode("utf-8")).rstrip(b"=").decode("utf-8")
 
     @classmethod
-    def from_resumption_token(cls, token: str, ld_client: LDClient, context: Context) -> 'LDAIConfigTracker':
+    def from_resumption_token(cls, token: str, ld_client: LDClient, context: Context) -> Result:
         """
         Reconstruct a tracker from a resumption token.
 
@@ -144,9 +144,9 @@ class LDAIConfigTracker:
             :attr:`resumption_token`.
         :param ld_client: LaunchDarkly client instance.
         :param context: The context to use for track events.
-        :return: A new :class:`LDAIConfigTracker` bound to the original
-            ``runId`` from the token.
-        :raises ValueError: If the token is invalid or missing required fields.
+        :return: A :class:`Result` whose ``value`` is a new
+            :class:`LDAIConfigTracker` bound to the original ``runId`` from the
+            token on success, or whose ``error`` describes the problem on failure.
         """
         try:
             padded = token + "=" * (-len(token) % 4)
@@ -154,15 +154,15 @@ class LDAIConfigTracker:
                 base64.urlsafe_b64decode(padded.encode("utf-8")).decode("utf-8")
             )
         except (json.JSONDecodeError, Exception) as e:
-            raise ValueError(f"Invalid resumption token: {e}") from e
+            return Result.fail(f"Invalid resumption token: {e}", e)
 
         for field in ("runId", "configKey", "version"):
             if field not in payload:
-                raise ValueError(
+                return Result.fail(
                     f"Invalid resumption token: missing required field '{field}'"
                 )
 
-        return cls(
+        return Result.success(cls(
             ld_client=ld_client,
             run_id=payload["runId"],
             config_key=payload["configKey"],
@@ -172,7 +172,7 @@ class LDAIConfigTracker:
             model_name="",
             provider_name="",
             graph_key=payload.get("graphKey"),
-        )
+        ))
 
     def __get_track_data(self) -> dict:
         """
