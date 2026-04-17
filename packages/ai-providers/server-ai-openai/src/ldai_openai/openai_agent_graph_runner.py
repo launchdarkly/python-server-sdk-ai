@@ -57,6 +57,7 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
         self._tools = tools
         self._agent_name_map: Dict[str, str] = {}
         self._tool_name_map: Dict[str, str] = {}
+        self._node_trackers: Dict[str, Any] = {}
 
     async def run(self, input: Any) -> AgentGraphResult:
         """
@@ -69,7 +70,7 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
         :param input: The string prompt to send to the agent graph
         :return: AgentGraphResult with the final output and metrics
         """
-        tracker = self._graph.get_tracker()
+        tracker = self._graph.create_tracker() if self._graph.create_tracker is not None else None
         path: List[str] = []
         root_node = self._graph.root()
         root_key = root_node.get_key() if root_node else ''
@@ -80,7 +81,7 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
         state = _RunState(last_handoff_ns=start_ns, last_node_key=root_key)
         try:
             from agents import Runner
-            root_agent = self._build_agents(path, state)
+            root_agent = self._build_agents(path, state, tracker)
             result = await Runner.run(root_agent, str(input))
             self._flush_final_segment(state, result)
             self._track_tool_calls(result)
@@ -118,7 +119,9 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
                 metrics=LDAIMetrics(success=False),
             )
 
-    def _build_agents(self, path: List[str], state: _RunState) -> Any:
+    def _build_agents(
+        self, path: List[str], state: _RunState, tracker: Any
+    ) -> Any:
         """
         Build the agent tree from the graph definition via reverse_traverse.
 
@@ -127,6 +130,7 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
 
         :param path: Mutable list to accumulate the execution path
         :param state: Shared run state for tracking handoff timing and last node
+        :param tracker: Graph-level tracker shared across the entire run
         :return: The root Agent instance
         """
         try:
@@ -142,13 +146,14 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
                 "Install it with: pip install openai-agents"
             ) from exc
 
-        tracker = self._graph.get_tracker()
         name_map: Dict[str, str] = {}
         tool_name_map: Dict[str, str] = {}
+        node_trackers: Dict[str, Any] = {}
 
         def build_node(node: AgentGraphNode, ctx: dict) -> Any:
             node_config = node.get_config()
-            config_tracker = node_config.tracker
+            config_tracker = node_config.create_tracker()
+            node_trackers[node_config.key] = config_tracker
             model = node_config.model
 
             if not model:
@@ -204,6 +209,7 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
         root = self._graph.reverse_traverse(fn=build_node)
         self._agent_name_map = name_map
         self._tool_name_map = tool_name_map
+        self._node_trackers = node_trackers
         return root
 
     def _make_on_handoff(
@@ -263,10 +269,7 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
         """Record duration/tokens for the last active agent (no handoff after it)."""
         if not state.last_node_key:
             return
-        node = self._graph.get_node(state.last_node_key)
-        if node is None:
-            return
-        config_tracker = node.get_config().tracker
+        config_tracker = self._node_trackers.get(state.last_node_key)
         if config_tracker is None:
             return
 
@@ -293,9 +296,6 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
             tool_name = self._tool_name_map.get(tool_fn_name)
             if tool_name is None:
                 continue
-            node = self._graph.get_node(agent_key)
-            if node is None:
-                continue
-            config_tracker = node.get_config().tracker
+            config_tracker = self._node_trackers.get(agent_key)
             if config_tracker is not None:
                 config_tracker.track_tool_call(tool_name)

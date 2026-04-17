@@ -40,6 +40,7 @@ def _make_graph(
         model_name='gpt-4',
         provider_name='openai',
         context=context,
+        run_id='test-run-id',
         graph_key=graph_key,
     )
 
@@ -63,7 +64,7 @@ def _make_graph(
         model=ModelConfig(name='gpt-4', parameters={'tools': tool_defs} if tool_defs else {}),
         provider=ProviderConfig(name='openai'),
         instructions='You are a helpful assistant.',
-        tracker=node_tracker,
+        create_tracker=lambda: node_tracker,
     )
 
     graph_config = AIAgentGraphConfig(
@@ -79,7 +80,7 @@ def _make_graph(
         nodes=nodes,
         context=context,
         enabled=True,
-        tracker=graph_tracker,
+        create_tracker=lambda: graph_tracker,
     )
 
 
@@ -179,6 +180,7 @@ def _make_two_node_graph(mock_ld_client: MagicMock) -> AgentGraphDefinition:
         model_name='gpt-4',
         provider_name='openai',
         context=context,
+        run_id='test-run-id',
         graph_key='two-node-graph',
     )
     child_tracker = LDAIConfigTracker(
@@ -189,6 +191,7 @@ def _make_two_node_graph(mock_ld_client: MagicMock) -> AgentGraphDefinition:
         model_name='gpt-4',
         provider_name='openai',
         context=context,
+        run_id='test-run-id',
         graph_key='two-node-graph',
     )
     graph_tracker = AIGraphTracker(
@@ -205,7 +208,7 @@ def _make_two_node_graph(mock_ld_client: MagicMock) -> AgentGraphDefinition:
         model=ModelConfig(name='gpt-4', parameters={}),
         provider=ProviderConfig(name='openai'),
         instructions='You are root.',
-        tracker=root_tracker,
+        create_tracker=lambda: root_tracker,
     )
     child_config = AIAgentConfig(
         key='child-agent',
@@ -213,7 +216,7 @@ def _make_two_node_graph(mock_ld_client: MagicMock) -> AgentGraphDefinition:
         model=ModelConfig(name='gpt-4', parameters={}),
         provider=ProviderConfig(name='openai'),
         instructions='You are child.',
-        tracker=child_tracker,
+        create_tracker=lambda: child_tracker,
     )
 
     edge = Edge(key='root-to-child', source_config='root-agent', target_config='child-agent')
@@ -233,7 +236,7 @@ def _make_two_node_graph(mock_ld_client: MagicMock) -> AgentGraphDefinition:
         nodes=nodes,
         context=context,
         enabled=True,
-        tracker=graph_tracker,
+        create_tracker=lambda: graph_tracker,
     )
 
 
@@ -354,6 +357,40 @@ async def test_tracks_multiple_tool_calls():
     ev = _events(mock_ld_client)
     tool_keys = [data['toolKey'] for data, _ in ev.get('$ld:ai:tool_call', [])]
     assert sorted(tool_keys) == ['search', 'summarize']
+
+
+@pytest.mark.asyncio
+async def test_same_run_id_across_token_success_and_tool_call_events():
+    """All node-level events for a single execution share the same runId."""
+    mock_ld_client = MagicMock()
+    graph = _make_graph(
+        mock_ld_client, node_key='root-agent', graph_key='g', tool_names=['search']
+    )
+
+    tool_item = _make_tool_call_item('root-agent', 'search')
+    run_result = _make_run_result(
+        output='ok', total_tokens=10, input_tokens=7, output_tokens=3,
+        tool_call_items=[tool_item],
+    )
+
+    with patch.dict('sys.modules', _make_agents_modules(run_result)):
+        runner = OpenAIAgentGraphRunner(graph, _tool_registry('search'))
+        await runner.run('go')
+
+    ev = _events(mock_ld_client)
+
+    # Collect runIds from node-level events
+    run_ids = set()
+    for event_name in (
+        '$ld:ai:tokens:total', '$ld:ai:tokens:input', '$ld:ai:tokens:output',
+        '$ld:ai:generation:success', '$ld:ai:generation:duration', '$ld:ai:tool_call',
+    ):
+        for data, _ in ev.get(event_name, []):
+            if data.get('configKey') == 'root-agent':
+                run_ids.add(data['runId'])
+
+    # All events must share a single runId
+    assert len(run_ids) == 1
 
 
 @pytest.mark.asyncio

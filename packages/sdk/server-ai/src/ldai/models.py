@@ -1,6 +1,6 @@
 import warnings
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Literal, Optional, Union
+from typing import Any, Callable, Dict, List, Literal, Optional, Union
 
 
 @dataclass
@@ -150,14 +150,6 @@ class AIConfigDefault:
     model: Optional[ModelConfig] = None
     provider: Optional[ProviderConfig] = None
 
-    @classmethod
-    def disabled(cls):
-        """
-        Returns a new disabled config default with enabled set to false.
-        When called on a subclass, returns an instance of that subclass.
-        """
-        return cls(enabled=False)
-
     def _base_to_dict(self) -> Dict[str, Any]:
         """
         Render the base config fields as a dictionary object.
@@ -180,7 +172,7 @@ class AIConfig:
     enabled: bool
     model: Optional[ModelConfig] = None
     provider: Optional[ProviderConfig] = None
-    tracker: Optional[Any] = None
+    create_tracker: Callable[[], Any] = lambda: None
 
     def _base_to_dict(self) -> Dict[str, Any]:
         """

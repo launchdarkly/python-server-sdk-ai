@@ -396,8 +396,9 @@ def test_agent_graph_node_trackers_have_graph_key(ldai_client: LDAIClient):
                  graph.get_node("multi-context-agent"),
                  graph.get_node("minimal-agent")]:
         config = node.get_config()
-        assert config.tracker is not None
-        assert config.tracker._graph_key == "test-agent-graph"
+        assert callable(config.create_tracker)
+        tracker = config.create_tracker()
+        assert tracker._graph_key == "test-agent-graph"
 
 
 def test_agent_graph_handoff(ldai_client: LDAIClient):

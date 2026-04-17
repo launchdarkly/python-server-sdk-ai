@@ -1,9 +1,13 @@
+import base64
+import json
 import time
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Callable, Dict, Iterable, List, Optional
 
-from ldclient import Context, LDClient
+from ldclient import Context, LDClient, Result
+
+from ldai import log
 
 
 class FeedbackKind(Enum):
@@ -71,24 +75,26 @@ class LDAIConfigTracker:
     def __init__(
         self,
         ld_client: LDClient,
-        variation_key: str,
+        run_id: str,
         config_key: str,
+        variation_key: str,
         version: int,
+        context: Context,
         model_name: str,
         provider_name: str,
-        context: Context,
         graph_key: Optional[str] = None,
     ):
         """
         Initialize an AI Config tracker.
 
         :param ld_client: LaunchDarkly client instance.
-        :param variation_key: Variation key for tracking.
+        :param run_id: Unique identifier for this execution.
         :param config_key: Configuration key for tracking.
+        :param variation_key: Variation key for tracking.
         :param version: Version of the variation.
+        :param context: Context for evaluation.
         :param model_name: Name of the model used.
         :param provider_name: Name of the provider used.
-        :param context: Context for evaluation.
         :param graph_key: When set, include ``graphKey`` in all event payloads
             (e.g. config-level metrics inside a graph).
         """
@@ -101,6 +107,72 @@ class LDAIConfigTracker:
         self._context = context
         self._graph_key = graph_key
         self._summary = LDAIMetricSummary()
+        self._run_id = run_id
+
+    @property
+    def resumption_token(self) -> str:
+        """
+        A URL-safe Base64-encoded JSON string that can be used to reconstruct
+        a tracker in a different process (e.g. for deferred feedback).
+
+        The token contains ``runId``, ``configKey``, ``version``, and
+        optionally ``variationKey`` and ``graphKey`` (omitted when empty).
+        ``modelName`` and ``providerName`` are **not** included.
+        """
+        data: dict = {
+            "runId": self._run_id,
+            "configKey": self._config_key,
+        }
+        if self._variation_key:
+            data["variationKey"] = self._variation_key
+        data["version"] = self._version
+        if self._graph_key:
+            data["graphKey"] = self._graph_key
+        payload = json.dumps(data)
+        return base64.urlsafe_b64encode(payload.encode("utf-8")).rstrip(b"=").decode("utf-8")
+
+    @classmethod
+    def from_resumption_token(cls, token: str, ld_client: LDClient, context: Context) -> Result:
+        """
+        Reconstruct a tracker from a resumption token.
+
+        This is used for cross-process scenarios such as deferred feedback,
+        where a different service needs to associate tracking events with the
+        original execution's ``runId``.
+
+        :param token: A URL-safe Base64-encoded resumption token obtained from
+            :attr:`resumption_token`.
+        :param ld_client: LaunchDarkly client instance.
+        :param context: The context to use for track events.
+        :return: A :class:`Result` whose ``value`` is a new
+            :class:`LDAIConfigTracker` bound to the original ``runId`` from the
+            token on success, or whose ``error`` describes the problem on failure.
+        """
+        try:
+            padded = token + "=" * (-len(token) % 4)
+            payload = json.loads(
+                base64.urlsafe_b64decode(padded.encode("utf-8")).decode("utf-8")
+            )
+        except (json.JSONDecodeError, Exception) as e:
+            return Result.fail(f"Invalid resumption token: {e}", e)
+
+        for field in ("runId", "configKey", "version"):
+            if field not in payload:
+                return Result.fail(
+                    f"Invalid resumption token: missing required field '{field}'"
+                )
+
+        return Result.success(cls(
+            ld_client=ld_client,
+            run_id=payload["runId"],
+            config_key=payload["configKey"],
+            variation_key=payload.get("variationKey") or "",
+            version=payload["version"],
+            context=context,
+            model_name="",
+            provider_name="",
+            graph_key=payload.get("graphKey"),
+        ))
 
     def __get_track_data(self) -> dict:
         """
@@ -109,12 +181,14 @@ class LDAIConfigTracker:
         :return: Dictionary containing variation and config keys.
         """
         data = {
-            "variationKey": self._variation_key,
+            "runId": self._run_id,
             "configKey": self._config_key,
             "version": self._version,
             "modelName": self._model_name,
             "providerName": self._provider_name,
         }
+        if self._variation_key:
+            data["variationKey"] = self._variation_key
         if self._graph_key is not None:
             data['graphKey'] = self._graph_key
         return data
@@ -125,6 +199,9 @@ class LDAIConfigTracker:
 
         :param duration: Duration in milliseconds.
         """
+        if self._summary.duration is not None:
+            log.warning("Duration has already been tracked for this execution. %s", self.__get_track_data())
+            return
         self._summary._duration = duration
         self._ld_client.track(
             "$ld:ai:duration:total", self._context, self.__get_track_data(), duration
@@ -136,6 +213,12 @@ class LDAIConfigTracker:
 
         :param time_to_first_token: Time to first token in milliseconds.
         """
+        if self._summary.time_to_first_token is not None:
+            log.warning(
+                "Time to first token has already been tracked for this execution. %s",
+                self.__get_track_data(),
+            )
+            return
         self._summary._time_to_first_token = time_to_first_token
         self._ld_client.track(
             "$ld:ai:tokens:ttf",
@@ -261,6 +344,9 @@ class LDAIConfigTracker:
 
         :param feedback: Dictionary containing feedback kind.
         """
+        if self._summary.feedback is not None:
+            log.warning("Feedback has already been tracked for this execution. %s", self.__get_track_data())
+            return
         self._summary._feedback = feedback
         if feedback["kind"] == FeedbackKind.Positive:
             self._ld_client.track(
@@ -281,6 +367,9 @@ class LDAIConfigTracker:
         """
         Track a successful AI generation.
         """
+        if self._summary.success is not None:
+            log.warning("Success has already been tracked for this execution. %s", self.__get_track_data())
+            return
         self._summary._success = True
         self._ld_client.track(
             "$ld:ai:generation:success", self._context, self.__get_track_data(), 1
@@ -290,6 +379,9 @@ class LDAIConfigTracker:
         """
         Track an unsuccessful AI generation attempt.
         """
+        if self._summary.success is not None:
+            log.warning("Success has already been tracked for this execution. %s", self.__get_track_data())
+            return
         self._summary._success = False
         self._ld_client.track(
             "$ld:ai:generation:error", self._context, self.__get_track_data(), 1
@@ -356,6 +448,9 @@ class LDAIConfigTracker:
 
         :param tokens: Token usage data from either custom, OpenAI, or Bedrock sources.
         """
+        if self._summary.usage is not None:
+            log.warning("Tokens have already been tracked for this execution. %s", self.__get_track_data())
+            return
         self._summary._usage = tokens
         td = self.__get_track_data()
         if tokens.total > 0:

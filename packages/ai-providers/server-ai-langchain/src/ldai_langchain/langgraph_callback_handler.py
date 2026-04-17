@@ -200,7 +200,7 @@ class LDMetricsCallbackHandler(BaseCallbackHandler):
             node = graph.get_node(node_key)
             if not node:
                 continue
-            config_tracker = node.get_config().tracker
+            config_tracker = node.get_config().create_tracker()
             if not config_tracker:
                 continue
 

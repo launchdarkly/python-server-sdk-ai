@@ -536,7 +536,6 @@ class TestBuildTools:
             ),
             provider=ProviderConfig(name='openai'),
             instructions='',
-            tracker=MagicMock(),
         )
         tools = build_structured_tools(cfg, {'my_tool': sync_tool})
         assert len(tools) == 1
@@ -559,7 +558,6 @@ class TestBuildTools:
             ),
             provider=ProviderConfig(name='openai'),
             instructions='',
-            tracker=MagicMock(),
         )
         tools = build_structured_tools(cfg, {'my_tool': async_tool})
         assert len(tools) == 1
