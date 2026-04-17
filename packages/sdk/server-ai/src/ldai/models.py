@@ -150,14 +150,6 @@ class AIConfigDefault:
     model: Optional[ModelConfig] = None
     provider: Optional[ProviderConfig] = None
 
-    @classmethod
-    def disabled(cls):
-        """
-        Returns a new disabled config default with enabled set to false.
-        When called on a subclass, returns an instance of that subclass.
-        """
-        return cls(enabled=False)
-
     def _base_to_dict(self) -> Dict[str, Any]:
         """
         Render the base config fields as a dictionary object.

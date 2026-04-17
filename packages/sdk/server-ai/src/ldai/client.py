@@ -45,6 +45,10 @@ _TRACK_USAGE_JUDGE_CONFIG = '$ld:ai:usage:judge-config'
 
 _INIT_TRACK_CONTEXT = Context.builder('ld-internal-tracking').kind('ld_ai').anonymous(True).build()
 
+_DISABLED_COMPLETION_DEFAULT = AICompletionConfigDefault(enabled=False)
+_DISABLED_AGENT_DEFAULT = AIAgentConfigDefault(enabled=False)
+_DISABLED_JUDGE_DEFAULT = AIJudgeConfigDefault(enabled=False)
+
 
 class LDAIClient:
     """The LaunchDarkly AI SDK client object."""
@@ -121,7 +125,7 @@ class LDAIClient:
         self._client.track(_TRACK_USAGE_COMPLETION_CONFIG, context, key, 1)
 
         return self._completion_config(
-            key, context, default or AICompletionConfigDefault.disabled(), variables
+            key, context, default or _DISABLED_COMPLETION_DEFAULT, variables
         )
 
     def config(
@@ -205,7 +209,7 @@ class LDAIClient:
         self._client.track(_TRACK_USAGE_JUDGE_CONFIG, context, key, 1)
 
         return self._judge_config(
-            key, context, default or AIJudgeConfigDefault.disabled(), variables
+            key, context, default or _DISABLED_JUDGE_DEFAULT, variables
         )
 
     async def create_judge(
@@ -263,7 +267,7 @@ class LDAIClient:
             extended_variables['response_to_evaluate'] = '{{response_to_evaluate}}'
 
             judge_config = self._judge_config(
-                key, context, default or AIJudgeConfigDefault.disabled(), extended_variables
+                key, context, default or _DISABLED_JUDGE_DEFAULT, extended_variables
             )
 
             if not judge_config.enabled:
@@ -361,7 +365,7 @@ class LDAIClient:
         """
         self._client.track(_TRACK_USAGE_CREATE_MODEL, context, key, 1)
         log.debug(f"Creating managed model for key: {key}")
-        config = self._completion_config(key, context, default or AICompletionConfigDefault.disabled(), variables)
+        config = self._completion_config(key, context, default or _DISABLED_COMPLETION_DEFAULT, variables)
 
         if not config.enabled:
             return None
@@ -444,7 +448,7 @@ class LDAIClient:
         """
         self._client.track(_TRACK_USAGE_CREATE_AGENT, context, key, 1)
         log.debug(f"Creating managed agent for key: {key}")
-        config = self.__evaluate_agent(key, context, default or AIAgentConfigDefault.disabled(), variables)
+        config = self.__evaluate_agent(key, context, default or _DISABLED_AGENT_DEFAULT, variables)
 
         if not config.enabled:
             return None
@@ -501,7 +505,7 @@ class LDAIClient:
         )
 
         return self.__evaluate_agent(
-            key, context, default or AIAgentConfigDefault.disabled(), variables
+            key, context, default or _DISABLED_AGENT_DEFAULT, variables
         )
 
     def agent(
@@ -575,7 +579,7 @@ class LDAIClient:
             agent = self.__evaluate_agent(
                 config.key,
                 context,
-                config.default or AIAgentConfigDefault.disabled(),
+                config.default or _DISABLED_AGENT_DEFAULT,
                 config.variables
             )
             result[config.key] = agent

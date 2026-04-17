@@ -4,7 +4,7 @@ from ldclient.integrations.test_data import TestData
 
 from ldai import LDAIClient, LDMessage, ModelConfig
 from ldai.models import (AIAgentConfigDefault, AICompletionConfigDefault,
-                         AIConfigDefault, AIJudgeConfigDefault)
+                         AIJudgeConfigDefault)
 
 
 @pytest.fixture
@@ -352,46 +352,6 @@ def test_sdk_info_tracked_on_init():
         },
         1,
     )
-
-
-# ============================================================================
-# disabled() classmethod tests
-# ============================================================================
-
-def test_ai_config_default_disabled_returns_disabled_instance():
-    result = AIConfigDefault.disabled()
-    assert isinstance(result, AIConfigDefault)
-    assert result.enabled is False
-
-
-def test_completion_config_default_disabled_returns_correct_type():
-    result = AICompletionConfigDefault.disabled()
-    assert isinstance(result, AICompletionConfigDefault)
-    assert result.enabled is False
-    assert result.messages is None
-    assert result.model is None
-
-
-def test_agent_config_default_disabled_returns_correct_type():
-    result = AIAgentConfigDefault.disabled()
-    assert isinstance(result, AIAgentConfigDefault)
-    assert result.enabled is False
-    assert result.instructions is None
-    assert result.model is None
-
-
-def test_judge_config_default_disabled_returns_correct_type():
-    result = AIJudgeConfigDefault.disabled()
-    assert isinstance(result, AIJudgeConfigDefault)
-    assert result.enabled is False
-    assert result.messages is None
-    assert result.evaluation_metric_key is None
-
-
-def test_disabled_returns_new_instance_each_call():
-    first = AICompletionConfigDefault.disabled()
-    second = AICompletionConfigDefault.disabled()
-    assert first is not second
 
 
 # ============================================================================
