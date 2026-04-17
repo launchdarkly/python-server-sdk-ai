@@ -357,7 +357,6 @@ class OptimizationClient:
             )
             return JudgeResult(score=0.0, rationale=None)
 
-
     async def _call_judges(
         self,
         completion_response: str,
@@ -1929,7 +1928,9 @@ class OptimizationClient:
         model_name = optimize_context.current_model or ""
         model_config_key = model_name  # fallback if lookup fails
         try:
-            configs_to_search = model_configs if model_configs is not None else api_client.get_model_configs(project_key)
+            configs_to_search = (
+                model_configs if model_configs is not None else api_client.get_model_configs(project_key)
+            )
             match = _find_model_config(model_name, configs_to_search)
             if match:
                 model_config_key = match["key"]
