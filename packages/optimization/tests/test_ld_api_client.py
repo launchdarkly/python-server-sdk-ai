@@ -11,9 +11,9 @@ import pytest
 
 from ldai_optimization.ld_api_client import (
     AgentOptimizationConfig,
+    AgentOptimizationResultPost as OptimizationResultPayload,
     LDApiClient,
     LDApiError,
-    OptimizationResultPayload,
     _parse_agent_optimization,
 )
 

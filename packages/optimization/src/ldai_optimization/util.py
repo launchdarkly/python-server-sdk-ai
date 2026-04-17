@@ -4,7 +4,7 @@ import inspect
 import json
 import logging
 import re
-from typing import Any, Awaitable, Dict, List, Optional, Tuple, Union
+from typing import Any, Awaitable, Dict, List, Optional, Tuple, TypeVar, Union
 
 from ldai_optimization.dataclasses import ToolDefinition
 
@@ -156,18 +156,19 @@ def restore_variable_placeholders(
     return text, warnings
 
 
-async def await_if_needed(
-    result: Union[str, Awaitable[str]]
-) -> str:
+_T = TypeVar("_T")
+
+
+async def await_if_needed(result: Union[_T, Awaitable[_T]]) -> _T:
     """
     Handle both sync and async callable results.
 
-    :param result: Either a string or an awaitable that returns a string
-    :return: The string result
+    :param result: Either a value or an awaitable that returns a value
+    :return: The resolved value
     """
-    if isinstance(result, str):
-        return result
-    return await result
+    if inspect.isawaitable(result):
+        return await result  # type: ignore[return-value]
+    return result  # type: ignore[return-value]
 
 
 def create_evaluation_tool() -> ToolDefinition:

@@ -119,6 +119,7 @@ class LLMCallConfig(Protocol):
             key: str,
             config: LLMCallConfig,
             context: LLMCallContext,
+            is_evaluation: bool,
         ) -> OptimizationResponse:
             model_name = config.model.name if config.model else "gpt-4o"
             instructions = config.instructions or ""
@@ -132,9 +133,12 @@ class LLMCallConfig(Protocol):
         )
     """
 
-    key: str
-    model: Optional[ModelConfig]
-    instructions: Optional[str]
+    @property
+    def key(self) -> str: ...
+    @property
+    def model(self) -> Optional[ModelConfig]: ...
+    @property
+    def instructions(self) -> Optional[str]: ...
 
 
 class LLMCallContext(Protocol):
@@ -144,8 +148,10 @@ class LLMCallContext(Protocol):
     ``handle_agent_call`` and ``handle_judge_call``.
     """
 
-    user_input: Optional[str]
-    current_variables: Dict[str, Any]
+    @property
+    def user_input(self) -> Optional[str]: ...
+    @property
+    def current_variables(self) -> Dict[str, Any]: ...
 
 
 @dataclass
