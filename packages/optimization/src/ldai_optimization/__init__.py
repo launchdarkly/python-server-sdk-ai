@@ -3,11 +3,42 @@
 This package will provide helpers to run selected tools against the LaunchDarkly API from SDK-based workflows.
 """
 
-from ldai_optimization.client import ApiAgentOptimizationClient
+from ldai.tracker import TokenUsage
+
+from ldai_optimization.client import OptimizationClient
+from ldai_optimization.dataclasses import (
+    AIJudgeCallConfig,
+    GroundTruthOptimizationOptions,
+    GroundTruthSample,
+    LLMCallConfig,
+    LLMCallContext,
+    OptimizationContext,
+    OptimizationFromConfigOptions,
+    OptimizationJudge,
+    OptimizationJudgeContext,
+    OptimizationOptions,
+    OptimizationResponse,
+    ToolDefinition,
+)
+from ldai_optimization.ld_api_client import LDApiError
 
 __version__ = "0.1.0"  # x-release-please-version
 
 __all__ = [
     '__version__',
-    'ApiAgentOptimizationClient',
+    'AIJudgeCallConfig',
+    'GroundTruthOptimizationOptions',
+    'GroundTruthSample',
+    'LDApiError',
+    'LLMCallConfig',
+    'LLMCallContext',
+    'OptimizationClient',
+    'OptimizationContext',
+    'OptimizationFromConfigOptions',
+    'OptimizationJudge',
+    'OptimizationJudgeContext',
+    'OptimizationOptions',
+    'OptimizationResponse',
+    'TokenUsage',
+    'ToolDefinition',
 ]
