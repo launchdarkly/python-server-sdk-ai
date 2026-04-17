@@ -138,7 +138,10 @@ async def test_openai_agent_graph_runner_run_success():
     tracker.track_path.assert_called_once()
     tracker.track_latency.assert_called_once()
 
-    root_tracker = graph.get_node('root-agent').get_config().create_tracker()
-    root_tracker.track_duration.assert_called_once()
-    root_tracker.track_tokens.assert_called_once()
-    root_tracker.track_success.assert_called_once()
+    # The runner caches one tracker per node — verify it is the same instance
+    # returned by create_tracker() and that all tracking calls hit it.
+    cached = runner._node_trackers['root-agent']
+    assert cached is graph.get_node('root-agent').get_config().create_tracker()
+    cached.track_duration.assert_called_once()
+    cached.track_tokens.assert_called_once()
+    cached.track_success.assert_called_once()
