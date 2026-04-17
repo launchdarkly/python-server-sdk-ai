@@ -55,7 +55,6 @@ class TestManagedAgentRun:
     async def test_run_delegates_to_agent_runner(self):
         """Should delegate run() to the underlying AgentRunner."""
         mock_config = MagicMock(spec=AIAgentConfig)
-        mock_config.create_tracker = None  # fall back to passed tracker
         mock_tracker = MagicMock()
         mock_tracker.track_metrics_of_async = AsyncMock(
             return_value=AgentResult(
@@ -64,6 +63,7 @@ class TestManagedAgentRun:
                 metrics=LDAIMetrics(success=True, usage=None),
             )
         )
+        mock_config.create_tracker = MagicMock(return_value=mock_tracker)
         mock_runner = MagicMock()
         mock_runner.run = AsyncMock(
             return_value=AgentResult(

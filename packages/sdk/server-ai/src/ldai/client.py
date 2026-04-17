@@ -96,7 +96,7 @@ class LDAIClient:
             messages=messages,
             provider=provider,
             tracker=tracker,
-            create_tracker=tracker_factory if enabled else None,
+            create_tracker=tracker_factory,
             judge_configuration=judge_configuration,
         )
 
@@ -182,7 +182,7 @@ class LDAIClient:
             messages=messages,
             provider=provider,
             tracker=tracker,
-            create_tracker=tracker_factory if enabled else None,
+            create_tracker=tracker_factory,
         )
 
         return config
@@ -268,7 +268,7 @@ class LDAIClient:
                 key, context, default or AIJudgeConfigDefault.disabled(), extended_variables
             )
 
-            if not judge_config.enabled or not judge_config.create_tracker:
+            if not judge_config.enabled:
                 return None
 
             provider = RunnerFactory.create_model(judge_config, default_ai_provider)
@@ -365,7 +365,7 @@ class LDAIClient:
         log.debug(f"Creating managed model for key: {key}")
         config = self._completion_config(key, context, default or AICompletionConfigDefault.disabled(), variables)
 
-        if not config.enabled or not config.create_tracker:
+        if not config.enabled:
             return None
 
         runner = RunnerFactory.create_model(config, default_ai_provider)
@@ -448,7 +448,7 @@ class LDAIClient:
         log.debug(f"Creating managed agent for key: {key}")
         config = self.__evaluate_agent(key, context, default or AIAgentConfigDefault.disabled(), variables)
 
-        if not config.enabled or not config.create_tracker:
+        if not config.enabled:
             return None
 
         runner = RunnerFactory.create_agent(config, tools or {}, default_ai_provider)
@@ -901,7 +901,7 @@ class LDAIClient:
             provider=provider or default.provider,
             instructions=final_instructions,
             tracker=tracker,
-            create_tracker=tracker_factory if enabled else None,
+            create_tracker=tracker_factory,
             judge_configuration=judge_configuration or default.judge_configuration,
         )
 

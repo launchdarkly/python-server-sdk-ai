@@ -42,7 +42,7 @@ class ManagedModel:
         :param prompt: The user prompt to send to the model
         :return: ModelResponse containing the model's response and metrics
         """
-        tracker = self._ai_config.create_tracker() if self._ai_config.create_tracker else self._tracker
+        tracker = self._ai_config.create_tracker()
 
         user_message = LDMessage(role='user', content=prompt)
         self._messages.append(user_message)

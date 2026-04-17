@@ -425,14 +425,16 @@ def test_enabled_config_has_create_tracker(ldai_client: LDAIClient):
     assert callable(config.create_tracker)
 
 
-def test_disabled_config_has_no_create_tracker(ldai_client: LDAIClient):
+def test_disabled_config_has_working_create_tracker(ldai_client: LDAIClient):
     context = Context.create('user-key')
     default = AICompletionConfigDefault(enabled=False, model=ModelConfig('fake-model'), messages=[])
 
     config = ldai_client.completion_config('off-config', context, default)
 
     assert config.enabled is False
-    assert config.create_tracker is None
+    assert callable(config.create_tracker)
+    tracker = config.create_tracker()
+    assert tracker is not None
 
 
 def test_create_tracker_returns_new_tracker_each_call(ldai_client: LDAIClient):
