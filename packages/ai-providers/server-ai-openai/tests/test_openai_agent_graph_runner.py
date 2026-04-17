@@ -12,13 +12,14 @@ from ldai_openai.openai_runner_factory import OpenAIRunnerFactory
 
 def _make_graph(enabled: bool = True) -> AgentGraphDefinition:
     """Build a minimal single-node AgentGraphDefinition for testing."""
+    node_tracker = MagicMock()
     root_config = AIAgentConfig(
         key='root-agent',
         enabled=enabled,
         model=ModelConfig(name='gpt-4'),
         provider=ProviderConfig(name='openai'),
         instructions='You are a helpful assistant.',
-        tracker=MagicMock(),
+        create_tracker=lambda: node_tracker,
     )
     graph_config = AIAgentGraphConfig(
         key='test-graph',
@@ -136,7 +137,7 @@ async def test_openai_agent_graph_runner_run_success():
     tracker.track_path.assert_called_once()
     tracker.track_latency.assert_called_once()
 
-    root_tracker = graph.get_node('root-agent').get_config().tracker
+    root_tracker = graph.get_node('root-agent').get_config().create_tracker()
     root_tracker.track_duration.assert_called_once()
     root_tracker.track_tokens.assert_called_once()
     root_tracker.track_success.assert_called_once()

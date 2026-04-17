@@ -64,7 +64,7 @@ def _make_graph(
         model=ModelConfig(name='gpt-4', parameters={'tools': tool_defs} if tool_defs else {}),
         provider=ProviderConfig(name='openai'),
         instructions='You are a helpful assistant.',
-        tracker=node_tracker,
+        create_tracker=lambda: node_tracker,
     )
 
     graph_config = AIAgentGraphConfig(
@@ -208,7 +208,7 @@ def _make_two_node_graph(mock_ld_client: MagicMock) -> AgentGraphDefinition:
         model=ModelConfig(name='gpt-4', parameters={}),
         provider=ProviderConfig(name='openai'),
         instructions='You are root.',
-        tracker=root_tracker,
+        create_tracker=lambda: root_tracker,
     )
     child_config = AIAgentConfig(
         key='child-agent',
@@ -216,7 +216,7 @@ def _make_two_node_graph(mock_ld_client: MagicMock) -> AgentGraphDefinition:
         model=ModelConfig(name='gpt-4', parameters={}),
         provider=ProviderConfig(name='openai'),
         instructions='You are child.',
-        tracker=child_tracker,
+        create_tracker=lambda: child_tracker,
     )
 
     edge = Edge(key='root-to-child', source_config='root-agent', target_config='child-agent')

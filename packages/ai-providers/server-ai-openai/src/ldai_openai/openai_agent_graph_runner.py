@@ -148,7 +148,7 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
 
         def build_node(node: AgentGraphNode, ctx: dict) -> Any:
             node_config = node.get_config()
-            config_tracker = node_config.tracker
+            config_tracker = node_config.create_tracker()
             model = node_config.model
 
             if not model:
@@ -266,7 +266,7 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
         node = self._graph.get_node(state.last_node_key)
         if node is None:
             return
-        config_tracker = node.get_config().tracker
+        config_tracker = node.get_config().create_tracker()
         if config_tracker is None:
             return
 
@@ -296,6 +296,6 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
             node = self._graph.get_node(agent_key)
             if node is None:
                 continue
-            config_tracker = node.get_config().tracker
+            config_tracker = node.get_config().create_tracker()
             if config_tracker is not None:
                 config_tracker.track_tool_call(tool_name)

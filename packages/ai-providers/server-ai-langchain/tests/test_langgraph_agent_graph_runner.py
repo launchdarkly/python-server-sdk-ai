@@ -17,7 +17,6 @@ def _make_graph(enabled: bool = True) -> AgentGraphDefinition:
         model=ModelConfig(name='gpt-4'),
         provider=ProviderConfig(name='openai'),
         instructions='You are a helpful assistant.',
-        tracker=MagicMock(),
     )
     graph_config = AIAgentGraphConfig(
         key='test-graph',

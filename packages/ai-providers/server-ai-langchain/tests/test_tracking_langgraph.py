@@ -69,7 +69,7 @@ def _make_graph(
         model=ModelConfig(name='gpt-4', parameters={'tools': tool_defs} if tool_defs else {}),
         provider=ProviderConfig(name='openai'),
         instructions='You are a helpful assistant.',
-        tracker=node_tracker,
+        create_tracker=lambda: node_tracker,
     )
 
     graph_config = AIAgentGraphConfig(
@@ -171,7 +171,7 @@ def _make_two_node_graph(mock_ld_client: MagicMock) -> 'AgentGraphDefinition':
         model=ModelConfig(name='gpt-4', parameters={}),
         provider=ProviderConfig(name='openai'),
         instructions='You are root.',
-        tracker=root_tracker,
+        create_tracker=lambda: root_tracker,
     )
     child_config = AIAgentConfig(
         key='child-agent',
@@ -179,7 +179,7 @@ def _make_two_node_graph(mock_ld_client: MagicMock) -> 'AgentGraphDefinition':
         model=ModelConfig(name='gpt-4', parameters={}),
         provider=ProviderConfig(name='openai'),
         instructions='You are child.',
-        tracker=child_tracker,
+        create_tracker=lambda: child_tracker,
     )
 
     edge = Edge(key='root-to-child', source_config='root-agent', target_config='child-agent')
@@ -517,6 +517,7 @@ def _make_multi_child_graph(mock_ld_client: MagicMock) -> 'AgentGraphDefinition'
     def _node_tracker(key: str) -> LDAIConfigTracker:
         return LDAIConfigTracker(
             ld_client=mock_ld_client,
+            run_id='test-run-id',
             variation_key='test-variation',
             config_key=key,
             version=1,
@@ -541,7 +542,7 @@ def _make_multi_child_graph(mock_ld_client: MagicMock) -> 'AgentGraphDefinition'
             model=ModelConfig(name='gpt-4', parameters={}),
             provider=ProviderConfig(name='openai'),
             instructions='Route to the appropriate specialist agent.',
-            tracker=_node_tracker('orchestrator'),
+            create_tracker=lambda: _node_tracker('orchestrator'),
         ),
         'agent-a': AIAgentConfig(
             key='agent-a',
@@ -549,7 +550,7 @@ def _make_multi_child_graph(mock_ld_client: MagicMock) -> 'AgentGraphDefinition'
             model=ModelConfig(name='gpt-4', parameters={}),
             provider=ProviderConfig(name='openai'),
             instructions='You handle topic A.',
-            tracker=_node_tracker('agent-a'),
+            create_tracker=lambda: _node_tracker('agent-a'),
         ),
         'agent-b': AIAgentConfig(
             key='agent-b',
@@ -557,7 +558,7 @@ def _make_multi_child_graph(mock_ld_client: MagicMock) -> 'AgentGraphDefinition'
             model=ModelConfig(name='gpt-4', parameters={}),
             provider=ProviderConfig(name='openai'),
             instructions='You handle topic B.',
-            tracker=_node_tracker('agent-b'),
+            create_tracker=lambda: _node_tracker('agent-b'),
         ),
     }
 
@@ -628,6 +629,7 @@ def _make_multi_child_graph_with_tools(mock_ld_client: MagicMock, tool_names: li
     def _node_tracker(key: str) -> LDAIConfigTracker:
         return LDAIConfigTracker(
             ld_client=mock_ld_client,
+            run_id='test-run-id',
             variation_key='test-variation',
             config_key=key,
             version=1,
@@ -653,7 +655,7 @@ def _make_multi_child_graph_with_tools(mock_ld_client: MagicMock, tool_names: li
             model=ModelConfig(name='gpt-4', parameters={'tools': tool_defs}),
             provider=ProviderConfig(name='openai'),
             instructions='Route to a specialist after gathering info.',
-            tracker=_node_tracker('orchestrator'),
+            create_tracker=lambda: _node_tracker('orchestrator'),
         ),
         'agent-a': AIAgentConfig(
             key='agent-a',
@@ -661,7 +663,7 @@ def _make_multi_child_graph_with_tools(mock_ld_client: MagicMock, tool_names: li
             model=ModelConfig(name='gpt-4', parameters={}),
             provider=ProviderConfig(name='openai'),
             instructions='You handle topic A.',
-            tracker=_node_tracker('agent-a'),
+            create_tracker=lambda: _node_tracker('agent-a'),
         ),
         'agent-b': AIAgentConfig(
             key='agent-b',
@@ -669,7 +671,7 @@ def _make_multi_child_graph_with_tools(mock_ld_client: MagicMock, tool_names: li
             model=ModelConfig(name='gpt-4', parameters={}),
             provider=ProviderConfig(name='openai'),
             instructions='You handle topic B.',
-            tracker=_node_tracker('agent-b'),
+            create_tracker=lambda: _node_tracker('agent-b'),
         ),
     }
 

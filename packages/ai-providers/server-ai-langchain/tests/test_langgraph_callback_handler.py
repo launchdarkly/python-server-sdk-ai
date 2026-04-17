@@ -51,7 +51,7 @@ def _make_graph(mock_ld_client: MagicMock, node_key: str = 'root-agent', graph_k
         model=ModelConfig(name='gpt-4', parameters={}),
         provider=ProviderConfig(name='openai'),
         instructions='Be helpful.',
-        tracker=node_tracker,
+        create_tracker=lambda: node_tracker,
     )
     graph_config = AIAgentGraphConfig(
         key=graph_key,
@@ -411,7 +411,7 @@ def test_flush_with_no_graph_key_on_node_tracker():
         model=ModelConfig(name='gpt-4', parameters={}),
         provider=ProviderConfig(name='openai'),
         instructions='Be helpful.',
-        tracker=node_tracker,
+        create_tracker=lambda: node_tracker,
     )
     graph_config = AIAgentGraphConfig(
         key='test-graph',
@@ -465,7 +465,6 @@ def test_flush_skips_node_without_tracker():
         model=ModelConfig(name='gpt-4', parameters={}),
         provider=ProviderConfig(name='openai'),
         instructions='',
-        tracker=None,
     )
     graph_config = AIAgentGraphConfig(
         key='g', root_config_key='no-track', edges=[], enabled=True
