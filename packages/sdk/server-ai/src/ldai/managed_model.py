@@ -13,20 +13,18 @@ class ManagedModel:
     """
     LaunchDarkly managed wrapper for AI model invocations.
 
-    Holds a ModelRunner and an LDAIConfigTracker. Handles conversation
-    management, judge evaluation dispatch, and tracking automatically.
+    Holds a ModelRunner. Handles conversation management, judge evaluation
+    dispatch, and tracking automatically via ``create_tracker()``.
     Obtain an instance via ``LDAIClient.create_model()``.
     """
 
     def __init__(
         self,
         ai_config: AICompletionConfig,
-        tracker: LDAIConfigTracker,
         model_runner: ModelRunner,
         judges: Optional[Dict[str, Judge]] = None,
     ):
         self._ai_config = ai_config
-        self._tracker = tracker
         self._model_runner = model_runner
         self._judges = judges or {}
         self._messages: List[LDMessage] = []
@@ -118,10 +116,6 @@ class ManagedModel:
     def get_config(self) -> AICompletionConfig:
         """Return the AI completion config."""
         return self._ai_config
-
-    def get_tracker(self) -> LDAIConfigTracker:
-        """Return the config tracker."""
-        return self._tracker
 
     def get_judges(self) -> Dict[str, Judge]:
         """Return the judges associated with this model."""

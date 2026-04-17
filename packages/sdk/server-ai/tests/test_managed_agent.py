@@ -73,15 +73,16 @@ class TestManagedAgentRun:
             )
         )
 
-        agent = ManagedAgent(mock_config, mock_tracker, mock_runner)
+        agent = ManagedAgent(mock_config, mock_runner)
         result = await agent.run("Hello")
 
         assert result.output == "Test response"
         assert result.metrics.success is True
+        mock_config.create_tracker.assert_called_once()
         mock_tracker.track_metrics_of_async.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_run_uses_create_tracker_when_available(self):
+    async def test_run_uses_create_tracker_for_fresh_tracker(self):
         """Should use create_tracker() factory for a fresh tracker per invocation."""
         mock_config = MagicMock(spec=AIAgentConfig)
         fresh_tracker = MagicMock()
@@ -94,37 +95,28 @@ class TestManagedAgentRun:
         )
         mock_config.create_tracker = MagicMock(return_value=fresh_tracker)
 
-        old_tracker = MagicMock()
         mock_runner = MagicMock()
 
-        agent = ManagedAgent(mock_config, old_tracker, mock_runner)
+        agent = ManagedAgent(mock_config, mock_runner)
         result = await agent.run("Hello")
 
         assert result.output == "Fresh tracker response"
         mock_config.create_tracker.assert_called_once()
         fresh_tracker.track_metrics_of_async.assert_called_once()
-        old_tracker.track_metrics_of_async.assert_not_called()
 
     def test_get_agent_runner_returns_runner(self):
         """Should return the underlying AgentRunner."""
         mock_runner = MagicMock()
-        agent = ManagedAgent(MagicMock(), MagicMock(), mock_runner)
+        agent = ManagedAgent(MagicMock(), mock_runner)
 
         assert agent.get_agent_runner() is mock_runner
 
     def test_get_config_returns_config(self):
         """Should return the AI agent config."""
         mock_config = MagicMock()
-        agent = ManagedAgent(mock_config, MagicMock(), MagicMock())
+        agent = ManagedAgent(mock_config, MagicMock())
 
         assert agent.get_config() is mock_config
-
-    def test_get_tracker_returns_tracker(self):
-        """Should return the tracker."""
-        mock_tracker = MagicMock()
-        agent = ManagedAgent(MagicMock(), mock_tracker, MagicMock())
-
-        assert agent.get_tracker() is mock_tracker
 
 
 class TestLDAIClientCreateAgent:

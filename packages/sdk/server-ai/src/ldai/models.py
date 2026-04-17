@@ -180,7 +180,6 @@ class AIConfig:
     enabled: bool
     model: Optional[ModelConfig] = None
     provider: Optional[ProviderConfig] = None
-    tracker: Optional[Any] = None
     create_tracker: Callable[[], Any] = lambda: None
 
     def _base_to_dict(self) -> Dict[str, Any]:

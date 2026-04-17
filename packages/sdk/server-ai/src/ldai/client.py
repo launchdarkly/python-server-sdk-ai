@@ -84,7 +84,7 @@ class LDAIClient:
         default: AICompletionConfigDefault,
         variables: Optional[Dict[str, Any]] = None,
     ) -> AICompletionConfig:
-        (model, provider, messages, instructions, tracker,
+        (model, provider, messages, instructions,
          tracker_factory, enabled, judge_configuration, _) = self.__evaluate(
             key, context, default.to_dict(), variables
         )
@@ -95,7 +95,6 @@ class LDAIClient:
             model=model,
             messages=messages,
             provider=provider,
-            tracker=tracker,
             create_tracker=tracker_factory,
             judge_configuration=judge_configuration,
         )
@@ -152,7 +151,7 @@ class LDAIClient:
         default: AIJudgeConfigDefault,
         variables: Optional[Dict[str, Any]] = None,
     ) -> AIJudgeConfig:
-        (model, provider, messages, instructions, tracker,
+        (model, provider, messages, instructions,
          tracker_factory, enabled, judge_configuration, variation) = self.__evaluate(
             key, context, default.to_dict(), variables
         )
@@ -181,7 +180,6 @@ class LDAIClient:
             model=model,
             messages=messages,
             provider=provider,
-            tracker=tracker,
             create_tracker=tracker_factory,
         )
 
@@ -381,7 +379,7 @@ class LDAIClient:
                 default_ai_provider,
             )
 
-        return ManagedModel(config, config.create_tracker(), runner, judges)
+        return ManagedModel(config, runner, judges)
 
     async def create_chat(
         self,
@@ -455,7 +453,7 @@ class LDAIClient:
         if not runner:
             return None
 
-        return ManagedAgent(config, config.create_tracker(), runner)
+        return ManagedAgent(config, runner)
 
     def agent_config(
         self,
@@ -485,7 +483,8 @@ class LDAIClient:
 
             if agent.enabled:
                 research_result = agent.instructions  # Interpolated instructions
-                agent.tracker.track_success()
+                tracker = agent.create_tracker()
+                tracker.track_success()
 
         :param key: The agent configuration key.
         :param context: The context to evaluate the agent configuration in.
@@ -555,7 +554,8 @@ class LDAIClient:
             ], context)
 
             research_result = agents["research_agent"].instructions
-            agents["research_agent"].tracker.track_success()
+            tracker = agents["research_agent"].create_tracker()
+            tracker.track_success()
 
         :param agent_configs: List of agent configurations to retrieve.
         :param context: The context to evaluate the agent configurations in.
@@ -774,7 +774,7 @@ class LDAIClient:
         graph_key: Optional[str] = None,
     ) -> Tuple[
         Optional[ModelConfig], Optional[ProviderConfig], Optional[List[LDMessage]],
-        Optional[str], LDAIConfigTracker, Callable[[], LDAIConfigTracker], bool, Optional[Any], Dict[str, Any]
+        Optional[str], Callable[[], LDAIConfigTracker], bool, Optional[Any], Dict[str, Any]
     ]:
         """
         Internal method to evaluate a configuration and extract components.
@@ -784,7 +784,8 @@ class LDAIClient:
         :param default_dict: Default configuration as dictionary.
         :param variables: Variables for interpolation.
         :param graph_key: When set, passed to the tracker so all events include ``graphKey``.
-        :return: Tuple of (model, provider, messages, instructions, tracker, enabled, judge_configuration, variation).
+        :return: Tuple of (model, provider, messages, instructions,
+            tracker_factory, enabled, judge_configuration, variation).
         """
         variation = self._client.variation(key, context, default_dict)
 
@@ -844,8 +845,6 @@ class LDAIClient:
                 graph_key=graph_key,
             )
 
-        tracker = tracker_factory()
-
         enabled = variation.get('_ldMeta', {}).get('enabled', False)
 
         judge_configuration = None
@@ -864,7 +863,7 @@ class LDAIClient:
                     judge_configuration = JudgeConfiguration(judges=judges)
 
         return (
-            model, provider_config, messages, instructions, tracker,
+            model, provider_config, messages, instructions,
             tracker_factory, enabled, judge_configuration, variation,
         )
 
@@ -886,7 +885,7 @@ class LDAIClient:
         :param graph_key: When set, passed to the tracker so all events include ``graphKey``.
         :return: Configured AIAgentConfig instance.
         """
-        (model, provider, messages, instructions, tracker,
+        (model, provider, messages, instructions,
          tracker_factory, enabled, judge_configuration, _) = self.__evaluate(
             key, context, default.to_dict(), variables, graph_key=graph_key
         )
@@ -900,7 +899,6 @@ class LDAIClient:
             model=model or default.model,
             provider=provider or default.provider,
             instructions=final_instructions,
-            tracker=tracker,
             create_tracker=tracker_factory,
             judge_configuration=judge_configuration or default.judge_configuration,
         )

@@ -140,7 +140,7 @@ def test_single_agent_method(ldai_client: LDAIClient):
     assert agent.provider is not None
     assert agent.provider.name == 'openai'
     assert agent.instructions == 'You are a research assistant specializing in quantum computing. Your expertise level should match advanced.'
-    assert agent.tracker is not None
+    assert callable(agent.create_tracker)
 
 
 def test_single_agent_with_defaults(ldai_client: LDAIClient):
@@ -164,7 +164,7 @@ def test_single_agent_with_defaults(ldai_client: LDAIClient):
     assert agent.model is not None and agent.model.get_parameter('temp') == 0.8
     assert agent.provider is not None and agent.provider.name == 'default-provider'
     assert agent.instructions == "You are a default assistant for general assistance."
-    assert agent.tracker is not None
+    assert callable(agent.create_tracker)
 
 
 def test_agents_method_with_configs(ldai_client: LDAIClient):
@@ -275,7 +275,7 @@ def test_disabled_agent_single_method(ldai_client: LDAIClient):
     agent = ldai_client.agent(config, context)
 
     assert agent.enabled is False
-    assert agent.tracker is not None
+    assert callable(agent.create_tracker)
 
 
 def test_disabled_agent_multiple_method(ldai_client: LDAIClient):
@@ -313,7 +313,7 @@ def test_agent_with_missing_metadata(ldai_client: LDAIClient):
     assert agent.enabled is True  # From flag
     assert agent.instructions == 'Minimal agent configuration.'
     assert agent.model == config.default.model  # Falls back to default
-    assert agent.tracker is not None
+    assert callable(agent.create_tracker)
 
 
 def test_agent_config_dataclass():

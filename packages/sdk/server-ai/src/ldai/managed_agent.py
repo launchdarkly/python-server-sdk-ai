@@ -2,25 +2,22 @@
 
 from ldai.models import AIAgentConfig
 from ldai.providers import AgentResult, AgentRunner
-from ldai.tracker import LDAIConfigTracker
 
 
 class ManagedAgent:
     """
     LaunchDarkly managed wrapper for AI agent invocations.
 
-    Holds an AgentRunner and an LDAIConfigTracker. Handles tracking automatically.
+    Holds an AgentRunner. Handles tracking automatically via ``create_tracker()``.
     Obtain an instance via ``LDAIClient.create_agent()``.
     """
 
     def __init__(
         self,
         ai_config: AIAgentConfig,
-        tracker: LDAIConfigTracker,
         agent_runner: AgentRunner,
     ):
         self._ai_config = ai_config
-        self._tracker = tracker
         self._agent_runner = agent_runner
 
     async def run(self, input: str) -> AgentResult:
@@ -47,7 +44,3 @@ class ManagedAgent:
     def get_config(self) -> AIAgentConfig:
         """Return the AI agent config."""
         return self._ai_config
-
-    def get_tracker(self) -> LDAIConfigTracker:
-        """Return the config tracker."""
-        return self._tracker
