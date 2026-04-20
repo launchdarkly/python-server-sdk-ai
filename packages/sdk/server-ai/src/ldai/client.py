@@ -45,9 +45,9 @@ _TRACK_USAGE_JUDGE_CONFIG = '$ld:ai:usage:judge-config'
 
 _INIT_TRACK_CONTEXT = Context.builder('ld-internal-tracking').kind('ld_ai').anonymous(True).build()
 
-_DISABLED_COMPLETION_DEFAULT = AICompletionConfigDefault(enabled=False)
-_DISABLED_AGENT_DEFAULT = AIAgentConfigDefault(enabled=False)
-_DISABLED_JUDGE_DEFAULT = AIJudgeConfigDefault(enabled=False)
+_DISABLED_COMPLETION_DEFAULT = AICompletionConfigDefault.disabled()
+_DISABLED_AGENT_DEFAULT = AIAgentConfigDefault.disabled()
+_DISABLED_JUDGE_DEFAULT = AIJudgeConfigDefault.disabled()
 
 
 class LDAIClient:
@@ -303,7 +303,7 @@ class LDAIClient:
             judge = await self.create_judge(
                 judge_key,
                 context,
-                AIJudgeConfigDefault(enabled=False),
+                AIJudgeConfigDefault.disabled(),
                 variables,
                 default_ai_provider,
             )
@@ -634,7 +634,7 @@ class LDAIClient:
         graph_key_value = key
         agent_configs = {
             agent_key: self.__evaluate_agent(
-                agent_key, context, AIAgentConfigDefault(enabled=False), graph_key=graph_key_value
+                agent_key, context, AIAgentConfigDefault.disabled(), graph_key=graph_key_value
             )
             for agent_key in all_agent_keys
         }
