@@ -256,7 +256,7 @@ async def test_tracks_node_and_graph_tokens_on_success():
     ev = _events(mock_ld_client)
     assert ev['$ld:ai:graph:total_tokens'][0][1] == 15
     assert ev['$ld:ai:graph:invocation_success'][0][1] == 1
-    assert '$ld:ai:graph:latency' in ev
+    assert '$ld:ai:graph:duration:total' in ev
     assert '$ld:ai:graph:path' in ev
 
 
@@ -428,7 +428,7 @@ async def test_tracks_failure_and_latency_on_model_error():
 
     ev = _events(mock_ld_client)
     assert '$ld:ai:graph:invocation_failure' in ev
-    assert '$ld:ai:graph:latency' in ev
+    assert '$ld:ai:graph:duration:total' in ev
     assert '$ld:ai:graph:invocation_success' not in ev
 
 
