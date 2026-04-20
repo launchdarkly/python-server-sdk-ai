@@ -150,6 +150,10 @@ class AIConfigDefault:
     model: Optional[ModelConfig] = None
     provider: Optional[ProviderConfig] = None
 
+    @classmethod
+    def disabled(cls) -> 'AIConfigDefault':
+        return cls(enabled=False)
+
     def _base_to_dict(self) -> Dict[str, Any]:
         """
         Render the base config fields as a dictionary object.
@@ -203,6 +207,10 @@ class AICompletionConfigDefault(AIConfigDefault):
     messages: Optional[List[LDMessage]] = None
     judge_configuration: Optional[JudgeConfiguration] = None
 
+    @classmethod
+    def disabled(cls) -> 'AICompletionConfigDefault':
+        return cls(enabled=False)
+
     def to_dict(self) -> dict:
         """
         Render the given default values as an AICompletionConfigDefault-compatible dictionary object.
@@ -244,6 +252,10 @@ class AIAgentConfigDefault(AIConfigDefault):
     """
     instructions: Optional[str] = None
     judge_configuration: Optional[JudgeConfiguration] = None
+
+    @classmethod
+    def disabled(cls) -> 'AIAgentConfigDefault':
+        return cls(enabled=False)
 
     def to_dict(self) -> Dict[str, Any]:
         """
@@ -290,6 +302,10 @@ class AIJudgeConfigDefault(AIConfigDefault):
     # Deprecated: evaluation_metric_key is used instead
     evaluation_metric_keys: Optional[List[str]] = None
     evaluation_metric_key: Optional[str] = None
+
+    @classmethod
+    def disabled(cls) -> 'AIJudgeConfigDefault':
+        return cls(enabled=False)
 
     def to_dict(self) -> dict:
         """
