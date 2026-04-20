@@ -153,7 +153,7 @@ class LDAIConfigTracker:
             payload = json.loads(
                 base64.urlsafe_b64decode(padded.encode("utf-8")).decode("utf-8")
             )
-        except (json.JSONDecodeError, Exception) as e:
+        except Exception as e:
             return Result.fail(f"Invalid resumption token: {e}", e)
 
         for field in ("runId", "configKey", "version"):

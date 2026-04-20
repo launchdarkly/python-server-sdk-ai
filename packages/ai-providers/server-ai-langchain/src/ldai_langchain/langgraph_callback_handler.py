@@ -196,13 +196,17 @@ class LDMetricsCallbackHandler(BaseCallbackHandler):
 
         :param graph: The AgentGraphDefinition whose nodes hold the LD config trackers.
         """
+        node_trackers: Dict[str, Any] = {}
         for node_key in self._path:
+            if node_key in node_trackers:
+                continue
             node = graph.get_node(node_key)
             if not node:
                 continue
             config_tracker = node.get_config().create_tracker()
             if not config_tracker:
                 continue
+            node_trackers[node_key] = config_tracker
 
             usage = self._node_tokens.get(node_key)
             if usage:

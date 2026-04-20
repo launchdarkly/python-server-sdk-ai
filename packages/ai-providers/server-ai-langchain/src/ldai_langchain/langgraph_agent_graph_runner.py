@@ -260,8 +260,7 @@ class LangGraphAgentGraphRunner(AgentGraphRunner):
 
         self._graph.traverse(fn=handle_traversal)
 
-        tracker = self._graph.create_tracker() if self._graph.create_tracker is not None else None
-        graph_key_str = tracker.graph_key if tracker else 'unknown'
+        graph_key_str = self._graph._agent_graph.key or 'unknown'
         log.debug(
             f"LangGraphAgentGraphRunner: graph='{graph_key_str}', root='{root_key}', "
             f"structure: {' | '.join(graph_structure)}"
