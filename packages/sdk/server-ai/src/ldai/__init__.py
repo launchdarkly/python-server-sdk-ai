@@ -20,6 +20,7 @@ from ldai.models import (  # Deprecated aliases for backward compatibility
     AIConfig,
     AIJudgeConfig,
     AIJudgeConfigDefault,
+    AITool,
     Edge,
     JudgeConfiguration,
     LDAIAgent,

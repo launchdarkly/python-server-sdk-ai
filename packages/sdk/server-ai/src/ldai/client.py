@@ -21,6 +21,7 @@ from ldai.models import (
     AICompletionConfigDefault,
     AIJudgeConfig,
     AIJudgeConfigDefault,
+    AITool,
     Edge,
     JudgeConfiguration,
     LDMessage,
@@ -48,6 +49,22 @@ _INIT_TRACK_CONTEXT = Context.builder('ld-internal-tracking').kind('ld_ai').anon
 _DISABLED_COMPLETION_DEFAULT = AICompletionConfigDefault.disabled()
 _DISABLED_AGENT_DEFAULT = AIAgentConfigDefault.disabled()
 _DISABLED_JUDGE_DEFAULT = AIJudgeConfigDefault.disabled()
+
+
+def _parse_tools(tools_data: Optional[Dict[str, Any]]) -> Optional[Dict[str, AITool]]:
+    """Parse the root-level tools map from a flag variation dict."""
+    if not tools_data or not isinstance(tools_data, dict):
+        return None
+    result = {}
+    for tool_name, tool_dict in tools_data.items():
+        if isinstance(tool_dict, dict):
+            result[tool_name] = AITool(
+                name=tool_dict.get('name', tool_name),
+                type=tool_dict.get('type'),
+                parameters=tool_dict.get('parameters'),
+                custom_parameters=tool_dict.get('customParameters'),
+            )
+    return result or None
 
 
 class LDAIClient:
@@ -89,9 +106,12 @@ class LDAIClient:
         variables: Optional[Dict[str, Any]] = None,
     ) -> AICompletionConfig:
         (model, provider, messages, instructions,
-         tracker_factory, enabled, judge_configuration, _) = self.__evaluate(
+         tracker_factory, enabled, judge_configuration, variation) = self.__evaluate(
             key, context, default.to_dict(), variables
         )
+
+        tools_data = variation.get('tools')
+        tools = _parse_tools(tools_data) if tools_data is not None else default.tools
 
         config = AICompletionConfig(
             key=key,
@@ -101,6 +121,7 @@ class LDAIClient:
             provider=provider,
             create_tracker=tracker_factory,
             judge_configuration=judge_configuration,
+            tools=tools,
         )
 
         return config
@@ -891,12 +912,15 @@ class LDAIClient:
         :return: Configured AIAgentConfig instance.
         """
         (model, provider, messages, instructions,
-         tracker_factory, enabled, judge_configuration, _) = self.__evaluate(
+         tracker_factory, enabled, judge_configuration, variation) = self.__evaluate(
             key, context, default.to_dict(), variables, graph_key=graph_key
         )
 
         # For agents, prioritize instructions over messages
         final_instructions = instructions if instructions is not None else default.instructions
+
+        tools_data = variation.get('tools')
+        tools = _parse_tools(tools_data) if tools_data is not None else default.tools
 
         return AIAgentConfig(
             key=key,
@@ -906,6 +930,7 @@ class LDAIClient:
             instructions=final_instructions,
             create_tracker=tracker_factory,
             judge_configuration=judge_configuration or default.judge_configuration,
+            tools=tools,
         )
 
     def __interpolate_template(self, template: str, variables: Dict[str, Any]) -> str:
