@@ -71,6 +71,11 @@ class Judge:
             judge_result.sampled = True
 
             tracker = self._ai_config.create_tracker()
+            if tracker is None:
+                raise RuntimeError(
+                    "AIConfig.create_tracker returned None. "
+                    "Ensure the config was obtained from the client rather than constructed directly."
+                )
             messages = self._construct_evaluation_messages(input_text, output_text)
             assert self._evaluation_response_structure is not None
 
