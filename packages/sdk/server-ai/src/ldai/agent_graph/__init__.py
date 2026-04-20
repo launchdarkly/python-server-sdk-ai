@@ -4,10 +4,8 @@ from typing import Any, Callable, Dict, List, Optional, Set
 
 from ldclient import Context
 
-from ldai.models import AIAgentConfig, AIAgentConfigDefault, AIAgentGraphConfig, Edge
+from ldai.models import AIAgentConfig, AIAgentGraphConfig, Edge
 from ldai.tracker import AIGraphTracker
-
-DEFAULT_FALSE = AIAgentConfigDefault(enabled=False)
 
 
 class AgentGraphNode:
