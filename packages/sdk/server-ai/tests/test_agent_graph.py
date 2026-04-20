@@ -2,6 +2,8 @@ import pytest
 from ldclient import Config, Context, LDClient
 from ldclient.integrations.test_data import TestData
 
+from unittest.mock import MagicMock
+
 from ldai import (
     LDAIClient,
     AIAgentGraphConfig,
@@ -268,13 +270,17 @@ def test_agent_graph_build_nodes(ldai_client: LDAIClient):
         ai_graph_config,
         {
             "customer-support-agent": AIAgentConfig(
-                key="customer-support-agent", enabled=True
+                key="customer-support-agent", enabled=True, create_tracker=MagicMock(),
             ),
-            "personalized-agent": AIAgentConfig(key="personalized-agent", enabled=True),
+            "personalized-agent": AIAgentConfig(
+                key="personalized-agent", enabled=True, create_tracker=MagicMock(),
+            ),
             "multi-context-agent": AIAgentConfig(
-                key="multi-context-agent", enabled=True
+                key="multi-context-agent", enabled=True, create_tracker=MagicMock(),
             ),
-            "minimal-agent": AIAgentConfig(key="minimal-agent", enabled=True),
+            "minimal-agent": AIAgentConfig(
+                key="minimal-agent", enabled=True, create_tracker=MagicMock(),
+            ),
         },
     )
 

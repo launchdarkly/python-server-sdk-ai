@@ -167,12 +167,16 @@ class AIConfigDefault:
 class AIConfig:
     """
     Base AI Config interface without mode-specific fields.
+
+    Instances are always created by the SDK client, which injects a real
+    ``create_tracker`` factory.  User code should never need to construct
+    this directly — use the ``*Default`` variants for default values.
     """
     key: str
     enabled: bool
+    create_tracker: Callable[[], Any]
     model: Optional[ModelConfig] = None
     provider: Optional[ProviderConfig] = None
-    create_tracker: Callable[[], Any] = lambda: None
 
     def _base_to_dict(self) -> Dict[str, Any]:
         """

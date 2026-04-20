@@ -83,8 +83,7 @@ def _make_judge_config(
         model=model or ModelConfig('gpt-4'),
         provider=provider or ProviderConfig('openai'),
     )
-    if tracker is not None:
-        kwargs['create_tracker'] = lambda: tracker
+    kwargs['create_tracker'] = (lambda: tracker) if tracker is not None else MagicMock()
     return AIJudgeConfig(**kwargs)
 
 
@@ -372,6 +371,7 @@ class TestJudgeConfigSerialization:
         config = AIJudgeConfig(
             key='test-judge',
             enabled=True,
+            create_tracker=MagicMock(),
             evaluation_metric_key='$ld:ai:judge:relevance',
             messages=[LDMessage(role='system', content='You are a judge.')],
         )
@@ -386,6 +386,7 @@ class TestJudgeConfigSerialization:
         config = AIJudgeConfig(
             key='test-judge',
             enabled=True,
+            create_tracker=MagicMock(),
             evaluation_metric_key=None,
             messages=[LDMessage(role='system', content='You are a judge.')],
         )

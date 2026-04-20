@@ -462,6 +462,7 @@ def test_flush_skips_node_without_tracker():
     node_config_no_tracker = AIAgentConfig(
         key='no-track',
         enabled=True,
+        create_tracker=lambda: None,
         model=ModelConfig(name='gpt-4', parameters={}),
         provider=ProviderConfig(name='openai'),
         instructions='',

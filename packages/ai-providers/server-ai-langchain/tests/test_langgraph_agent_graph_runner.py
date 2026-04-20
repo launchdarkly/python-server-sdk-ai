@@ -12,9 +12,11 @@ from ldai_langchain.langchain_runner_factory import LangChainRunnerFactory
 
 def _make_graph(enabled: bool = True) -> AgentGraphDefinition:
     graph_tracker = MagicMock()
+    node_tracker = MagicMock()
     root_config = AIAgentConfig(
         key='root-agent',
         enabled=enabled,
+        create_tracker=MagicMock(return_value=node_tracker),
         model=ModelConfig(name='gpt-4'),
         provider=ProviderConfig(name='openai'),
         instructions='You are a helpful assistant.',

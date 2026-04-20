@@ -530,6 +530,7 @@ class TestBuildTools:
         cfg = AIAgentConfig(
             key='n',
             enabled=True,
+            create_tracker=MagicMock(),
             model=ModelConfig(
                 name='gpt-4',
                 parameters={'tools': [{'name': 'my_tool', 'type': 'function', 'parameters': {}}]},
@@ -552,6 +553,7 @@ class TestBuildTools:
         cfg = AIAgentConfig(
             key='n',
             enabled=True,
+            create_tracker=MagicMock(),
             model=ModelConfig(
                 name='gpt-4',
                 parameters={'tools': [{'name': 'my_tool', 'type': 'function', 'parameters': {}}]},
