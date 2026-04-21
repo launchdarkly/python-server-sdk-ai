@@ -189,7 +189,7 @@ class LDAIConfigTracker:
         }
         if self._variation_key:
             data["variationKey"] = self._variation_key
-        if self._graph_key is not None:
+        if self._graph_key:
             data['graphKey'] = self._graph_key
         return data
 
