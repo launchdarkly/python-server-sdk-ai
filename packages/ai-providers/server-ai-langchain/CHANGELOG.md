@@ -2,6 +2,21 @@
 
 All notable changes to the LaunchDarkly Python AI LangChain provider package will be documented in this file. This project adheres to [Semantic Versioning](http://semver.org).
 
+## [0.5.0](https://github.com/launchdarkly/python-server-sdk-ai/compare/launchdarkly-server-sdk-ai-langchain-0.4.1...launchdarkly-server-sdk-ai-langchain-0.5.0) (2026-04-21)
+
+
+### ⚠ BREAKING CHANGES
+
+* Add per-execution runId, at-most-once tracking, and cross-process tracker resumption ([#133](https://github.com/launchdarkly/python-server-sdk-ai/issues/133))
+* rename track_latency to track_duration on AIGraphTracker ([#138](https://github.com/launchdarkly/python-server-sdk-ai/issues/138))
+* Move graph_key to AIConfigTracker instantiation ([#134](https://github.com/launchdarkly/python-server-sdk-ai/issues/134))
+
+### Features
+
+* Add per-execution runId, at-most-once tracking, and cross-process tracker resumption ([#133](https://github.com/launchdarkly/python-server-sdk-ai/issues/133)) ([68685cd](https://github.com/launchdarkly/python-server-sdk-ai/commit/68685cd9623105b0b01dd57942538c047615f4f2))
+* Move graph_key to AIConfigTracker instantiation ([#134](https://github.com/launchdarkly/python-server-sdk-ai/issues/134)) ([20fff24](https://github.com/launchdarkly/python-server-sdk-ai/commit/20fff24fcd02aa101d7f9a6c21dc6a25e7916a1c))
+* rename track_latency to track_duration on AIGraphTracker ([#138](https://github.com/launchdarkly/python-server-sdk-ai/issues/138)) ([05758a7](https://github.com/launchdarkly/python-server-sdk-ai/commit/05758a735db0c2defc4e08d02282a46f559220e5))
+
 ## [0.4.1](https://github.com/launchdarkly/python-server-sdk-ai/compare/launchdarkly-server-sdk-ai-langchain-0.4.0...launchdarkly-server-sdk-ai-langchain-0.4.1) (2026-04-07)
 
 
