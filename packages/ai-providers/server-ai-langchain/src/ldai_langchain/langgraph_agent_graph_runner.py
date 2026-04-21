@@ -260,8 +260,7 @@ class LangGraphAgentGraphRunner(AgentGraphRunner):
 
         self._graph.traverse(fn=handle_traversal)
 
-        tracker = self._graph.get_tracker()
-        graph_key_str = tracker.graph_key if tracker else 'unknown'
+        graph_key_str = self._graph._agent_graph.key or 'unknown'
         log.debug(
             f"LangGraphAgentGraphRunner: graph='{graph_key_str}', root='{root_key}', "
             f"structure: {' | '.join(graph_structure)}"
@@ -281,7 +280,7 @@ class LangGraphAgentGraphRunner(AgentGraphRunner):
         :param input: The string prompt to send to the agent graph
         :return: AgentGraphResult with the final output and metrics
         """
-        tracker = self._graph.get_tracker()
+        tracker = self._graph.create_tracker() if self._graph.create_tracker is not None else None
         start_ns = time.perf_counter_ns()
 
         try:

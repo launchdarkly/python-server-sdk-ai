@@ -1,6 +1,8 @@
 import warnings
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Literal, Optional, Union
+from typing import Any, Callable, Dict, List, Literal, Optional, Union
+
+from typing_extensions import Self
 
 
 @dataclass
@@ -151,11 +153,7 @@ class AIConfigDefault:
     provider: Optional[ProviderConfig] = None
 
     @classmethod
-    def disabled(cls):
-        """
-        Returns a new disabled config default with enabled set to false.
-        When called on a subclass, returns an instance of that subclass.
-        """
+    def disabled(cls) -> Self:
         return cls(enabled=False)
 
     def _base_to_dict(self) -> Dict[str, Any]:
@@ -175,12 +173,16 @@ class AIConfigDefault:
 class AIConfig:
     """
     Base AI Config interface without mode-specific fields.
+
+    Instances are always created by the SDK client, which injects a real
+    ``create_tracker`` factory.  User code should never need to construct
+    this directly — use the ``*Default`` variants for default values.
     """
     key: str
     enabled: bool
+    create_tracker: Callable[[], Any]
     model: Optional[ModelConfig] = None
     provider: Optional[ProviderConfig] = None
-    tracker: Optional[Any] = None
 
     def _base_to_dict(self) -> Dict[str, Any]:
         """

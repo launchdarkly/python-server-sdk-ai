@@ -7,8 +7,6 @@ from ldclient import Context
 from ldai.models import AIAgentConfig, AIAgentGraphConfig, Edge
 from ldai.tracker import AIGraphTracker
 
-DEFAULT_FALSE = AIAgentConfig(key="", enabled=False)
-
 
 class AgentGraphNode:
     """
@@ -54,21 +52,13 @@ class AgentGraphDefinition:
         nodes: Dict[str, AgentGraphNode],
         context: Context,
         enabled: bool,
-        tracker: Optional[AIGraphTracker] = None,
+        create_tracker: Optional[Callable[[], AIGraphTracker]] = None,
     ):
         self._agent_graph = agent_graph
         self._context = context
         self._nodes = nodes
         self.enabled = enabled
-        self._tracker = tracker
-
-    def get_tracker(self) -> Optional[AIGraphTracker]:
-        """
-        Get the graph tracker for this graph definition.
-
-        :return: The AIGraphTracker instance, or None if not available.
-        """
-        return self._tracker
+        self.create_tracker = create_tracker
 
     def is_enabled(self) -> bool:
         """Check if the graph is enabled."""

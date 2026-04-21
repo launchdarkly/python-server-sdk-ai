@@ -13,20 +13,18 @@ class ManagedModel:
     """
     LaunchDarkly managed wrapper for AI model invocations.
 
-    Holds a ModelRunner and an LDAIConfigTracker. Handles conversation
-    management, judge evaluation dispatch, and tracking automatically.
+    Holds a ModelRunner. Handles conversation management, judge evaluation
+    dispatch, and tracking automatically via ``create_tracker()``.
     Obtain an instance via ``LDAIClient.create_model()``.
     """
 
     def __init__(
         self,
         ai_config: AICompletionConfig,
-        tracker: LDAIConfigTracker,
         model_runner: ModelRunner,
         judges: Optional[Dict[str, Judge]] = None,
     ):
         self._ai_config = ai_config
-        self._tracker = tracker
         self._model_runner = model_runner
         self._judges = judges or {}
         self._messages: List[LDMessage] = []
@@ -42,13 +40,15 @@ class ManagedModel:
         :param prompt: The user prompt to send to the model
         :return: ModelResponse containing the model's response and metrics
         """
+        tracker = self._ai_config.create_tracker()
+
         user_message = LDMessage(role='user', content=prompt)
         self._messages.append(user_message)
 
         config_messages = self._ai_config.messages or []
         all_messages = config_messages + self._messages
 
-        response = await self._tracker.track_metrics_of_async(
+        response = await tracker.track_metrics_of_async(
             lambda: self._model_runner.invoke_model(all_messages),
             lambda result: result.metrics,
         )
@@ -57,13 +57,14 @@ class ManagedModel:
             self._ai_config.judge_configuration
             and self._ai_config.judge_configuration.judges
         ):
-            response.evaluations = self._start_judge_evaluations(self._messages, response)
+            response.evaluations = self._start_judge_evaluations(tracker, self._messages, response)
 
         self._messages.append(response.message)
         return response
 
     def _start_judge_evaluations(
         self,
+        tracker: LDAIConfigTracker,
         messages: List[LDMessage],
         response: ModelResponse,
     ) -> List[asyncio.Task[Optional[JudgeResult]]]:
@@ -77,7 +78,7 @@ class ManagedModel:
                 return None
             judge_result = await judge.evaluate_messages(messages, response, judge_config.sampling_rate)
             if judge_result.success:
-                self._tracker.track_judge_result(judge_result)
+                tracker.track_judge_result(judge_result)
             return judge_result
 
         return [
@@ -115,10 +116,6 @@ class ManagedModel:
     def get_config(self) -> AICompletionConfig:
         """Return the AI completion config."""
         return self._ai_config
-
-    def get_tracker(self) -> LDAIConfigTracker:
-        """Return the config tracker."""
-        return self._tracker
 
     def get_judges(self) -> Dict[str, Judge]:
         """Return the judges associated with this model."""

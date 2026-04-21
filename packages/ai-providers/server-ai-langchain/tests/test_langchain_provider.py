@@ -530,13 +530,13 @@ class TestBuildTools:
         cfg = AIAgentConfig(
             key='n',
             enabled=True,
+            create_tracker=MagicMock(),
             model=ModelConfig(
                 name='gpt-4',
                 parameters={'tools': [{'name': 'my_tool', 'type': 'function', 'parameters': {}}]},
             ),
             provider=ProviderConfig(name='openai'),
             instructions='',
-            tracker=MagicMock(),
         )
         tools = build_structured_tools(cfg, {'my_tool': sync_tool})
         assert len(tools) == 1
@@ -553,13 +553,13 @@ class TestBuildTools:
         cfg = AIAgentConfig(
             key='n',
             enabled=True,
+            create_tracker=MagicMock(),
             model=ModelConfig(
                 name='gpt-4',
                 parameters={'tools': [{'name': 'my_tool', 'type': 'function', 'parameters': {}}]},
             ),
             provider=ProviderConfig(name='openai'),
             instructions='',
-            tracker=MagicMock(),
         )
         tools = build_structured_tools(cfg, {'my_tool': async_tool})
         assert len(tools) == 1

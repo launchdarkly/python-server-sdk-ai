@@ -8,7 +8,6 @@ from ldclient.integrations.test_data import TestData
 from ldai import LDAIClient, ManagedAgentGraph
 from ldai.providers.types import LDAIMetrics
 from ldai.providers import AgentGraphResult, AgentGraphRunner, ToolRegistry
-from ldai.tracker import AIGraphTracker
 
 
 # --- Test double ---
@@ -42,17 +41,6 @@ def test_managed_agent_graph_get_runner():
     assert managed.get_agent_graph_runner() is runner
 
 
-def test_managed_agent_graph_get_tracker_none_by_default():
-    runner = StubAgentGraphRunner()
-    managed = ManagedAgentGraph(runner)
-    assert managed.get_tracker() is None
-
-
-def test_managed_agent_graph_get_tracker_returns_tracker():
-    runner = StubAgentGraphRunner()
-    tracker = MagicMock(spec=AIGraphTracker)
-    managed = ManagedAgentGraph(runner, tracker)
-    assert managed.get_tracker() is tracker
 
 
 # --- LDAIClient.create_agent_graph() integration tests ---

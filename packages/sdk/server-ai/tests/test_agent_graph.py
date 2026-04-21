@@ -2,6 +2,8 @@ import pytest
 from ldclient import Config, Context, LDClient
 from ldclient.integrations.test_data import TestData
 
+from unittest.mock import MagicMock
+
 from ldai import (
     LDAIClient,
     AIAgentGraphConfig,
@@ -268,13 +270,17 @@ def test_agent_graph_build_nodes(ldai_client: LDAIClient):
         ai_graph_config,
         {
             "customer-support-agent": AIAgentConfig(
-                key="customer-support-agent", enabled=True
+                key="customer-support-agent", enabled=True, create_tracker=MagicMock(),
             ),
-            "personalized-agent": AIAgentConfig(key="personalized-agent", enabled=True),
+            "personalized-agent": AIAgentConfig(
+                key="personalized-agent", enabled=True, create_tracker=MagicMock(),
+            ),
             "multi-context-agent": AIAgentConfig(
-                key="multi-context-agent", enabled=True
+                key="multi-context-agent", enabled=True, create_tracker=MagicMock(),
             ),
-            "minimal-agent": AIAgentConfig(key="minimal-agent", enabled=True),
+            "minimal-agent": AIAgentConfig(
+                key="minimal-agent", enabled=True, create_tracker=MagicMock(),
+            ),
         },
     )
 
@@ -396,8 +402,9 @@ def test_agent_graph_node_trackers_have_graph_key(ldai_client: LDAIClient):
                  graph.get_node("multi-context-agent"),
                  graph.get_node("minimal-agent")]:
         config = node.get_config()
-        assert config.tracker is not None
-        assert config.tracker._graph_key == "test-agent-graph"
+        assert callable(config.create_tracker)
+        tracker = config.create_tracker()
+        assert tracker._graph_key == "test-agent-graph"
 
 
 def test_agent_graph_handoff(ldai_client: LDAIClient):
