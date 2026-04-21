@@ -1,6 +1,13 @@
+from __future__ import annotations
+
 import warnings
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Literal, Optional, Union
+
+try:
+    from typing import Self
+except ImportError:
+    from typing_extensions import Self
 
 
 @dataclass
@@ -151,7 +158,7 @@ class AIConfigDefault:
     provider: Optional[ProviderConfig] = None
 
     @classmethod
-    def disabled(cls) -> 'AIConfigDefault':
+    def disabled(cls) -> Self:
         return cls(enabled=False)
 
     def _base_to_dict(self) -> Dict[str, Any]:
@@ -207,10 +214,6 @@ class AICompletionConfigDefault(AIConfigDefault):
     messages: Optional[List[LDMessage]] = None
     judge_configuration: Optional[JudgeConfiguration] = None
 
-    @classmethod
-    def disabled(cls) -> 'AICompletionConfigDefault':
-        return cls(enabled=False)
-
     def to_dict(self) -> dict:
         """
         Render the given default values as an AICompletionConfigDefault-compatible dictionary object.
@@ -252,10 +255,6 @@ class AIAgentConfigDefault(AIConfigDefault):
     """
     instructions: Optional[str] = None
     judge_configuration: Optional[JudgeConfiguration] = None
-
-    @classmethod
-    def disabled(cls) -> 'AIAgentConfigDefault':
-        return cls(enabled=False)
 
     def to_dict(self) -> Dict[str, Any]:
         """
@@ -302,10 +301,6 @@ class AIJudgeConfigDefault(AIConfigDefault):
     # Deprecated: evaluation_metric_key is used instead
     evaluation_metric_keys: Optional[List[str]] = None
     evaluation_metric_key: Optional[str] = None
-
-    @classmethod
-    def disabled(cls) -> 'AIJudgeConfigDefault':
-        return cls(enabled=False)
 
     def to_dict(self) -> dict:
         """
