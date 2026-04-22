@@ -21,7 +21,6 @@ classifiers = [
 ]
 dependencies = [
     "launchdarkly-server-sdk-ai>=0.16.0",
-    "coolname>=2.0.0",
 ]
 
 [project.urls]

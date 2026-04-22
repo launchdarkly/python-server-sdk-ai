@@ -24,7 +24,6 @@ import time
 import uuid
 from typing import Any, Dict, List, Literal, Optional, Union
 
-from coolname import generate_slug
 from ldai import AIAgentConfig, AIJudgeConfig, AIJudgeConfigDefault, LDAIClient
 from ldai.models import LDMessage, ModelConfig
 from ldclient import Context
@@ -59,6 +58,7 @@ from ldai_optimizer.util import (
     RedactionFilter,
     await_if_needed,
     extract_json_from_response,
+    generate_slug,
     interpolate_variables,
     restore_variable_placeholders,
     validate_variation_response,
@@ -1926,7 +1926,7 @@ class OptimizationClient:
                 **({"base_url": base_url} if base_url else {}),
             )
 
-        candidate = output_key if output_key else generate_slug(2)
+        candidate = output_key if output_key else generate_slug()
 
         try:
             ai_config = api_client.get_ai_config(project_key, ai_config_key)

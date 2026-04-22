@@ -3,9 +3,11 @@
 import inspect
 import json
 import logging
+import random
 import re
 from typing import Any, Awaitable, Dict, List, Optional, Tuple, TypeVar, Union
 
+from ldai_optimizer._slug_words import _ADJECTIVES, _NOUNS
 from ldai_optimizer.dataclasses import ToolDefinition
 
 logger = logging.getLogger(__name__)
@@ -36,6 +38,17 @@ class RedactionFilter(logging.Filter):
 
 
 logger.addFilter(RedactionFilter())
+
+
+def generate_slug() -> str:
+    """Generate a random ``adjective-noun`` slug (e.g. ``blazing-lobster``).
+
+    Produces the same format as ``coolname.generate_slug(2)`` using an
+    internal word list, removing the external dependency.
+
+    :return: A hyphen-joined two-word lowercase string.
+    """
+    return f"{random.choice(_ADJECTIVES)}-{random.choice(_NOUNS)}"
 
 
 def handle_evaluation_tool_call(score: float, rationale: str) -> str:
