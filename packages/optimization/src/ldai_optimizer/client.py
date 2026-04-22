@@ -185,7 +185,7 @@ class OptimizationClient:
         self._history: List[OptimizationContext] = []
 
     def _build_agent_config_for_context(
-        self, ctx: OptimizationContext
+        self, ctx: OptimizationContext, skip_interpolation: bool = False
     ) -> AIAgentConfig:
         """
         Construct an AIAgentConfig that reflects the current optimization iteration.
@@ -196,16 +196,21 @@ class OptimizationClient:
         ctx.current_variables at call time so the stored template is never mutated.
 
         :param ctx: The OptimizationContext for this iteration
+        :param skip_interpolation: When True, skip variable interpolation on the
+            instructions. Use this when the instructions are a meta-prompt (e.g. a
+            variation-generation prompt) that deliberately contains ``{{key}}`` tokens
+            as text for the LLM to read rather than as runtime substitution targets.
         :return: A fresh AIAgentConfig populated from the context's current state
         """
         instructions = (
             interpolate_variables(ctx.current_instructions, ctx.current_variables)
-            if ctx.current_variables
+            if ctx.current_variables and not skip_interpolation
             else ctx.current_instructions
         )
         return AIAgentConfig(
             key=self._agent_key,
             enabled=True,
+            create_tracker=self._agent_config.create_tracker,
             model=ModelConfig(
                 name=ctx.current_model or "",
                 parameters=ctx.current_parameters,
@@ -1330,7 +1335,7 @@ class OptimizationClient:
         # Retry up to _MAX_VARIATION_RETRIES times to handle transient empty or unparseable
         # responses (e.g. when the agent SDK returns the LLM's post-tool-call empty text
         # instead of the tool result).
-        agent_config = self._build_agent_config_for_context(variation_ctx)
+        agent_config = self._build_agent_config_for_context(variation_ctx, skip_interpolation=True)
         response_data = None
         response_str = ""
         for attempt in range(1, _MAX_VARIATION_RETRIES + 1):

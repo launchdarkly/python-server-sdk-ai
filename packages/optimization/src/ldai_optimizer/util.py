@@ -323,10 +323,18 @@ def extract_json_from_response(response_str: str) -> Dict[str, Any]:
 
     # Try balanced-brace scanning
     if response_data is None:
-        brace_count = 0
         start_idx = response_str.find('{')
         if start_idx != -1:
-            for i in range(start_idx, len(response_str)):
+            logger.warning(
+                "Direct JSON parse and code-block extraction failed; "
+                "falling back to balanced-brace scanner. "
+                "Response may be malformed JSON (length: %d).",
+                len(response_str),
+            )
+        while start_idx != -1 and response_data is None:
+            brace_count = 0
+            i = start_idx
+            while i < len(response_str):
                 if response_str[i] == '{':
                     brace_count += 1
                 elif response_str[i] == '}':
@@ -335,12 +343,13 @@ def extract_json_from_response(response_str: str) -> Dict[str, Any]:
                         json_str = response_str[start_idx:i + 1]
                         try:
                             response_data = json.loads(json_str)
-                            break
                         except json.JSONDecodeError:
                             start_idx = response_str.find('{', start_idx + 1)
-                            if start_idx == -1:
-                                break
-                            brace_count = 0
+                        break
+                i += 1
+            else:
+                # Exhausted the string without closing the object
+                break
 
     # Legacy regex fallback
     if response_data is None:
@@ -364,9 +373,8 @@ def extract_json_from_response(response_str: str) -> Dict[str, Any]:
     if response_data is None:
         logger.debug(
             "Failed to extract JSON from response. "
-            "Response length: %d, response: %s",
+            "Response length: %d",
             len(response_str),
-            response_str,
         )
         raise ValueError(
             "Failed to parse structured output from variation generation. "

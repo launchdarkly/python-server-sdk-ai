@@ -62,6 +62,7 @@ def _make_agent_config(
     return AIAgentConfig(
         key="test-agent",
         enabled=True,
+        create_tracker=MagicMock,
         model=ModelConfig(name=model_name, parameters=parameters or {}),
         instructions=instructions,
     )
@@ -679,6 +680,7 @@ class TestEvaluateConfigJudge:
         return AIJudgeConfig(
             key="ld-judge-key",
             enabled=enabled,
+            create_tracker=MagicMock,
             model=ModelConfig(name="gpt-4o", parameters={}),
             messages=[
                 LDMessage(role="system", content="You are an evaluator."),
@@ -782,6 +784,7 @@ class TestEvaluateConfigJudge:
         judge_config = AIJudgeConfig(
             key="ld-judge-key",
             enabled=True,
+            create_tracker=MagicMock,
             model=ModelConfig(name="gpt-4o", parameters={}),
             messages=None,
         )
