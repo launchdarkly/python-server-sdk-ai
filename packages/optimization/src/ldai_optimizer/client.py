@@ -61,6 +61,7 @@ from ldai_optimizer.util import (
     extract_json_from_response,
     interpolate_variables,
     restore_variable_placeholders,
+    validate_variation_response,
 )
 
 logger = logging.getLogger(__name__)
@@ -1179,24 +1180,18 @@ class OptimizationClient:
         :param iteration: Current iteration number for logging
         :return: A new OptimizationContext populated with the updated configuration
         """
-        missing_fields = []
-        if "current_instructions" not in response_data:
-            missing_fields.append("current_instructions")
-        if "current_parameters" not in response_data:
-            missing_fields.append("current_parameters")
-        if "model" not in response_data:
-            missing_fields.append("model")
-
-        if missing_fields:
+        validation_errors = validate_variation_response(response_data)
+        if validation_errors:
             logger.debug(
-                "[Iteration %d] -> Response missing required fields: %s. Received fields: %s. Full response_data: %s",
+                "[Iteration %d] -> Variation response failed validation: %s. "
+                "Received fields: %s. Full response_data: %s",
                 iteration,
-                ", ".join(missing_fields),
+                "; ".join(validation_errors),
                 list(response_data.keys()),
                 json.dumps(response_data, indent=2),
             )
             raise ValueError(
-                f"Response missing required fields: {', '.join(missing_fields)}. "
+                f"Variation response failed validation: {'; '.join(validation_errors)}. "
                 f"Received fields: {list(response_data.keys())}"
             )
 

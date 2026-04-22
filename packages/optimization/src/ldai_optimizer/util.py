@@ -290,6 +290,47 @@ def create_variation_tool(model_choices: List[str]) -> ToolDefinition:
     )
 
 
+def validate_variation_response(response_data: Dict[str, Any]) -> List[str]:
+    """Validate the shape of a parsed LLM variation response.
+
+    Checks that the three required fields are present and have the expected
+    types. An empty ``current_parameters`` dict is acceptable; an empty
+    ``current_instructions`` or ``model`` string is flagged as an error
+    because downstream code cannot meaningfully use a blank value.
+
+    :param response_data: Parsed dict from the LLM (output of extract_json_from_response).
+    :return: List of human-readable error strings. Empty list means the response is valid.
+    """
+    errors: List[str] = []
+
+    if "current_instructions" not in response_data:
+        errors.append("missing required field 'current_instructions'")
+    elif not isinstance(response_data["current_instructions"], str):
+        errors.append(
+            f"'current_instructions' must be a string, "
+            f"got {type(response_data['current_instructions']).__name__}"
+        )
+    elif not response_data["current_instructions"].strip():
+        errors.append("'current_instructions' must not be empty")
+
+    if "current_parameters" not in response_data:
+        errors.append("missing required field 'current_parameters'")
+    elif not isinstance(response_data["current_parameters"], dict):
+        errors.append(
+            f"'current_parameters' must be a dict, "
+            f"got {type(response_data['current_parameters']).__name__}"
+        )
+
+    if "model" not in response_data:
+        errors.append("missing required field 'model'")
+    elif not isinstance(response_data["model"], str):
+        errors.append(
+            f"'model' must be a string, got {type(response_data['model']).__name__}"
+        )
+
+    return errors
+
+
 def extract_json_from_response(response_str: str) -> Dict[str, Any]:
     """
     Parse a JSON object from an LLM response string.

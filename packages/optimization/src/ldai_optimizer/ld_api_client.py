@@ -2,6 +2,7 @@
 
 import json
 import logging
+import time
 import urllib.error
 import urllib.request
 from typing import Any, Dict, List, Optional, TypedDict
@@ -12,6 +13,14 @@ logger = logging.getLogger(__name__)
 logger.addFilter(RedactionFilter())
 
 _BASE_URL = "https://app.launchdarkly.com"
+
+_MAX_RETRIES = 3
+_INITIAL_BACKOFF = 1.0  # seconds; doubles on each attempt (1s, 2s, 4s)
+
+# Status codes that warrant a retry.  Everything else (including 400, 401, 403,
+# 404) is a permanent or auth failure — retrying would not help and could lead
+# to corrupted optimization results if some requests succeed and others fail.
+_RETRYABLE_STATUS_CODES = frozenset({429, 500, 502, 503, 504})
 
 
 class LDApiError(Exception):
@@ -186,35 +195,74 @@ class LDApiClient:
     def _auth_headers(self) -> Dict[str, str]:
         return {"Authorization": self._api_key}
 
-    def _request(self, method: str, path: str, body: Any = None) -> Any:
+    def _request(
+        self,
+        method: str,
+        path: str,
+        body: Any = None,
+        extra_headers: Optional[Dict[str, str]] = None,
+    ) -> Any:
+        """Execute an HTTP request with automatic retry and exponential backoff.
+
+        Retries up to ``_MAX_RETRIES`` times for transient errors (429, 5xx,
+        network failures) with exponential backoff starting at ``_INITIAL_BACKOFF``
+        seconds.  Non-retryable status codes (400, 401, 403, 404, …) are raised
+        immediately without retrying.
+
+        :param method: HTTP method (GET, POST, PATCH, …).
+        :param path: API path, appended to ``self._base_url``.
+        :param body: Optional request body; serialised to JSON.
+        :param extra_headers: Additional headers merged with the auth header.
+        :raises LDApiError: After all retry attempts are exhausted, or immediately
+            for non-retryable status codes.
+        """
         url = f"{self._base_url}{path}"
+        headers = {**self._auth_headers(), **(extra_headers or {})}
         data = json.dumps(body).encode() if body is not None else None
-        headers = self._auth_headers()
         if data is not None:
             headers["Content-Type"] = "application/json"
-        req = urllib.request.Request(url, data=data, headers=headers, method=method)
-        try:
-            with urllib.request.urlopen(req) as resp:
-                raw = resp.read()
-                return json.loads(raw) if raw else None
-        except urllib.error.HTTPError as exc:
-            body_excerpt = exc.read(500).decode(errors="replace")
-            hint = _HTTP_ERROR_HINTS.get(exc.code, "")
-            detail = f"{hint} (API response: {body_excerpt})" if hint else f"API response: {body_excerpt}"
-            raise LDApiError(
-                f"LaunchDarkly API error {exc.code} {exc.msg} for {method} {path}. {detail}",
-                status_code=exc.code,
-                path=path,
-            ) from exc
-        except urllib.error.URLError as exc:
-            raise LDApiError(
-                f"Could not reach LaunchDarkly API at {url}: {exc.reason}. "
-                "Check your network connection and the base_url setting.",
-                path=path,
-            ) from exc
 
-    def _ai_config_headers(self) -> Dict[str, str]:
-        return {**self._auth_headers(), "LD-API-Version": "beta"}
+        last_exc: Optional[LDApiError] = None
+        for attempt in range(_MAX_RETRIES + 1):
+            req = urllib.request.Request(url, data=data, headers=headers, method=method)
+            try:
+                with urllib.request.urlopen(req) as resp:
+                    raw = resp.read()
+                    return json.loads(raw) if raw else None
+            except urllib.error.HTTPError as exc:
+                body_excerpt = exc.read(500).decode(errors="replace")
+                hint = _HTTP_ERROR_HINTS.get(exc.code, "")
+                detail = f"{hint} (API response: {body_excerpt})" if hint else f"API response: {body_excerpt}"
+                api_error = LDApiError(
+                    f"LaunchDarkly API error {exc.code} {exc.msg} for {method} {path}. {detail}",
+                    status_code=exc.code,
+                    path=path,
+                )
+                if exc.code not in _RETRYABLE_STATUS_CODES:
+                    raise api_error from exc
+                last_exc = api_error
+            except urllib.error.URLError as exc:
+                last_exc = LDApiError(
+                    f"Could not reach LaunchDarkly API at {url}: {exc.reason}. "
+                    "Check your network connection and the base_url setting.",
+                    path=path,
+                )
+
+            if attempt < _MAX_RETRIES:
+                delay = _INITIAL_BACKOFF * (2 ** attempt)
+                logger.warning(
+                    "LaunchDarkly API request failed (attempt %d/%d, path=%s), "
+                    "retrying in %.1fs: %s",
+                    attempt + 1,
+                    _MAX_RETRIES + 1,
+                    path,
+                    delay,
+                    last_exc,
+                )
+                time.sleep(delay)
+
+        assert last_exc is not None
+        raise last_exc
 
     def get_model_configs(self, project_key: str) -> List[Dict[str, Any]]:
         """Fetch all AI model configs for a project.
@@ -224,26 +272,8 @@ class LDApiClient:
         :raises LDApiError: On non-200 HTTP responses or network errors.
         """
         path = f"/api/v2/projects/{project_key}/ai-configs/model-configs"
-        url = f"{self._base_url}{path}"
-        req = urllib.request.Request(url, headers=self._ai_config_headers(), method="GET")
-        try:
-            with urllib.request.urlopen(req) as resp:
-                raw = resp.read()
-                return json.loads(raw) if raw else []
-        except urllib.error.HTTPError as exc:
-            body_excerpt = exc.read(500).decode(errors="replace")
-            hint = _HTTP_ERROR_HINTS.get(exc.code, "")
-            detail = f"{hint} (API response: {body_excerpt})" if hint else f"API response: {body_excerpt}"
-            raise LDApiError(
-                f"LaunchDarkly API error {exc.code} {exc.msg} for GET {path}. {detail}",
-                status_code=exc.code,
-                path=path,
-            ) from exc
-        except urllib.error.URLError as exc:
-            raise LDApiError(
-                f"Could not reach LaunchDarkly API at {url}: {exc.reason}.",
-                path=path,
-            ) from exc
+        result = self._request("GET", path, extra_headers={"LD-API-Version": "beta"})
+        return result if isinstance(result, list) else []
 
     def get_ai_config(self, project_key: str, config_key: str) -> Any:
         """Fetch a single AI Config by key, including its variations.
@@ -254,27 +284,7 @@ class LDApiClient:
         :raises LDApiError: On non-200 HTTP responses or network errors.
         """
         path = f"/api/v2/projects/{project_key}/ai-configs/{config_key}"
-        headers = self._ai_config_headers()
-        url = f"{self._base_url}{path}"
-        req = urllib.request.Request(url, headers=headers, method="GET")
-        try:
-            with urllib.request.urlopen(req) as resp:
-                raw = resp.read()
-                return json.loads(raw) if raw else None
-        except urllib.error.HTTPError as exc:
-            body_excerpt = exc.read(500).decode(errors="replace")
-            hint = _HTTP_ERROR_HINTS.get(exc.code, "")
-            detail = f"{hint} (API response: {body_excerpt})" if hint else f"API response: {body_excerpt}"
-            raise LDApiError(
-                f"LaunchDarkly API error {exc.code} {exc.msg} for GET {path}. {detail}",
-                status_code=exc.code,
-                path=path,
-            ) from exc
-        except urllib.error.URLError as exc:
-            raise LDApiError(
-                f"Could not reach LaunchDarkly API at {url}: {exc.reason}.",
-                path=path,
-            ) from exc
+        return self._request("GET", path, extra_headers={"LD-API-Version": "beta"})
 
     def create_ai_config_variation(
         self, project_key: str, config_key: str, payload: Dict[str, Any]
@@ -288,28 +298,7 @@ class LDApiClient:
         :raises LDApiError: On non-200 HTTP responses or network errors.
         """
         path = f"/api/v2/projects/{project_key}/ai-configs/{config_key}/variations"
-        url = f"{self._base_url}{path}"
-        data = json.dumps(payload).encode()
-        headers = {**self._ai_config_headers(), "Content-Type": "application/json"}
-        req = urllib.request.Request(url, data=data, headers=headers, method="POST")
-        try:
-            with urllib.request.urlopen(req) as resp:
-                raw = resp.read()
-                return json.loads(raw) if raw else None
-        except urllib.error.HTTPError as exc:
-            body_excerpt = exc.read(500).decode(errors="replace")
-            hint = _HTTP_ERROR_HINTS.get(exc.code, "")
-            detail = f"{hint} (API response: {body_excerpt})" if hint else f"API response: {body_excerpt}"
-            raise LDApiError(
-                f"LaunchDarkly API error {exc.code} {exc.msg} for POST {path}. {detail}",
-                status_code=exc.code,
-                path=path,
-            ) from exc
-        except urllib.error.URLError as exc:
-            raise LDApiError(
-                f"Could not reach LaunchDarkly API at {url}: {exc.reason}.",
-                path=path,
-            ) from exc
+        return self._request("POST", path, body=payload, extra_headers={"LD-API-Version": "beta"})
 
     def get_agent_optimization(
         self, project_key: str, optimization_key: str

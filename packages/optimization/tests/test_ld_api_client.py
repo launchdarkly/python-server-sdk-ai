@@ -5,7 +5,7 @@ import urllib.error
 import urllib.request
 from io import BytesIO
 from typing import Any, Dict
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 import pytest
 
@@ -14,6 +14,7 @@ from ldai_optimizer.ld_api_client import (
     AgentOptimizationResultPost as OptimizationResultPayload,
     LDApiClient,
     LDApiError,
+    _MAX_RETRIES,
     _parse_agent_optimization,
 )
 
@@ -295,10 +296,76 @@ class TestPostAgentOptimizationResult:
             url="http://x", code=500, msg="Server Error", hdrs=MagicMock(), fp=BytesIO(b"err")
         )
         with patch("urllib.request.urlopen", side_effect=http_error):
-            # must not raise
-            client.post_agent_optimization_result("proj", "opt-id", self._make_payload())
+            with patch("time.sleep"):
+                # must not raise even after all retries are exhausted
+                client.post_agent_optimization_result("proj", "opt-id", self._make_payload())
 
     def test_swallows_url_errors_without_raising(self):
         client = LDApiClient("test-key")
         with patch("urllib.request.urlopen", side_effect=urllib.error.URLError("timeout")):
-            client.post_agent_optimization_result("proj", "opt-id", self._make_payload())
+            with patch("time.sleep"):
+                client.post_agent_optimization_result("proj", "opt-id", self._make_payload())
+
+
+# ---------------------------------------------------------------------------
+# LDApiClient retry behaviour
+# ---------------------------------------------------------------------------
+
+
+class TestLDApiClientRetry:
+    def _http_error(self, code: int) -> urllib.error.HTTPError:
+        return urllib.error.HTTPError(
+            url="http://x", code=code, msg="Error", hdrs=MagicMock(), fp=BytesIO(b"body")
+        )
+
+    def test_retryable_error_retries_max_times(self):
+        """A 429 or 5xx should be retried up to _MAX_RETRIES times then raise."""
+        client = LDApiClient("test-key")
+        with patch("urllib.request.urlopen", side_effect=self._http_error(429)) as mock_open:
+            with patch("time.sleep"):
+                with pytest.raises(LDApiError) as exc_info:
+                    client._request("GET", "/path")
+        assert mock_open.call_count == _MAX_RETRIES + 1
+        assert exc_info.value.status_code == 429
+
+    def test_non_retryable_error_raises_immediately(self):
+        """A 401, 403, or 404 should raise after a single attempt with no retries."""
+        for code in (400, 401, 403, 404):
+            client = LDApiClient("test-key")
+            with patch("urllib.request.urlopen", side_effect=self._http_error(code)) as mock_open:
+                with patch("time.sleep") as mock_sleep:
+                    with pytest.raises(LDApiError) as exc_info:
+                        client._request("GET", "/path")
+            assert mock_open.call_count == 1, f"Expected 1 attempt for {code}, got {mock_open.call_count}"
+            mock_sleep.assert_not_called()
+            assert exc_info.value.status_code == code
+
+    def test_url_error_retries_max_times(self):
+        """Network-level errors should also be retried."""
+        client = LDApiClient("test-key")
+        with patch("urllib.request.urlopen", side_effect=urllib.error.URLError("timeout")) as mock_open:
+            with patch("time.sleep"):
+                with pytest.raises(LDApiError):
+                    client._request("GET", "/path")
+        assert mock_open.call_count == _MAX_RETRIES + 1
+
+    def test_backoff_delays_are_exponential(self):
+        """Sleep durations should double on each retry: 1s, 2s, 4s."""
+        client = LDApiClient("test-key")
+        with patch("urllib.request.urlopen", side_effect=self._http_error(500)):
+            with patch("time.sleep") as mock_sleep:
+                with pytest.raises(LDApiError):
+                    client._request("GET", "/path")
+        sleep_calls = [c.args[0] for c in mock_sleep.call_args_list]
+        assert sleep_calls == [1.0, 2.0, 4.0]
+
+    def test_succeeds_on_retry_after_transient_error(self):
+        """If a retryable error clears, the successful response should be returned."""
+        client = LDApiClient("test-key")
+        ok_response = _mock_urlopen({"result": "ok"})
+        side_effects = [self._http_error(500), ok_response]
+        with patch("urllib.request.urlopen", side_effect=side_effects) as mock_open:
+            with patch("time.sleep"):
+                result = client._request("GET", "/path")
+        assert result == {"result": "ok"}
+        assert mock_open.call_count == 2
