@@ -1,8 +1,8 @@
-"""Smoke tests for ldai_optimization."""
+"""Smoke tests for ldai_optimizer."""
 
 import pytest
 
-from ldai_optimization import OptimizationClient, __version__
+from ldai_optimizer import OptimizationClient, __version__
 
 
 def test_version_is_string():

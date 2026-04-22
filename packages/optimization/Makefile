@@ -19,9 +19,9 @@ test: install
 .PHONY: lint
 lint: #! Run type analysis and linting checks
 lint: install
-	uv run mypy src/ldai_optimization
-	uv run isort --check --atomic src/ldai_optimization
-	uv run pycodestyle src/ldai_optimization
+	uv run mypy src/ldai_optimizer
+	uv run isort --check --atomic src/ldai_optimizer
+	uv run pycodestyle src/ldai_optimizer
 
 .PHONY: build
 build: #! Build distribution files

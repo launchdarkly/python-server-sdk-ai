@@ -6,9 +6,36 @@ import logging
 import re
 from typing import Any, Awaitable, Dict, List, Optional, Tuple, TypeVar, Union
 
-from ldai_optimization.dataclasses import ToolDefinition
+from ldai_optimizer.dataclasses import ToolDefinition
 
 logger = logging.getLogger(__name__)
+
+# Matches LaunchDarkly API key and SDK key formats:
+#   api-<hex/alphanumeric, 16+ chars>
+#   sdk-<hex/alphanumeric, 16+ chars>
+#   cli-<hex/alphanumeric, 16+ chars>
+_KEY_PATTERN = re.compile(r"\b(api|sdk|cli)-[A-Za-z0-9_\-]{16,}\b")
+
+
+class RedactionFilter(logging.Filter):
+    """Logging filter that redacts strings resembling LaunchDarkly API keys.
+
+    Scrubs both the format string (``record.msg``) and each positional argument
+    (``record.args``) before the handler formats the final log line, so raw key
+    values are never written to any log destination.
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        record.msg = _KEY_PATTERN.sub("[REDACTED]", str(record.msg))
+        if record.args:
+            record.args = tuple(
+                _KEY_PATTERN.sub("[REDACTED]", str(a)) if isinstance(a, str) else a
+                for a in (record.args if isinstance(record.args, tuple) else (record.args,))
+            )
+        return True
+
+
+logger.addFilter(RedactionFilter())
 
 
 def handle_evaluation_tool_call(score: float, rationale: str) -> str:

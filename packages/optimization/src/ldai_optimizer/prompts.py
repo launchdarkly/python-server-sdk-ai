@@ -3,7 +3,7 @@
 import re
 from typing import Any, Dict, List, Optional
 
-from ldai_optimization.dataclasses import (
+from ldai_optimizer.dataclasses import (
     OptimizationContext,
     OptimizationJudge,
 )
@@ -62,12 +62,12 @@ def build_message_history_text(
     turn_messages = []
     for ctx in history:
         if ctx.user_input:
-            turn_messages.append(f"User: {ctx.user_input}")
+            turn_messages.append(f"User: <untrusted>{ctx.user_input}</untrusted>")
         if ctx.completion_response:
-            turn_messages.append(f"Assistant: {ctx.completion_response}")
+            turn_messages.append(f"Assistant: <untrusted>{ctx.completion_response}</untrusted>")
 
     # Include the current turn's question so judges see what was actually asked
-    turn_messages.append(f"User: {current_user_input}")
+    turn_messages.append(f"User: <untrusted>{current_user_input}</untrusted>")
 
     parts = []
     if input_text:
@@ -243,8 +243,8 @@ def variation_prompt_configuration(
             "## Most Recent Result:",
         ]
         if previous_ctx.user_input:
-            lines.append(f"User question: {previous_ctx.user_input}")
-        lines.append(f"Agent response: {previous_ctx.completion_response}")
+            lines.append(f"User question: <untrusted>{previous_ctx.user_input}</untrusted>")
+        lines.append(f"Agent response: <untrusted>{previous_ctx.completion_response}</untrusted>")
         if previous_ctx.duration_ms is not None:
             lines.append(f"Agent duration: {previous_ctx.duration_ms:.0f}ms")
         return "\n".join(lines)
@@ -279,7 +279,7 @@ def variation_prompt_feedback(
     for ctx in iterations_with_scores:
         lines.append(f"\n### Iteration {ctx.iteration}:")
         if ctx.user_input:
-            lines.append(f"User question: {ctx.user_input}")
+            lines.append(f"User question: <untrusted>{ctx.user_input}</untrusted>")
         for judge_key, result in ctx.scores.items():
             optimization_judge = judges.get(judge_key) if judges else None
             if optimization_judge:
@@ -332,11 +332,11 @@ def variation_prompt_overfit_warning(history: List[OptimizationContext]) -> str:
     ]
 
     if recent.user_input:
-        lines.append(f'- User input: "{recent.user_input}"')
+        lines.append(f'- User input: <untrusted>"{recent.user_input}"</untrusted>')
 
     if recent.current_variables:
         for k, v in recent.current_variables.items():
-            lines.append(f'  - placeholder {{{{{k}}}}}, current value: "{v}"')
+            lines.append(f'  - placeholder {{{{{k}}}}}, current value: <untrusted>"{v}"</untrusted>')
         lines.append(
             "  (These are the placeholder NAMES mapped to their current VALUES"
             " — never use a value as a placeholder name)"
@@ -393,7 +393,7 @@ def variation_prompt_improvement_instructions(
         "",
     ]
     for k in sorted(examples.keys()):
-        vals = ", ".join(f'"{v}"' for v in examples[k])
+        vals = ", ".join(f'"<untrusted>{v}</untrusted>"' for v in examples[k])
         table_lines.append(f"  - {{{{{k}}}}}  (example values: {vals})")
 
     # Build concrete bad/good counterexamples using the actual keys and values
@@ -405,8 +405,8 @@ def variation_prompt_improvement_instructions(
         "IMPORTANT: The names above are the KEYS — they are the placeholder names.",
         "The values listed are only runtime examples that will be substituted at call time.",
         "NEVER use a runtime value as a placeholder name.",
-        f'BAD:  "...{{{{...{first_val}...}}}}..."  '
-        f'— "{first_val}" is a runtime value, not a placeholder name',
+        f'BAD:  "...{{{{...<untrusted>{first_val}</untrusted>...}}}}..."  '
+        f'— "<untrusted>{first_val}</untrusted>" is a runtime value, not a placeholder name',
         f'GOOD: "...{{{{{first_key}}}}}..."  '
         f'— "{first_key}" is the correct placeholder name',
     ]

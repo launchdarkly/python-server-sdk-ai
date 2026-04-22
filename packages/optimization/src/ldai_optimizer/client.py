@@ -1,4 +1,19 @@
-"""Client for LaunchDarkly AI agent optimization."""
+"""Client for LaunchDarkly AI agent optimization.
+
+Security note — LAUNCHDARKLY_API_KEY scope
+-------------------------------------------
+When set, the ``LAUNCHDARKLY_API_KEY`` environment variable is used solely to
+authenticate discrete LaunchDarkly REST API calls (e.g. fetching optimization
+configs, publishing results via ``auto_commit``). It is:
+
+- Never included in any LLM prompt.
+- Never forwarded to user-supplied ``handle_agent_call`` or ``handle_judge_call``
+  callbacks.
+- Never accessible to any external service other than the LaunchDarkly REST API.
+
+All LaunchDarkly API calls are isolated requests; they carry no information
+about the caller's broader runtime environment beyond the key itself.
+"""
 
 import dataclasses
 import json
@@ -14,7 +29,7 @@ from ldai import AIAgentConfig, AIJudgeConfig, AIJudgeConfigDefault, LDAIClient
 from ldai.models import LDMessage, ModelConfig
 from ldclient import Context
 
-from ldai_optimization.dataclasses import (
+from ldai_optimizer.dataclasses import (
     AIJudgeCallConfig,
     GroundTruthOptimizationOptions,
     GroundTruthSample,
@@ -28,19 +43,20 @@ from ldai_optimization.dataclasses import (
     OptimizationResponse,
     ToolDefinition,
 )
-from ldai_optimization.ld_api_client import (
+from ldai_optimizer.ld_api_client import (
     AgentOptimizationConfig,
     AgentOptimizationResultPatch,
     AgentOptimizationResultPost,
     LDApiClient,
 )
-from ldai_optimization.prompts import (
+from ldai_optimizer.prompts import (
     _acceptance_criteria_implies_duration_optimization,
     build_message_history_text,
     build_new_variation_prompt,
     build_reasoning_history,
 )
-from ldai_optimization.util import (
+from ldai_optimizer.util import (
+    RedactionFilter,
     await_if_needed,
     extract_json_from_response,
     interpolate_variables,
@@ -48,6 +64,7 @@ from ldai_optimization.util import (
 )
 
 logger = logging.getLogger(__name__)
+logger.addFilter(RedactionFilter())
 
 
 def _find_model_config(

@@ -6,7 +6,10 @@ import urllib.error
 import urllib.request
 from typing import Any, Dict, List, Optional, TypedDict
 
+from ldai_optimizer.util import RedactionFilter
+
 logger = logging.getLogger(__name__)
+logger.addFilter(RedactionFilter())
 
 _BASE_URL = "https://app.launchdarkly.com"
 

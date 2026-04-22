@@ -9,8 +9,8 @@ from ldai import AIAgentConfig, AIJudgeConfig, AIJudgeConfigDefault, LDAIClient
 from ldai.models import LDMessage, ModelConfig
 from ldclient import Context
 
-from ldai_optimization.client import OptimizationClient, _compute_validation_count, _find_model_config
-from ldai_optimization.dataclasses import (
+from ldai_optimizer.client import OptimizationClient, _compute_validation_count, _find_model_config
+from ldai_optimizer.dataclasses import (
     AIJudgeCallConfig,
     GroundTruthOptimizationOptions,
     GroundTruthSample,
@@ -23,7 +23,7 @@ from ldai_optimization.dataclasses import (
     OptimizationResponse,
     ToolDefinition,
 )
-from ldai_optimization.prompts import (
+from ldai_optimizer.prompts import (
     _acceptance_criteria_implies_duration_optimization,
     build_new_variation_prompt,
     variation_prompt_acceptance_criteria,
@@ -31,8 +31,8 @@ from ldai_optimization.prompts import (
     variation_prompt_overfit_warning,
     variation_prompt_preamble,
 )
-from ldai_optimization.util import interpolate_variables
-from ldai_optimization.util import (
+from ldai_optimizer.util import interpolate_variables
+from ldai_optimizer.util import (
     handle_evaluation_tool_call,
     handle_variation_tool_call,
     restore_variable_placeholders,
@@ -1646,8 +1646,8 @@ class TestVariationPromptPlaceholderTable:
 
     def test_example_values_appear_alongside_keys(self):
         section = self._section()
-        assert '"user-123"' in section or '"user-125"' in section
-        assert '"business"' in section or '"personal"' in section
+        assert '<untrusted>user-123</untrusted>' in section or '<untrusted>user-125</untrusted>' in section
+        assert '<untrusted>business</untrusted>' in section or '<untrusted>personal</untrusted>' in section
 
     def test_keys_and_values_clearly_separated(self):
         section = self._section()
@@ -1672,7 +1672,7 @@ class TestVariationPromptPlaceholderTable:
     def test_single_variable_choice(self):
         section = self._section(variable_choices=[{"lang": "en"}])
         assert "{{lang}}" in section
-        assert '"en"' in section
+        assert '<untrusted>en</untrusted>' in section
 
     def test_table_appears_in_full_prompt(self):
         prompt = build_new_variation_prompt(
@@ -1836,7 +1836,7 @@ class TestRestoreVariablePlaceholders:
             variable_choices=[{"user_id": "user-123", "trip_purpose": "business"}],
         )
 
-        with patch("ldai_optimization.client.logger") as mock_logger:
+        with patch("ldai_optimizer.client.logger") as mock_logger:
             await client._generate_new_variation(iteration=1, variables={})
             warning_calls = [
                 call for call in mock_logger.warning.call_args_list
@@ -2487,7 +2487,7 @@ class TestOptimizeFromConfig:
         mock_api = _make_mock_api_client()
         mock_api.get_agent_optimization = MagicMock(return_value=dict(_API_CONFIG))
 
-        with patch("ldai_optimization.client.LDApiClient", return_value=mock_api):
+        with patch("ldai_optimizer.client.LDApiClient", return_value=mock_api):
             options = _make_from_config_options()
             await client.optimize_from_config("my-opt", options)
 
@@ -2499,7 +2499,7 @@ class TestOptimizeFromConfig:
         mock_api = _make_mock_api_client()
         mock_api.get_agent_optimization = MagicMock(return_value=dict(_API_CONFIG))
 
-        with patch("ldai_optimization.client.LDApiClient", return_value=mock_api):
+        with patch("ldai_optimizer.client.LDApiClient", return_value=mock_api):
             options = _make_from_config_options()
             await client.optimize_from_config("my-opt", options)
 
@@ -2511,7 +2511,7 @@ class TestOptimizeFromConfig:
         mock_api.get_agent_optimization = MagicMock(return_value=dict(_API_CONFIG))
         statuses = []
 
-        with patch("ldai_optimization.client.LDApiClient", return_value=mock_api):
+        with patch("ldai_optimizer.client.LDApiClient", return_value=mock_api):
             options = _make_from_config_options(
                 on_status_update=lambda status, ctx: statuses.append(status)
             )
@@ -2523,7 +2523,7 @@ class TestOptimizeFromConfig:
     async def test_custom_base_url_passed_to_api_client(self):
         client = self._make_client_with_key()
 
-        with patch("ldai_optimization.client.LDApiClient") as MockLDApiClient:
+        with patch("ldai_optimizer.client.LDApiClient") as MockLDApiClient:
             instance = _make_mock_api_client()
             instance.get_agent_optimization = MagicMock(return_value=dict(_API_CONFIG))
             MockLDApiClient.return_value = instance
@@ -2537,7 +2537,7 @@ class TestOptimizeFromConfig:
     async def test_no_base_url_does_not_pass_kwarg(self):
         client = self._make_client_with_key()
 
-        with patch("ldai_optimization.client.LDApiClient") as MockLDApiClient:
+        with patch("ldai_optimizer.client.LDApiClient") as MockLDApiClient:
             instance = _make_mock_api_client()
             instance.get_agent_optimization = MagicMock(return_value=dict(_API_CONFIG))
             MockLDApiClient.return_value = instance
@@ -2551,7 +2551,7 @@ class TestOptimizeFromConfig:
         mock_api = _make_mock_api_client()
         mock_api.get_agent_optimization = MagicMock(return_value=dict(_API_CONFIG))
 
-        with patch("ldai_optimization.client.LDApiClient", return_value=mock_api):
+        with patch("ldai_optimizer.client.LDApiClient", return_value=mock_api):
             options = _make_from_config_options()
             result = await client.optimize_from_config("my-opt", options)
 
@@ -2991,7 +2991,7 @@ class TestBuildOptionsFromConfigGroundTruth:
         mock_api = _make_mock_api_client()
         mock_api.get_agent_optimization = MagicMock(return_value=dict(_API_CONFIG_WITH_GT))
 
-        with patch("ldai_optimization.client.LDApiClient", return_value=mock_api):
+        with patch("ldai_optimizer.client.LDApiClient", return_value=mock_api):
             options = _make_from_config_options(
                 handle_agent_call=AsyncMock(return_value=OptimizationResponse(output="correct answer")),
                 handle_judge_call=AsyncMock(return_value=OptimizationResponse(output=JUDGE_PASS_RESPONSE)),
@@ -3483,7 +3483,7 @@ class TestCommitVariation:
         client = self._make_client()
         api_client = _make_api_client_for_commit()
 
-        with patch("ldai_optimization.client.generate_slug", return_value="fancy-panda"):
+        with patch("ldai_optimizer.client.generate_slug", return_value="fancy-panda"):
             key = client._commit_variation(
                 _make_winning_context(), project_key="my-project",
                 ai_config_key="my-agent", output_key=None, api_client=api_client,
@@ -3500,7 +3500,7 @@ class TestCommitVariation:
         client = self._make_client()
         api_client = _make_api_client_for_commit(existing_variation_keys=["my-key"])
 
-        with patch("ldai_optimization.client.random.randint", return_value=0x1234):
+        with patch("ldai_optimizer.client.random.randint", return_value=0x1234):
             key = client._commit_variation(
                 _make_winning_context(), project_key="my-project",
                 ai_config_key="my-agent", output_key="my-key", api_client=api_client,
@@ -3669,7 +3669,7 @@ class TestCommitVariation:
     def test_creates_api_client_from_stored_key_when_none_provided(self):
         client = self._make_client()
 
-        with patch("ldai_optimization.client.LDApiClient") as MockLDApiClient:
+        with patch("ldai_optimizer.client.LDApiClient") as MockLDApiClient:
             MockLDApiClient.return_value = _make_api_client_for_commit()
             client._commit_variation(
                 _make_winning_context(), project_key="my-project",
@@ -3681,7 +3681,7 @@ class TestCommitVariation:
     def test_passes_base_url_when_creating_api_client(self):
         client = self._make_client()
 
-        with patch("ldai_optimization.client.LDApiClient") as MockLDApiClient:
+        with patch("ldai_optimizer.client.LDApiClient") as MockLDApiClient:
             MockLDApiClient.return_value = _make_api_client_for_commit()
             client._commit_variation(
                 _make_winning_context(), project_key="my-project",
@@ -3697,7 +3697,7 @@ class TestCommitVariation:
         client = self._make_client()
         api_client = _make_api_client_for_commit()
 
-        with patch("ldai_optimization.client.LDApiClient") as MockLDApiClient:
+        with patch("ldai_optimizer.client.LDApiClient") as MockLDApiClient:
             client._commit_variation(
                 _make_winning_context(), project_key="my-project",
                 ai_config_key="my-agent", output_key="k", api_client=api_client,
@@ -3836,7 +3836,7 @@ class TestAutoCommitInOptimizeFromOptions:
         client = self._make_client_without_key()
         options = _make_options()  # auto_commit defaults to False
 
-        with patch("ldai_optimization.client.LDApiClient") as mock_api_cls:
+        with patch("ldai_optimizer.client.LDApiClient") as mock_api_cls:
             result = await client.optimize_from_options("test-agent", options)
 
         mock_api_cls.assert_not_called()
@@ -3995,7 +3995,7 @@ class TestAutoCommitInOptimizeFromConfig:
         mock_api = _make_mock_api_client()
         mock_api.get_agent_optimization = MagicMock(return_value=dict(_API_CONFIG))
 
-        with patch("ldai_optimization.client.LDApiClient", return_value=mock_api):
+        with patch("ldai_optimizer.client.LDApiClient", return_value=mock_api):
             with patch.object(client, "_commit_variation") as mock_commit:
                 await client.optimize_from_config("my-opt", _make_from_config_options())
 
@@ -4006,7 +4006,7 @@ class TestAutoCommitInOptimizeFromConfig:
         mock_api = _make_mock_api_client()
         mock_api.get_agent_optimization = MagicMock(return_value=dict(_API_CONFIG))
 
-        with patch("ldai_optimization.client.LDApiClient", return_value=mock_api):
+        with patch("ldai_optimizer.client.LDApiClient", return_value=mock_api):
             with patch.object(client, "_commit_variation") as mock_commit:
                 await client.optimize_from_config(
                     "my-opt", _make_from_config_options(auto_commit=False)
@@ -4020,7 +4020,7 @@ class TestAutoCommitInOptimizeFromConfig:
         mock_api = _make_mock_api_client()
         mock_api.get_agent_optimization = MagicMock(return_value=dict(_API_CONFIG))
 
-        with patch("ldai_optimization.client.LDApiClient", return_value=mock_api):
+        with patch("ldai_optimizer.client.LDApiClient", return_value=mock_api):
             with patch.object(client, "_commit_variation") as mock_commit:
                 await client.optimize_from_config("my-opt", _make_from_config_options())
 
@@ -4031,7 +4031,7 @@ class TestAutoCommitInOptimizeFromConfig:
         mock_api = _make_mock_api_client()
         mock_api.get_agent_optimization = MagicMock(return_value=dict(_API_CONFIG))
 
-        with patch("ldai_optimization.client.LDApiClient", return_value=mock_api):
+        with patch("ldai_optimizer.client.LDApiClient", return_value=mock_api):
             with patch.object(client, "_commit_variation") as mock_commit:
                 await client.optimize_from_config(
                     "my-opt", _make_from_config_options(output_key="my-variation")
@@ -4046,7 +4046,7 @@ class TestAutoCommitInOptimizeFromConfig:
         mock_api.get_agent_optimization = MagicMock(return_value=dict(_API_CONFIG))
         mock_api.get_model_configs = MagicMock(return_value=[{"id": "gpt-4o", "key": "OpenAI.gpt-4o"}])
 
-        with patch("ldai_optimization.client.LDApiClient", return_value=mock_api):
+        with patch("ldai_optimizer.client.LDApiClient", return_value=mock_api):
             with patch.object(client, "_commit_variation") as mock_commit:
                 await client.optimize_from_config("my-opt", _make_from_config_options())
 
@@ -4058,7 +4058,7 @@ class TestAutoCommitInOptimizeFromConfig:
         mock_api = _make_mock_api_client()
         mock_api.get_agent_optimization = MagicMock(return_value=dict(_API_CONFIG))
 
-        with patch("ldai_optimization.client.LDApiClient", return_value=mock_api):
+        with patch("ldai_optimizer.client.LDApiClient", return_value=mock_api):
             with patch.object(client, "_commit_variation", return_value="my-new-variation"):
                 client._last_optimization_result_id = "result-id-abc"
                 await client.optimize_from_config("my-opt", _make_from_config_options())
@@ -4078,7 +4078,7 @@ class TestAutoCommitInOptimizeFromConfig:
         mock_api = _make_mock_api_client()
         mock_api.get_agent_optimization = MagicMock(return_value=dict(_API_CONFIG))
 
-        with patch("ldai_optimization.client.LDApiClient", return_value=mock_api):
+        with patch("ldai_optimizer.client.LDApiClient", return_value=mock_api):
             await client.optimize_from_config("my-opt", _make_from_config_options())
 
         post_call_args = mock_api.post_agent_optimization_result.call_args_list

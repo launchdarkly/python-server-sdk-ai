@@ -1,4 +1,4 @@
-"""Tests for ldai_optimization.ld_api_client."""
+"""Tests for ldai_optimizer.ld_api_client."""
 
 import json
 import urllib.error
@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from ldai_optimization.ld_api_client import (
+from ldai_optimizer.ld_api_client import (
     AgentOptimizationConfig,
     AgentOptimizationResultPost as OptimizationResultPayload,
     LDApiClient,

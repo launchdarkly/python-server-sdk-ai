@@ -5,8 +5,8 @@ This package will provide helpers to run selected tools against the LaunchDarkly
 
 from ldai.tracker import TokenUsage
 
-from ldai_optimization.client import OptimizationClient
-from ldai_optimization.dataclasses import (
+from ldai_optimizer.client import OptimizationClient
+from ldai_optimizer.dataclasses import (
     AIJudgeCallConfig,
     GroundTruthOptimizationOptions,
     GroundTruthSample,
@@ -20,7 +20,7 @@ from ldai_optimization.dataclasses import (
     OptimizationResponse,
     ToolDefinition,
 )
-from ldai_optimization.ld_api_client import LDApiError
+from ldai_optimizer.ld_api_client import LDApiError
 
 __version__ = "0.0.0"
 
