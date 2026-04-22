@@ -2,6 +2,20 @@
 
 All notable changes to the LaunchDarkly Python AI LangChain provider package will be documented in this file. This project adheres to [Semantic Versioning](http://semver.org).
 
+## [0.5.0](https://github.com/launchdarkly/python-server-sdk-ai/compare/launchdarkly-server-sdk-ai-langchain-0.4.1...launchdarkly-server-sdk-ai-langchain-0.5.0) (2026-04-21)
+
+
+### Features
+
+* Updated to use per-execution tracker lifecycle via `create_tracker()` instead of static tracker instances
+* Renamed graph metrics method from `track_latency()` to `track_duration()` for consistency
+* Moved graph_key configuration from graph tracker instantiation to node tracker initialization
+* Removed graph_key parameter from node-level tracker methods as it is now set during tracker creation
+
+### Dependencies
+
+* Updated for compatibility with `launchdarkly-server-sdk-ai` 0.18.0
+
 ## [0.4.1](https://github.com/launchdarkly/python-server-sdk-ai/compare/launchdarkly-server-sdk-ai-langchain-0.4.0...launchdarkly-server-sdk-ai-langchain-0.4.1) (2026-04-07)
 
 
