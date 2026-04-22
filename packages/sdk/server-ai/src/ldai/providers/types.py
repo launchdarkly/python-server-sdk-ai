@@ -3,10 +3,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from ldai.models import LDMessage
 from ldai.tracker import TokenUsage
+
+# Type alias for a registry of tools available to an agent.
+# Keys are tool names; values are the callable implementations.
+ToolRegistry = Dict[str, Callable]
 
 
 @dataclass
@@ -34,13 +38,13 @@ class LDAIMetrics:
 
 
 @dataclass
-class ChatResponse:
+class ModelResponse:
     """
-    Chat response structure.
+    Response from a model invocation.
     """
     message: LDMessage
     metrics: LDAIMetrics
-    evaluations: Optional[List[JudgeResponse]] = None  # List of JudgeResponse, will be populated later
+    evaluations: Optional[List[JudgeResult]] = None
 
 
 @dataclass
@@ -54,43 +58,54 @@ class StructuredResponse:
 
 
 @dataclass
-class EvalScore:
+class JudgeResult:
     """
-    Score and reasoning for a single evaluation metric.
+    Result from a judge evaluation.
     """
-    score: float  # Score between 0.0 and 1.0
-    reasoning: str  # Reasoning behind the provided score
+    judge_config_key: Optional[str] = None
+    success: bool = False
+    error_message: Optional[str] = None
+    sampled: bool = False  # True when the evaluation was sampled and run
+    metric_key: Optional[str] = None
+    score: Optional[float] = None
+    reasoning: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         """
-        Render the evaluation score as a dictionary object.
+        Render the judge result as a dictionary object.
         """
-        return {
-            'score': self.score,
-            'reasoning': self.reasoning,
+        result: Dict[str, Any] = {
+            'success': self.success,
+            'sampled': self.sampled,
         }
+        if self.score is not None:
+            result['score'] = self.score
+        if self.reasoning is not None:
+            result['reasoning'] = self.reasoning
+        if self.metric_key is not None:
+            result['metricKey'] = self.metric_key
+        if self.judge_config_key is not None:
+            result['judgeConfigKey'] = self.judge_config_key
+        if self.error_message is not None:
+            result['errorMessage'] = self.error_message
+        return result
 
 
 @dataclass
-class JudgeResponse:
+class AgentResult:
     """
-    Response from a judge evaluation containing scores and reasoning for multiple metrics.
+    Result from a single-agent run.
     """
-    evals: Dict[str, EvalScore]  # Dictionary where keys are metric names and values contain score and reasoning
-    success: bool  # Whether the evaluation completed successfully
-    judge_config_key: Optional[str] = None  # The key of the judge configuration that was used to generate this response
-    error: Optional[str] = None  # Error message if evaluation failed
+    output: str
+    raw: Any
+    metrics: LDAIMetrics
 
-    def to_dict(self) -> Dict[str, Any]:
-        """
-        Render the judge response as a dictionary object.
-        """
-        result: Dict[str, Any] = {
-            'evals': {key: eval_score.to_dict() for key, eval_score in self.evals.items()},
-            'success': self.success,
-        }
-        if self.judge_config_key is not None:
-            result['judgeConfigKey'] = self.judge_config_key
-        if self.error is not None:
-            result['error'] = self.error
-        return result
+
+@dataclass
+class AgentGraphResult:
+    """
+    Result from an agent graph run.
+    """
+    output: str
+    raw: Any
+    metrics: LDAIMetrics

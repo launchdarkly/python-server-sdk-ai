@@ -1,21 +1,21 @@
 [project]
 name = "ldai_optimizer"
-version = "0.0.0"  # x-release-please-version
+version = "0.1.0"  # x-release-please-version
 description = "LaunchDarkly AI tool — optimizer"
 authors = [{name = "LaunchDarkly", email = "dev@launchdarkly.com"}]
 license = {text = "Apache-2.0"}
 readme = "README.md"
-requires-python = ">=3.9,<4"
+requires-python = ">=3.10,<4"
 classifiers = [
     "Intended Audience :: Developers",
     "License :: OSI Approved :: Apache Software License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Software Development",
     "Topic :: Software Development :: Libraries",
 ]
@@ -46,7 +46,7 @@ build-backend = "hatchling.build"
 packages = ["src/ldai_optimizer"]
 
 [tool.mypy]
-python_version = "3.9"
+python_version = "3.10"
 ignore_missing_imports = true
 install_types = true
 non_interactive = true

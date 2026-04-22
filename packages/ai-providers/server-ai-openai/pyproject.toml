@@ -1,28 +1,31 @@
 [project]
 name = "launchdarkly-server-sdk-ai-openai"
-version = "0.2.1"
+version = "0.4.0"
 description = "LaunchDarkly AI SDK OpenAI Provider"
 authors = [{name = "LaunchDarkly", email = "dev@launchdarkly.com"}]
 license = {text = "Apache-2.0"}
 readme = "README.md"
-requires-python = ">=3.9,<4"
+requires-python = ">=3.10,<4"
 classifiers = [
     "Intended Audience :: Developers",
     "License :: OSI Approved :: Apache Software License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Software Development",
     "Topic :: Software Development :: Libraries",
 ]
 dependencies = [
-    "launchdarkly-server-sdk-ai>=0.16.0",
+    "launchdarkly-server-sdk-ai>=0.18.0",
     "openai>=1.0.0",
 ]
+
+[project.optional-dependencies]
+agents = ["openai-agents>=0.0.1"]
 
 [project.urls]
 Homepage = "https://docs.launchdarkly.com/sdk/ai/python"
@@ -36,6 +39,7 @@ dev = [
     "mypy==1.18.2",
     "pycodestyle>=2.11.0",
     "isort>=5.12.0",
+    "openai-agents>=0.0.1",
 ]
 
 [build-system]
@@ -46,7 +50,7 @@ build-backend = "hatchling.build"
 packages = ["src/ldai_openai"]
 
 [tool.mypy]
-python_version = "3.9"
+python_version = "3.10"
 ignore_missing_imports = true
 install_types = true
 non_interactive = true

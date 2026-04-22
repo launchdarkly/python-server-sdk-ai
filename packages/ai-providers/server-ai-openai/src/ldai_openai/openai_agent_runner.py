@@ -1,0 +1,118 @@
+from typing import Any, Dict, List
+
+from ldai import log
+from ldai.providers import AgentResult, AgentRunner, ToolRegistry
+from ldai.providers.types import LDAIMetrics
+
+from ldai_openai.openai_helper import (
+    get_ai_usage_from_response,
+    registry_value_to_agent_tool,
+)
+
+
+class OpenAIAgentRunner(AgentRunner):
+    """
+    CAUTION:
+    This feature is experimental and should NOT be considered ready for production use.
+    It may change or be removed without notice and is not subject to backwards
+    compatibility guarantees.
+
+    AgentRunner implementation for OpenAI.
+
+    Executes a single agent using the OpenAI Agents SDK (``openai-agents``).
+    Tool calling and the agentic loop are handled internally by ``Runner.run``.
+    Returned by OpenAIRunnerFactory.create_agent(config, tools).
+
+    Requires ``openai-agents`` to be installed.
+    """
+
+    def __init__(
+        self,
+        model_name: str,
+        parameters: Dict[str, Any],
+        instructions: str,
+        tool_definitions: List[Dict[str, Any]],
+        tools: ToolRegistry,
+    ):
+        self._model_name = model_name
+        self._parameters = parameters
+        self._instructions = instructions
+        self._tool_definitions = tool_definitions
+        self._tools = tools
+
+    async def run(self, input: Any) -> AgentResult:
+        """
+        Run the agent with the given input string.
+
+        Delegates to the OpenAI Agents SDK ``Runner.run``, which handles the
+        tool-calling loop internally.
+
+        :param input: The user prompt or input to the agent
+        :return: AgentResult with output, raw response, and aggregated metrics
+        """
+        try:
+            from agents import Agent, Runner
+        except ImportError:
+            log.warning(
+                "openai-agents is required for OpenAIAgentRunner. "
+                "Install it with: pip install openai-agents"
+            )
+            return AgentResult(output="", raw=None, metrics=LDAIMetrics(success=False, usage=None))
+
+        try:
+            agent_tools = self._build_agent_tools()
+            model_settings = self._build_model_settings()
+
+            agent = Agent(
+                name="ldai-agent",
+                instructions=self._instructions or None,
+                model=self._model_name,
+                tools=agent_tools,
+                model_settings=model_settings,
+            )
+
+            result = await Runner.run(agent, str(input), max_turns=25)
+
+            return AgentResult(
+                output=str(result.final_output),
+                raw=result,
+                metrics=LDAIMetrics(
+                    success=True,
+                    usage=get_ai_usage_from_response(result),
+                ),
+            )
+        except Exception as error:
+            log.warning(f"OpenAI agent run failed: {error}")
+            return AgentResult(output="", raw=None, metrics=LDAIMetrics(success=False, usage=None))
+
+    def _build_agent_tools(self) -> List[Any]:
+        """Build tool instances from LD tool definitions and registry."""
+        tools = []
+        for td in self._tool_definitions:
+            if not isinstance(td, dict):
+                continue
+            name = td.get("name", "")
+            if not name:
+                continue
+
+            tool_fn = self._tools.get(name)
+            if tool_fn:
+                tools.append(registry_value_to_agent_tool(tool_fn))
+                continue
+
+            log.warning(
+                f"Tool '{name}' is defined in the AI config but was not found in "
+                "the tool registry; skipping."
+            )
+        return tools
+
+    def _build_model_settings(self) -> Any:
+        """Map LD model parameters to an openai-agents ModelSettings instance."""
+        from agents import ModelSettings
+
+        known = {
+            "temperature", "top_p", "max_tokens",
+            "frequency_penalty", "presence_penalty",
+        }
+        kwargs = {k: v for k, v in self._parameters.items() if k in known}
+        return ModelSettings(**kwargs) if kwargs else None

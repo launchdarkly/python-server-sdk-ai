@@ -3,7 +3,10 @@ from typing import Any, Callable, List, Optional, TypeVar
 
 from ldai import log
 from ldai.models import AIConfigKind
+from ldai.providers.agent_graph_runner import AgentGraphRunner
+from ldai.providers.agent_runner import AgentRunner
 from ldai.providers.ai_provider import AIProvider
+from ldai.providers.model_runner import ModelRunner
 
 T = TypeVar('T')
 
@@ -76,7 +79,7 @@ class RunnerFactory:
                     continue
                 result = fn(provider_factory)
                 if result is not None:
-                    log.debug(f"Successfully created capability using provider '{provider_type}'")
+                    log.debug(f"Successfully invoked create function with provider '{provider_type}'")
                     return result
             except Exception as exc:
                 log.warning(f"Provider '{provider_type}' failed: {exc}")
@@ -115,13 +118,13 @@ class RunnerFactory:
     def create_model(
         config: AIConfigKind,
         default_ai_provider: Optional[str] = None,
-    ) -> Optional[AIProvider]:
+    ) -> Optional[ModelRunner]:
         """
         Create a model executor for the given AI completion config.
 
         :param config: LaunchDarkly AI config (completion or judge)
         :param default_ai_provider: Optional provider override ('openai', 'langchain', …)
-        :return: Configured AIProvider that can invoke_model(), or None
+        :return: Configured ModelRunner ready to invoke the model, or None
         """
         provider_name = config.provider.name.lower() if config.provider else None
         providers = RunnerFactory._get_providers_to_try(default_ai_provider, provider_name)
@@ -132,14 +135,19 @@ class RunnerFactory:
         config: Any,
         tools: Any,
         default_ai_provider: Optional[str] = None,
-    ) -> Optional[Any]:
+    ) -> Optional[AgentRunner]:
         """
+        CAUTION:
+        This feature is experimental and should NOT be considered ready for production use.
+        It may change or be removed without notice and is not subject to backwards
+        compatibility guarantees.
+
         Create an agent executor for the given AI agent config and tool registry.
 
         :param config: LaunchDarkly AI agent config
         :param tools: Tool registry mapping tool names to callables
         :param default_ai_provider: Optional provider override
-        :return: AgentExecutor instance, or None
+        :return: AgentRunner instance, or None
         """
         provider_name = config.provider.name.lower() if config.provider else None
         providers = RunnerFactory._get_providers_to_try(default_ai_provider, provider_name)
@@ -150,14 +158,19 @@ class RunnerFactory:
         graph_def: Any,
         tools: Any,
         default_ai_provider: Optional[str] = None,
-    ) -> Optional[Any]:
+    ) -> Optional[AgentGraphRunner]:
         """
+        CAUTION:
+        This feature is experimental and should NOT be considered ready for production use.
+        It may change or be removed without notice and is not subject to backwards
+        compatibility guarantees.
+
         Create an agent graph executor for the given graph definition and tool registry.
 
         :param graph_def: AgentGraphDefinition instance
         :param tools: Tool registry mapping tool names to callables
         :param default_ai_provider: Optional provider override
-        :return: AgentGraphExecutor instance, or None
+        :return: AgentGraphRunner instance, or None
         """
         provider_name = None
         if graph_def.root() and graph_def.root().get_config() and graph_def.root().get_config().provider:

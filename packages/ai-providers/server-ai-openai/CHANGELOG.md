@@ -1,5 +1,37 @@
 # Changelog
 
+All notable changes to the LaunchDarkly Python AI OpenAI provider package will be documented in this file. This project adheres to [Semantic Versioning](http://semver.org).
+
+## [0.4.0](https://github.com/launchdarkly/python-server-sdk-ai/compare/launchdarkly-server-sdk-ai-openai-0.3.0...launchdarkly-server-sdk-ai-openai-0.4.0) (2026-04-21)
+
+
+### Features
+
+* Updated to use per-execution tracker lifecycle via `create_tracker()` instead of static tracker instances
+* Renamed graph metrics method from `track_latency()` to `track_duration()` for consistency
+* Moved graph_key configuration from graph tracker instantiation to node tracker initialization
+* Cached node trackers during graph execution to ensure consistent runId across node-level events
+
+### Dependencies
+
+* Updated for compatibility with `launchdarkly-server-sdk-ai` 0.18.0
+
+## [0.3.0](https://github.com/launchdarkly/python-server-sdk-ai/compare/launchdarkly-server-sdk-ai-openai-0.2.1...launchdarkly-server-sdk-ai-openai-0.3.0) (2026-04-02)
+
+
+### ⚠ BREAKING CHANGES
+
+* Restructure provider factory and support additional create methods ([#102](https://github.com/launchdarkly/python-server-sdk-ai/issues/102))
+* Extract shared utilities to openai_helper
+
+### Features
+
+* Add OpenAIAgentRunner with agentic tool-calling loop ([53fd95e](https://github.com/launchdarkly/python-server-sdk-ai/commit/53fd95e2cfb66f4c53c6844cc41170077e6eee8c))
+* Add OpenAIAgentGraphRunner ([56ce0fd](https://github.com/launchdarkly/python-server-sdk-ai/commit/56ce0fd63b4301b58f33c17c55c4ecd47e9f8559))
+* Extract shared utilities to openai_helper ([453c71c](https://github.com/launchdarkly/python-server-sdk-ai/commit/453c71c84adcc6b8a3e316a98907dcb511bc9d41))
+* Add get_ai_usage_from_response to openai_helper ([4fab18f](https://github.com/launchdarkly/python-server-sdk-ai/commit/4fab18fa62375b6c97cb12a89225805c81ca4ee8))
+* Drop support for python 3.9 ([#114](https://github.com/launchdarkly/python-server-sdk-ai/issues/114)) ([dc592c5](https://github.com/launchdarkly/python-server-sdk-ai/commit/dc592c5a2e2bf3bf679af14a9aa63e81678a69ab))
+
 ## [0.2.1](https://github.com/launchdarkly/python-server-sdk-ai/compare/launchdarkly-server-sdk-ai-openai-0.2.0...launchdarkly-server-sdk-ai-openai-0.2.1) (2026-03-16)
 
 

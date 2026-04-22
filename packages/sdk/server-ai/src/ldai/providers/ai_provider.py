@@ -3,7 +3,7 @@ from typing import Any, Dict, List, Optional
 
 from ldai import log
 from ldai.models import LDMessage
-from ldai.providers.types import ChatResponse, StructuredResponse
+from ldai.providers.types import ModelResponse, StructuredResponse, ToolRegistry
 
 
 class AIProvider(ABC):
@@ -16,7 +16,7 @@ class AIProvider(ABC):
     create_model(), create_agent(), and create_agent_graph().
     """
 
-    async def invoke_model(self, messages: List[LDMessage]) -> ChatResponse:
+    async def invoke_model(self, messages: List[LDMessage]) -> ModelResponse:
         """
         Invoke the chat model with an array of messages.
 
@@ -24,14 +24,14 @@ class AIProvider(ABC):
         Provider implementations should override this method.
 
         :param messages: Array of LDMessage objects representing the conversation
-        :return: ChatResponse containing the model's response
+        :return: ModelResponse containing the model's response
         """
         log.warning('invoke_model not implemented by this provider')
 
         from ldai.models import LDMessage
         from ldai.providers.types import LDAIMetrics
 
-        return ChatResponse(
+        return ModelResponse(
             message=LDMessage(role='assistant', content=''),
             metrics=LDAIMetrics(success=False, usage=None),
         )
@@ -61,20 +61,25 @@ class AIProvider(ABC):
             metrics=LDAIMetrics(success=False, usage=None),
         )
 
-    def create_model(self, config: Any) -> Optional['AIProvider']:
+    def create_model(self, config: Any) -> Optional[Any]:
         """
         Create a configured model executor for the given AI config.
 
         Default implementation warns. Provider implementations should override this method.
 
         :param config: The LaunchDarkly AI configuration
-        :return: Configured AIProvider instance, or None if unsupported
+        :return: Configured model runner instance, or None if unsupported
         """
         log.warning('create_model not implemented by this provider')
         return None
 
-    def create_agent(self, config: Any, tools: Any) -> Optional[Any]:
+    def create_agent(self, config: Any, tools: Optional[ToolRegistry] = None) -> Optional[Any]:
         """
+        CAUTION:
+        This feature is experimental and should NOT be considered ready for production use.
+        It may change or be removed without notice and is not subject to backwards
+        compatibility guarantees.
+
         Create a configured agent executor for the given AI config and tool registry.
 
         Default implementation warns. Provider implementations should override this method.
@@ -88,6 +93,11 @@ class AIProvider(ABC):
 
     def create_agent_graph(self, graph_def: Any, tools: Any) -> Optional[Any]:
         """
+        CAUTION:
+        This feature is experimental and should NOT be considered ready for production use.
+        It may change or be removed without notice and is not subject to backwards
+        compatibility guarantees.
+
         Create a configured agent graph executor for the given graph definition and tools.
 
         Default implementation warns. Provider implementations should override this method.

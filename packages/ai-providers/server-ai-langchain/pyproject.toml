@@ -1,29 +1,32 @@
 [project]
 name = "launchdarkly-server-sdk-ai-langchain"
-version = "0.3.2"
+version = "0.5.0"
 description = "LaunchDarkly AI SDK LangChain Provider"
 authors = [{name = "LaunchDarkly", email = "dev@launchdarkly.com"}]
 license = {text = "Apache-2.0"}
 readme = "README.md"
-requires-python = ">=3.9,<4"
+requires-python = ">=3.10,<4"
 classifiers = [
     "Intended Audience :: Developers",
     "License :: OSI Approved :: Apache Software License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Software Development",
     "Topic :: Software Development :: Libraries",
 ]
 dependencies = [
-    "launchdarkly-server-sdk-ai>=0.16.0",
-    "langchain-core>=0.2.0",
-    "langchain>=0.2.0",
+    "launchdarkly-server-sdk-ai>=0.18.0",
+    "langchain-core>=1.0.0",
+    "langchain>=1.0.0",
 ]
+
+[project.optional-dependencies]
+graph = ["langgraph>=1.0.0"]
 
 [project.urls]
 Homepage = "https://docs.launchdarkly.com/sdk/ai/python"
@@ -37,6 +40,7 @@ dev = [
     "mypy==1.18.2",
     "pycodestyle>=2.11.0",
     "isort>=5.12.0",
+    "langgraph>=1.0.0",
 ]
 
 [build-system]
@@ -47,7 +51,7 @@ build-backend = "hatchling.build"
 packages = ["src/ldai_langchain"]
 
 [tool.mypy]
-python_version = "3.9"
+python_version = "3.10"
 ignore_missing_imports = true
 install_types = true
 non_interactive = true

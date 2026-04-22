@@ -1,16 +1,15 @@
 """Judge implementation for AI evaluation."""
 
 import random
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 import chevron
 
 from ldai import log
 from ldai.judge.evaluation_schema_builder import EvaluationSchemaBuilder
 from ldai.models import AIJudgeConfig, LDMessage
-from ldai.providers.ai_provider import AIProvider
-from ldai.providers.types import ChatResponse, EvalScore, JudgeResponse
-from ldai.tracker import LDAIConfigTracker
+from ldai.providers.model_runner import ModelRunner
+from ldai.providers.types import JudgeResult, ModelResponse
 
 
 class Judge:
@@ -24,19 +23,16 @@ class Judge:
     def __init__(
         self,
         ai_config: AIJudgeConfig,
-        ai_config_tracker: LDAIConfigTracker,
-        ai_provider: AIProvider,
+        model_runner: ModelRunner,
     ):
         """
         Initialize the Judge.
 
         :param ai_config: The judge AI configuration
-        :param ai_config_tracker: The tracker for the judge configuration
-        :param ai_provider: The AI provider to use for evaluation
+        :param model_runner: The model runner to use for evaluation
         """
         self._ai_config = ai_config
-        self._ai_config_tracker = ai_config_tracker
-        self._ai_provider = ai_provider
+        self._model_runner = model_runner
         self._evaluation_response_structure = EvaluationSchemaBuilder.build()
 
     async def evaluate(
@@ -44,71 +40,75 @@ class Judge:
         input_text: str,
         output_text: str,
         sampling_rate: float = 1.0,
-    ) -> Optional[JudgeResponse]:
+    ) -> JudgeResult:
         """
         Evaluates an AI response using the judge's configuration.
 
         :param input_text: The input prompt or question that was provided to the AI
         :param output_text: The AI-generated response to be evaluated
         :param sampling_rate: Sampling rate (0-1) to determine if evaluation should be processed (defaults to 1)
-        :return: Evaluation results or None if not sampled
+        :return: The result of the judge evaluation.
         """
+        judge_result = JudgeResult(judge_config_key=self._ai_config.key)
+
         try:
             if not self._ai_config.evaluation_metric_key:
-                log.warn(
+                log.warning(
                     'Judge configuration is missing required evaluationMetricKey'
                 )
-                return None
+                judge_result.error_message = 'Judge configuration is missing required evaluationMetricKey'
+                return judge_result
 
             if not self._ai_config.messages:
-                log.warn('Judge configuration must include messages')
-                return None
+                log.warning('Judge configuration must include messages')
+                judge_result.error_message = 'Judge configuration must include messages'
+                return judge_result
 
             if random.random() > sampling_rate:
                 log.debug(f'Judge evaluation skipped due to sampling rate: {sampling_rate}')
-                return None
+                return judge_result
 
+            judge_result.sampled = True
+
+            tracker = self._ai_config.create_tracker()
             messages = self._construct_evaluation_messages(input_text, output_text)
             assert self._evaluation_response_structure is not None
 
-            response = await self._ai_config_tracker.track_metrics_of(
-                lambda: self._ai_provider.invoke_structured_model(messages, self._evaluation_response_structure),
+            response = await tracker.track_metrics_of_async(
+                lambda: self._model_runner.invoke_structured_model(messages, self._evaluation_response_structure),
                 lambda result: result.metrics,
             )
 
-            success = response.metrics.success
-            evals = self._parse_evaluation_response(response.data)
+            parsed = self._parse_evaluation_response(response.data)
 
-            if not evals:
-                log.warn('Judge evaluation did not return the expected evaluation')
-                success = False
+            if parsed is None:
+                log.warning('Judge evaluation did not return the expected evaluation')
+                return judge_result
 
-            return JudgeResponse(
-                judge_config_key=self._ai_config.key,
-                evals=evals,
-                success=success,
-            )
+            score, reasoning = parsed
+            judge_result.metric_key = self._ai_config.evaluation_metric_key
+            judge_result.score = score
+            judge_result.reasoning = reasoning
+            judge_result.success = response.metrics.success
+            return judge_result
         except Exception as error:
             log.error(f'Judge evaluation failed: {error}')
-            return JudgeResponse(
-                evals={},
-                success=False,
-                error=str(error) if isinstance(error, Exception) else 'Unknown error',
-            )
+            judge_result.error_message = str(error) if isinstance(error, Exception) else 'Unknown error'
+            return judge_result
 
     async def evaluate_messages(
         self,
         messages: list[LDMessage],
-        response: ChatResponse,
+        response: ModelResponse,
         sampling_ratio: float = 1.0,
-    ) -> Optional[JudgeResponse]:
+    ) -> JudgeResult:
         """
         Evaluates an AI response from chat messages and response.
 
         :param messages: Array of messages representing the conversation history
         :param response: The AI response to be evaluated
         :param sampling_ratio: Sampling ratio (0-1) to determine if evaluation should be processed (defaults to 1)
-        :return: Evaluation results or None if not sampled
+        :return: The result of the judge evaluation.
         """
         input_text = '\r\n'.join([msg.content for msg in messages]) if messages else ''
         output_text = response.message.content
@@ -123,21 +123,13 @@ class Judge:
         """
         return self._ai_config
 
-    def get_tracker(self) -> LDAIConfigTracker:
+    def get_model_runner(self) -> ModelRunner:
         """
-        Returns the tracker associated with this judge.
+        Returns the model runner used by this judge.
 
-        :return: The tracker for the judge configuration
+        :return: The model runner
         """
-        return self._ai_config_tracker
-
-    def get_provider(self) -> AIProvider:
-        """
-        Returns the AI provider used by this judge.
-
-        :return: The AI provider
-        """
-        return self._ai_provider
+        return self._model_runner
 
     def _construct_evaluation_messages(self, input_text: str, output_text: str) -> list[LDMessage]:
         """
@@ -172,28 +164,23 @@ class Judge:
         # Use chevron (Mustache) for templating, with no escaping
         return chevron.render(content, variables)
 
-    def _parse_evaluation_response(self, data: Dict[str, Any]) -> Dict[str, EvalScore]:
+    def _parse_evaluation_response(self, data: Dict[str, Any]) -> Optional[Tuple[float, str]]:
         """
         Parses the structured evaluation response. Expects {"score": n, "reasoning": "..."}.
-        """
-        results: Dict[str, EvalScore] = {}
-        metric_key = self._ai_config.evaluation_metric_key
-        if not metric_key:
-            log.warn('Evaluation metric key is missing')
-            return results
 
+        :return: ``(score, reasoning)`` on success, or ``None`` if the response is invalid.
+        """
         if not isinstance(data, dict):
-            log.warn('Invalid response: missing or invalid evaluation')
-            return results
+            log.warning('Invalid response: missing or invalid evaluation')
+            return None
 
         score = data.get('score')
         reasoning = data.get('reasoning')
         if not isinstance(score, (int, float)) or score < 0 or score > 1:
-            log.warn(f'Invalid score: {score}. Score must be a number between 0 and 1 inclusive')
-            return results
+            log.warning(f'Invalid score: {score}. Score must be a number between 0 and 1 inclusive')
+            return None
         if not isinstance(reasoning, str):
-            log.warn('Invalid reasoning: must be a string')
-            return results
+            log.warning('Invalid reasoning: must be a string')
+            return None
 
-        results[metric_key] = EvalScore(score=float(score), reasoning=reasoning)
-        return results
+        return (float(score), reasoning)

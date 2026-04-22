@@ -4,7 +4,7 @@ from ldclient.integrations.test_data import TestData
 
 from ldai import LDAIClient, LDMessage, ModelConfig
 from ldai.models import (AIAgentConfigDefault, AICompletionConfigDefault,
-                         AIConfigDefault, AIJudgeConfigDefault)
+                         AIJudgeConfigDefault)
 
 
 @pytest.fixture
@@ -355,46 +355,6 @@ def test_sdk_info_tracked_on_init():
 
 
 # ============================================================================
-# disabled() classmethod tests
-# ============================================================================
-
-def test_ai_config_default_disabled_returns_disabled_instance():
-    result = AIConfigDefault.disabled()
-    assert isinstance(result, AIConfigDefault)
-    assert result.enabled is False
-
-
-def test_completion_config_default_disabled_returns_correct_type():
-    result = AICompletionConfigDefault.disabled()
-    assert isinstance(result, AICompletionConfigDefault)
-    assert result.enabled is False
-    assert result.messages is None
-    assert result.model is None
-
-
-def test_agent_config_default_disabled_returns_correct_type():
-    result = AIAgentConfigDefault.disabled()
-    assert isinstance(result, AIAgentConfigDefault)
-    assert result.enabled is False
-    assert result.instructions is None
-    assert result.model is None
-
-
-def test_judge_config_default_disabled_returns_correct_type():
-    result = AIJudgeConfigDefault.disabled()
-    assert isinstance(result, AIJudgeConfigDefault)
-    assert result.enabled is False
-    assert result.messages is None
-    assert result.evaluation_metric_key is None
-
-
-def test_disabled_returns_new_instance_each_call():
-    first = AICompletionConfigDefault.disabled()
-    second = AICompletionConfigDefault.disabled()
-    assert first is not second
-
-
-# ============================================================================
 # Optional default value tests
 # ============================================================================
 
@@ -404,3 +364,139 @@ def test_completion_config_without_default_uses_disabled(ldai_client: LDAIClient
     config = ldai_client.completion_config('missing-flag', context)
 
     assert config.enabled is False
+
+
+# ============================================================================
+# create_tracker factory tests
+# ============================================================================
+
+def test_enabled_config_has_create_tracker(ldai_client: LDAIClient):
+    context = Context.create('user-key')
+    default = AICompletionConfigDefault(
+        enabled=True,
+        model=ModelConfig('fakeModel'),
+        messages=[LDMessage(role='system', content='Hello!')],
+    )
+
+    config = ldai_client.completion_config('model-config', context, default)
+
+    assert config.enabled is True
+    assert config.create_tracker is not None
+    assert callable(config.create_tracker)
+
+
+def test_disabled_config_has_working_create_tracker(ldai_client: LDAIClient):
+    context = Context.create('user-key')
+    default = AICompletionConfigDefault(enabled=False, model=ModelConfig('fake-model'), messages=[])
+
+    config = ldai_client.completion_config('off-config', context, default)
+
+    assert config.enabled is False
+    assert callable(config.create_tracker)
+    tracker = config.create_tracker()
+    assert tracker is not None
+
+
+def test_create_tracker_returns_new_tracker_each_call(ldai_client: LDAIClient):
+    context = Context.create('user-key')
+    default = AICompletionConfigDefault(
+        enabled=True,
+        model=ModelConfig('fakeModel'),
+        messages=[LDMessage(role='system', content='Hello!')],
+    )
+
+    config = ldai_client.completion_config('model-config', context, default)
+
+    assert config.create_tracker is not None
+    tracker1 = config.create_tracker()
+    tracker2 = config.create_tracker()
+
+    assert tracker1 is not tracker2
+
+
+def test_create_tracker_produces_fresh_run_id_each_call(ldai_client: LDAIClient):
+    context = Context.create('user-key')
+    default = AICompletionConfigDefault(
+        enabled=True,
+        model=ModelConfig('fakeModel'),
+        messages=[LDMessage(role='system', content='Hello!')],
+    )
+
+    config = ldai_client.completion_config('model-config', context, default)
+
+    assert config.create_tracker is not None
+    tracker1 = config.create_tracker()
+    tracker2 = config.create_tracker()
+
+    # Each tracker should have a unique runId
+    tracker1.track_success()
+    tracker2.track_success()
+
+
+def test_create_tracker_preserves_config_metadata():
+    from unittest.mock import Mock
+
+    mock_client = Mock()
+    mock_client.variation.return_value = {
+        '_ldMeta': {'enabled': True, 'variationKey': 'var-abc', 'version': 7},
+        'model': {'name': 'gpt-4'},
+        'provider': {'name': 'openai'},
+        'messages': []
+    }
+
+    client = LDAIClient(mock_client)
+    context = Context.create('user-key')
+    default = AICompletionConfigDefault(enabled=False, model=ModelConfig('fake'), messages=[])
+
+    config = client.completion_config('my-config-key', context, default)
+
+    assert config.create_tracker is not None
+    tracker = config.create_tracker()
+    tracker.track_success()
+
+    # Find the track_success call (skip the sdk:info and usage calls)
+    success_calls = [
+        c for c in mock_client.track.call_args_list
+        if c.args[0] == '$ld:ai:generation:success'
+    ]
+    assert len(success_calls) == 1
+    track_data = success_calls[0].args[2]
+    assert track_data['configKey'] == 'my-config-key'
+    assert track_data['variationKey'] == 'var-abc'
+    assert track_data['version'] == 7
+    assert track_data['modelName'] == 'gpt-4'
+    assert track_data['providerName'] == 'openai'
+    assert 'runId' in track_data
+
+
+def test_create_tracker_each_call_has_different_run_id():
+    from unittest.mock import Mock
+
+    mock_client = Mock()
+    mock_client.variation.return_value = {
+        '_ldMeta': {'enabled': True, 'variationKey': 'v1', 'version': 1},
+        'model': {'name': 'test-model'},
+        'provider': {'name': 'test-provider'},
+        'messages': []
+    }
+
+    client = LDAIClient(mock_client)
+    context = Context.create('user-key')
+
+    config = client.completion_config('key', context)
+
+    assert config.create_tracker is not None
+    tracker1 = config.create_tracker()
+    tracker2 = config.create_tracker()
+
+    tracker1.track_success()
+    tracker2.track_success()
+
+    success_calls = [
+        c for c in mock_client.track.call_args_list
+        if c.args[0] == '$ld:ai:generation:success'
+    ]
+    assert len(success_calls) == 2
+    run_id_1 = success_calls[0].args[2]['runId']
+    run_id_2 = success_calls[1].args[2]['runId']
+    assert run_id_1 != run_id_2

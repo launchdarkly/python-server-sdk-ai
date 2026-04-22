@@ -2,6 +2,59 @@
 
 All notable changes to the LaunchDarkly Python AI package will be documented in this file. This project adheres to [Semantic Versioning](http://semver.org).
 
+## [0.18.0](https://github.com/launchdarkly/python-server-sdk-ai/compare/launchdarkly-server-sdk-ai-0.17.0...launchdarkly-server-sdk-ai-0.18.0) (2026-04-21)
+
+
+### ⚠ BREAKING CHANGES
+
+* Add per-execution runId, at-most-once tracking, and cross-process tracker resumption ([#133](https://github.com/launchdarkly/python-server-sdk-ai/issues/133))
+* `AICompletionConfig`, `AIAgentConfig`, and `AIJudgeConfig`: `tracker` field replaced with `create_tracker` factory callable ([#133](https://github.com/launchdarkly/python-server-sdk-ai/issues/133))
+* `ManagedModel`, `ManagedAgent`, `Judge`, and `ManagedAgentGraph` constructors no longer accept a tracker parameter; tracker is now created on-demand via `create_tracker` ([#133](https://github.com/launchdarkly/python-server-sdk-ai/issues/133))
+* `ManagedAgentGraph.get_tracker()` method removed ([#133](https://github.com/launchdarkly/python-server-sdk-ai/issues/133))
+* rename track_latency to track_duration on AIGraphTracker ([#138](https://github.com/launchdarkly/python-server-sdk-ai/issues/138))
+* `graph_key` keyword argument removed from all `LDAIConfigTracker.track_*()` methods; trackers retrieved via a graph definition are automatically configured with the correct graph key ([#134](https://github.com/launchdarkly/python-server-sdk-ai/issues/134))
+* Flatten JudgeResponse and EvalScore into new JudgeResult ([#132](https://github.com/launchdarkly/python-server-sdk-ai/issues/132))
+* `LDAIConfigTracker.track_eval_scores()` and `track_judge_response()` removed and consolidated into `track_judge_result()` ([#132](https://github.com/launchdarkly/python-server-sdk-ai/issues/132))
+* `AIGraphTracker.track_judge_response()` method removed ([#132](https://github.com/launchdarkly/python-server-sdk-ai/issues/132))
+* `Judge.evaluate()` and `evaluate_messages()` now always return a `JudgeResult` object; use `result.sampled` to check if evaluation was actually executed ([#132](https://github.com/launchdarkly/python-server-sdk-ai/issues/132))
+
+### Features
+
+* Add per-execution runId, at-most-once tracking, and cross-process tracker resumption ([#133](https://github.com/launchdarkly/python-server-sdk-ai/issues/133)) ([68685cd](https://github.com/launchdarkly/python-server-sdk-ai/commit/68685cd9623105b0b01dd57942538c047615f4f2))
+* Flatten JudgeResponse and EvalScore into new JudgeResult ([#132](https://github.com/launchdarkly/python-server-sdk-ai/issues/132)) ([af4e463](https://github.com/launchdarkly/python-server-sdk-ai/commit/af4e46332c5d9a668a7172012c89871d0fb90b56))
+* Move graph_key to AIConfigTracker instantiation ([#134](https://github.com/launchdarkly/python-server-sdk-ai/issues/134)) ([20fff24](https://github.com/launchdarkly/python-server-sdk-ai/commit/20fff24fcd02aa101d7f9a6c21dc6a25e7916a1c))
+* rename track_latency to track_duration on AIGraphTracker ([#138](https://github.com/launchdarkly/python-server-sdk-ai/issues/138)) ([05758a7](https://github.com/launchdarkly/python-server-sdk-ai/commit/05758a735db0c2defc4e08d02282a46f559220e5))
+* Add `LDAIConfigTracker.resumption_token()` and `from_resumption_token()` methods to continue tracking a run from a separate process ([#133](https://github.com/launchdarkly/python-server-sdk-ai/issues/133)) ([68685cd](https://github.com/launchdarkly/python-server-sdk-ai/commit/68685cd9623105b0b01dd57942538c047615f4f2))
+
+## [0.17.0](https://github.com/launchdarkly/python-server-sdk-ai/compare/launchdarkly-server-sdk-ai-0.16.1...launchdarkly-server-sdk-ai-0.17.0) (2026-04-02)
+
+
+### ⚠ BREAKING CHANGES
+
+* Restructure provider factory and support additional create methods ([#102](https://github.com/launchdarkly/python-server-sdk-ai/issues/102))
+* Split track_metrics_of into sync and async variants ([#112](https://github.com/launchdarkly/python-server-sdk-ai/issues/112))
+* Remove node-scoped methods from AIGraphTracker (track_node_invocation, track_tool_call, track_node_judge_response), use related AIConfigTracker methods instead
+
+### Features
+
+* Introduce ManagedModel and ModelRunner ([#104](https://github.com/launchdarkly/python-server-sdk-ai/issues/104)) ([453c71c](https://github.com/launchdarkly/python-server-sdk-ai/commit/453c71c84adcc6b8a3e316a98907dcb511bc9d41))
+* Introduce ManagedAgent and AgentRunner implementations ([#110](https://github.com/launchdarkly/python-server-sdk-ai/issues/110)) ([53fd95e](https://github.com/launchdarkly/python-server-sdk-ai/commit/53fd95e2cfb66f4c53c6844cc41170077e6eee8c))
+* Add LDAIClient.create_agent() returning ManagedAgent ([53fd95e](https://github.com/launchdarkly/python-server-sdk-ai/commit/53fd95e2cfb66f4c53c6844cc41170077e6eee8c))
+* Add ManagedAgentGraph support ([#111](https://github.com/launchdarkly/python-server-sdk-ai/issues/111)) ([56ce0fd](https://github.com/launchdarkly/python-server-sdk-ai/commit/56ce0fd63b4301b58f33c17c55c4ecd47e9f8559))
+* Add ModelRunner protocol with invoke_model() and invoke_structured_model() ([453c71c](https://github.com/launchdarkly/python-server-sdk-ai/commit/453c71c84adcc6b8a3e316a98907dcb511bc9d41))
+* Add optional graph_key to all LDAIConfigTracker track_* methods for graph correlation ([4fab18f](https://github.com/launchdarkly/python-server-sdk-ai/commit/4fab18fa62375b6c97cb12a89225805c81ca4ee8))
+* Add track_tool_call/track_tool_calls to LDAIConfigTracker ([4fab18f](https://github.com/launchdarkly/python-server-sdk-ai/commit/4fab18fa62375b6c97cb12a89225805c81ca4ee8))
+* Deprecated Chat object in favor of ManagedModel ([453c71c](https://github.com/launchdarkly/python-server-sdk-ai/commit/453c71c84adcc6b8a3e316a98907dcb511bc9d41))
+* Deprecated create_chat(), use create_model() on the LDAIClient ([453c71c](https://github.com/launchdarkly/python-server-sdk-ai/commit/453c71c84adcc6b8a3e316a98907dcb511bc9d41))
+* Drop support for python 3.9 ([#114](https://github.com/launchdarkly/python-server-sdk-ai/issues/114)) ([dc592c5](https://github.com/launchdarkly/python-server-sdk-ai/commit/dc592c5a2e2bf3bf679af14a9aa63e81678a69ab))
+
+
+### Bug Fixes
+
+* Make AIGraphTracker.track_total_tokens accept Optional[TokenUsage], skip when None or total &lt;= 0 ([4fab18f](https://github.com/launchdarkly/python-server-sdk-ai/commit/4fab18fa62375b6c97cb12a89225805c81ca4ee8))
+* Remove node-scoped methods from AIGraphTracker (track_node_invocation, track_tool_call, track_node_judge_response), use related AIConfigTracker methods instead ([4fab18f](https://github.com/launchdarkly/python-server-sdk-ai/commit/4fab18fa62375b6c97cb12a89225805c81ca4ee8))
+* Use time.perf_counter_ns() for sub-millisecond precision in duration calculations ([4fab18f](https://github.com/launchdarkly/python-server-sdk-ai/commit/4fab18fa62375b6c97cb12a89225805c81ca4ee8))
+
 ## [0.16.1](https://github.com/launchdarkly/python-server-sdk-ai/compare/launchdarkly-server-sdk-ai-0.16.0...launchdarkly-server-sdk-ai-0.16.1) (2026-03-16)
 
 

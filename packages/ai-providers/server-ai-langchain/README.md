@@ -1,6 +1,9 @@
 # LaunchDarkly AI SDK - LangChain Provider
 
-[![PyPI](https://img.shields.io/pypi/v/launchdarkly-server-sdk-ai-langchain.svg)](https://pypi.org/project/launchdarkly-server-sdk-ai-langchain/)
+[![Actions Status](https://github.com/launchdarkly/python-server-sdk-ai/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/launchdarkly/python-server-sdk-ai/actions/workflows/ci.yml)
+
+[![PyPI](https://img.shields.io/pypi/v/launchdarkly-server-sdk-ai-langchain.svg?maxAge=2592000)](https://pypi.org/project/launchdarkly-server-sdk-ai-langchain/)
+[![PyPI](https://img.shields.io/pypi/pyversions/launchdarkly-server-sdk-ai-langchain.svg)](https://pypi.org/project/launchdarkly-server-sdk-ai-langchain/)
 
 > [!CAUTION]
 > This package is in pre-release and not subject to backwards compatibility
@@ -138,7 +141,7 @@ provider = await LangChainProvider.create(config)
 async def invoke():
     return await provider.invoke_model(messages)
 
-response = await config.tracker.track_metrics_of(
+response = await config.tracker.track_metrics_of_async(
     invoke,
     lambda r: r.metrics
 )
