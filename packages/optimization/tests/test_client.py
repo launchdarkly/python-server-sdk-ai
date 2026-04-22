@@ -33,8 +33,6 @@ from ldai_optimizer.prompts import (
 )
 from ldai_optimizer.util import interpolate_variables
 from ldai_optimizer.util import (
-    handle_evaluation_tool_call,
-    handle_variation_tool_call,
     restore_variable_placeholders,
 )
 
@@ -117,45 +115,6 @@ def _make_client(ldai: MagicMock | None = None) -> OptimizationClient:
 # ---------------------------------------------------------------------------
 # Util functions
 # ---------------------------------------------------------------------------
-
-
-class TestHandleEvaluationToolCall:
-    def test_returns_json_with_score_and_rationale(self):
-        result = handle_evaluation_tool_call(score=0.8, rationale="Good answer.")
-        data = json.loads(result)
-        assert data["score"] == 0.8
-        assert data["rationale"] == "Good answer."
-
-    def test_score_zero_is_valid(self):
-        result = handle_evaluation_tool_call(score=0.0, rationale="No match.")
-        assert json.loads(result)["score"] == 0.0
-
-    def test_result_is_valid_json_string(self):
-        result = handle_evaluation_tool_call(score=0.5, rationale="Partial.")
-        assert isinstance(result, str)
-        json.loads(result)  # must not raise
-
-
-class TestHandleVariationToolCall:
-    def test_returns_json_with_all_fields(self):
-        result = handle_variation_tool_call(
-            current_instructions="Do X.",
-            current_parameters={"temperature": 0.7},
-            model="gpt-4o",
-        )
-        data = json.loads(result)
-        assert data["current_instructions"] == "Do X."
-        assert data["current_parameters"] == {"temperature": 0.7}
-        assert data["model"] == "gpt-4o"
-
-    def test_result_is_valid_json_string(self):
-        result = handle_variation_tool_call(
-            current_instructions="Do Y.",
-            current_parameters={},
-            model="gpt-4o-mini",
-        )
-        assert isinstance(result, str)
-        json.loads(result)
 
 
 # ---------------------------------------------------------------------------

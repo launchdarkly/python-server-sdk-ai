@@ -8,7 +8,6 @@ import re
 from typing import Any, Awaitable, Dict, List, Optional, Tuple, TypeVar, Union
 
 from ldai_optimizer._slug_words import _ADJECTIVES, _NOUNS
-from ldai_optimizer.dataclasses import ToolDefinition
 
 logger = logging.getLogger(__name__)
 
@@ -49,47 +48,6 @@ def generate_slug() -> str:
     :return: A hyphen-joined two-word lowercase string.
     """
     return f"{random.choice(_ADJECTIVES)}-{random.choice(_NOUNS)}"
-
-
-def handle_evaluation_tool_call(score: float, rationale: str) -> str:
-    """
-    Process the return_evaluation tool call from the judge LLM.
-
-    Serialises the score and rationale to a JSON string. The caller
-    (handle_judge_call implementor) should return this string as the result of
-    the judge turn; the framework will then parse it via _parse_judge_response
-    to extract the score and rationale.
-
-    :param score: The evaluation score (0.0 to 1.0)
-    :param rationale: Explanation of the evaluation decision
-    :return: JSON string of the score and rationale
-    """
-    return json.dumps({"score": score, "rationale": rationale})
-
-
-def handle_variation_tool_call(
-    current_instructions: str,
-    current_parameters: Dict[str, Any],
-    model: str,
-) -> str:
-    """
-    Process the return_improved_configuration tool call from the variation LLM.
-
-    Serialises the improved configuration to a JSON string. The caller
-    (handle_agent_call implementor) should return this string as the result of
-    the variation agent turn; the framework will then parse it via
-    extract_json_from_response and apply it in _apply_new_variation_response.
-
-    :param current_instructions: The improved agent instructions
-    :param current_parameters: The improved agent parameters (e.g. temperature, max_tokens)
-    :param model: The model to use for the improved agent
-    :return: JSON string of the improved configuration
-    """
-    return json.dumps({
-        "current_instructions": current_instructions,
-        "current_parameters": current_parameters,
-        "model": model,
-    })
 
 
 def interpolate_variables(text: str, variables: Dict[str, Any]) -> str:
@@ -209,98 +167,6 @@ async def await_if_needed(result: Union[_T, Awaitable[_T]]) -> _T:
     if inspect.isawaitable(result):
         return await result  # type: ignore[return-value]
     return result  # type: ignore[return-value]
-
-
-def create_evaluation_tool() -> ToolDefinition:
-    """
-    Create the structured output tool for judge evaluations.
-
-    :return: A ToolDefinition for evaluation responses
-    """
-    return ToolDefinition(
-        type="function",
-        name="return_evaluation",
-        description="Returns an evaluation with a score and rationale.",
-        input_schema={
-            "type": "object",
-            "properties": {
-                "score": {
-                    "type": "number",
-                    "description": "The evaluation score (typically 0.0 to 1.0)",
-                },
-                "rationale": {
-                    "type": "string",
-                    "description": "Explanation of the evaluation",
-                },
-            },
-            "required": ["score", "rationale"],
-        },
-    )
-
-
-def create_boolean_tool() -> ToolDefinition:
-    """
-    Create the structured output tool for acceptance judges.
-
-    :return: A ToolDefinition for boolean evaluation responses
-    """
-    return ToolDefinition(
-        type="function",
-        name="return_boolean",
-        description="Returns a boolean value and reasoning for the evaluation.",
-        input_schema={
-            "type": "object",
-            "properties": {
-                "passed": {
-                    "type": "boolean",
-                    "description": "Whether the response passes the evaluation criteria",
-                },
-                "rationale": {
-                    "type": "string",
-                    "description": "Explanation of the evaluation decision",
-                },
-            },
-            "required": ["passed", "rationale"],
-        },
-    )
-
-
-def create_variation_tool(model_choices: List[str]) -> ToolDefinition:
-    """
-    Create the structured output tool for variation generation.
-
-    :param model_choices: List of model IDs the LLM may select from
-    :return: A ToolDefinition for variation generation responses
-    """
-    return ToolDefinition(
-        type="function",
-        name="return_improved_configuration",
-        description=(
-            "Returns the improved agent configuration with updated instructions and parameters. "
-            "This tool enforces structured output to ensure the response can be parsed and validated."
-        ),
-        input_schema={
-            "type": "object",
-            "properties": {
-                "current_instructions": {
-                    "type": "string",
-                    "description": "The improved agent instructions based on the evaluation feedback",
-                },
-                "current_parameters": {
-                    "type": "object",
-                    "description": "The improved agent parameters (e.g., temperature, max_tokens, etc.)",
-                    "additionalProperties": True,
-                },
-                "model": {
-                    "type": "string",
-                    "description": "The model to use for the improved agent",
-                    "enum": model_choices,
-                },
-            },
-            "required": ["current_instructions", "current_parameters", "model"],
-            "additionalProperties": False,
-        },
-    )
 
 
 def validate_variation_response(response_data: Dict[str, Any]) -> List[str]:
