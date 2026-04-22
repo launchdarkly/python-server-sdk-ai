@@ -70,7 +70,8 @@ result = await client.optimize_from_options(
         judge_model="gpt-4o-mini",
         judges={
             "quality": OptimizationJudge(
-                acceptance_statement="The response is accurate and concise."
+                threshold=1.0,
+                acceptance_statement="The response is accurate and concise.",
             )
         },
         model_choices=["gpt-4o", "gpt-4o-mini"],
@@ -92,7 +93,8 @@ result = await client.optimize_from_options(
         judge_model="gpt-4o-mini",
         judges={
             "accuracy": OptimizationJudge(
-                acceptance_statement="The response matches the expected answer."
+                threshold=1.0,
+                acceptance_statement="The response matches the expected answer.",
             )
         },
         model_choices=["gpt-4o", "gpt-4o-mini"],
