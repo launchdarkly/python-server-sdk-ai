@@ -38,10 +38,8 @@
       "versioning": "default",
       "bump-minor-pre-major": true,
       "include-v-in-tag": false,
-      "extra-files": [
-        "src/ldai_optimization/__init__.py"
-      ],
-      "component": "launchdarkly-server-sdk-ai-optimization"
+      "extra-files": ["src/ldai_optimizer/__init__.py"],
+      "component": "ldai_optimizer"
     }
   }
 }
