@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from ldai import AIAgentConfig, AIJudgeConfig, AIJudgeConfigDefault, LDAIClient
 from ldai.models import LDMessage, ModelConfig
+from ldai.tracker import TokenUsage
 from ldclient import Context
 
 from ldai_optimizer.client import OptimizationClient, _compute_validation_count, _find_model_config
@@ -2414,6 +2415,358 @@ class TestBuildOptionsFromConfig:
         assert len(completed_patches) == 1, (
             "Expected exactly one RUNNING:COMPLETED patch (from turn completed), not a duplicate"
         )
+
+
+# ---------------------------------------------------------------------------
+# Token limiting
+# ---------------------------------------------------------------------------
+
+
+class TestTokenLimiting:
+    """Tests that the process halts and marks itself failed when token usage
+    meets or exceeds the configured token_limit."""
+
+    def setup_method(self):
+        self.mock_ldai = _make_ldai_client()
+
+    # -- chaos (optimize_from_options) -----------------------------------
+
+    async def test_chaos_stops_when_token_limit_exceeded_on_first_iteration(self):
+        """Token limit exceeded after the first agent turn should immediately fail."""
+        handle_agent_call = AsyncMock(
+            return_value=OptimizationResponse(
+                output="Some answer.",
+                usage=TokenUsage(total=500, input=300, output=200),
+            )
+        )
+        handle_judge_call = AsyncMock(
+            return_value=OptimizationResponse(output=JUDGE_PASS_RESPONSE)
+        )
+        client = _make_client(self.mock_ldai)
+        options = _make_options(
+            handle_agent_call=handle_agent_call,
+            handle_judge_call=handle_judge_call,
+            token_limit=499,  # limit is below the 500 tokens returned
+            max_attempts=5,
+        )
+        result = await client.optimize_from_options("test-agent", options)
+        # Should have called the agent exactly once then stopped
+        assert handle_agent_call.call_count == 1
+        assert client._last_run_succeeded is False
+
+    async def test_chaos_does_not_stop_when_token_limit_not_exceeded(self):
+        """Process should continue normally when total tokens stay below limit."""
+        handle_agent_call = AsyncMock(
+            return_value=OptimizationResponse(
+                output="Some answer.",
+                usage=TokenUsage(total=100, input=60, output=40),
+            )
+        )
+        handle_judge_call = AsyncMock(
+            return_value=OptimizationResponse(output=JUDGE_PASS_RESPONSE)
+        )
+        client = _make_client(self.mock_ldai)
+        options = _make_options(
+            handle_agent_call=handle_agent_call,
+            handle_judge_call=handle_judge_call,
+            token_limit=10000,
+            max_attempts=3,
+        )
+        result = await client.optimize_from_options("test-agent", options)
+        assert client._last_run_succeeded is True
+
+    async def test_chaos_stops_when_limit_reached_exactly(self):
+        """gte logic: limit == total usage should trigger failure."""
+        handle_agent_call = AsyncMock(
+            return_value=OptimizationResponse(
+                output="Some answer.",
+                usage=TokenUsage(total=500, input=300, output=200),
+            )
+        )
+        handle_judge_call = AsyncMock(
+            return_value=OptimizationResponse(output=JUDGE_PASS_RESPONSE)
+        )
+        client = _make_client(self.mock_ldai)
+        options = _make_options(
+            handle_agent_call=handle_agent_call,
+            handle_judge_call=handle_judge_call,
+            token_limit=500,  # exactly equal — should trigger
+            max_attempts=5,
+        )
+        await client.optimize_from_options("test-agent", options)
+        assert handle_agent_call.call_count == 1
+        assert client._last_run_succeeded is False
+
+    async def test_chaos_judge_tokens_accumulate_toward_limit(self):
+        """Judge token usage is included in the running total."""
+        handle_agent_call = AsyncMock(
+            return_value=OptimizationResponse(
+                output="Some answer.",
+                usage=TokenUsage(total=100, input=60, output=40),
+            )
+        )
+        # Judge response contributes 450 tokens — combined with agent's 100 → 550 > 200
+        handle_judge_call = AsyncMock(
+            return_value=OptimizationResponse(
+                output=JUDGE_PASS_RESPONSE,
+                usage=TokenUsage(total=450, input=300, output=150),
+            )
+        )
+        client = _make_client(self.mock_ldai)
+        options = _make_options(
+            handle_agent_call=handle_agent_call,
+            handle_judge_call=handle_judge_call,
+            token_limit=200,  # 100 (agent) + 450 (judge) = 550 > 200
+            max_attempts=5,
+        )
+        await client.optimize_from_options("test-agent", options)
+        assert client._last_run_succeeded is False
+
+    async def test_chaos_no_limit_does_not_enforce_token_cap(self):
+        """When token_limit is None, no cap is applied regardless of usage."""
+        handle_agent_call = AsyncMock(
+            return_value=OptimizationResponse(
+                output="Some answer.",
+                usage=TokenUsage(total=999999, input=500000, output=499999),
+            )
+        )
+        handle_judge_call = AsyncMock(
+            return_value=OptimizationResponse(output=JUDGE_PASS_RESPONSE)
+        )
+        client = _make_client(self.mock_ldai)
+        options = _make_options(
+            handle_agent_call=handle_agent_call,
+            handle_judge_call=handle_judge_call,
+            # no token_limit set
+            max_attempts=3,
+        )
+        result = await client.optimize_from_options("test-agent", options)
+        assert client._last_run_succeeded is True
+
+    async def test_chaos_on_failing_result_called_on_token_limit(self):
+        """on_failing_result callback is fired when token limit halts the run."""
+        on_failing = MagicMock()
+        handle_agent_call = AsyncMock(
+            return_value=OptimizationResponse(
+                output="Some answer.",
+                usage=TokenUsage(total=500, input=300, output=200),
+            )
+        )
+        handle_judge_call = AsyncMock(
+            return_value=OptimizationResponse(output=JUDGE_PASS_RESPONSE)
+        )
+        client = _make_client(self.mock_ldai)
+        options = _make_options(
+            handle_agent_call=handle_agent_call,
+            handle_judge_call=handle_judge_call,
+            token_limit=100,
+            max_attempts=5,
+            on_failing_result=on_failing,
+        )
+        await client.optimize_from_options("test-agent", options)
+        on_failing.assert_called_once()
+
+    async def test_chaos_accumulates_across_multiple_iterations(self):
+        """Tokens from successive iterations add up until the limit is hit."""
+        # Each agent call returns 100 tokens; limit is 250, so it trips on the 3rd call
+        agent_responses = [
+            OptimizationResponse(output="Bad.", usage=TokenUsage(total=100, input=60, output=40)),
+            OptimizationResponse(output=VARIATION_RESPONSE),   # variation (no usage)
+            OptimizationResponse(output="Still bad.", usage=TokenUsage(total=100, input=60, output=40)),
+            OptimizationResponse(output=VARIATION_RESPONSE),   # variation (no usage)
+            OptimizationResponse(output="Still bad.", usage=TokenUsage(total=100, input=60, output=40)),
+        ]
+        handle_agent_call = AsyncMock(side_effect=agent_responses)
+        handle_judge_call = AsyncMock(
+            return_value=OptimizationResponse(output=JUDGE_FAIL_RESPONSE)
+        )
+        client = _make_client(self.mock_ldai)
+        options = _make_options(
+            handle_agent_call=handle_agent_call,
+            handle_judge_call=handle_judge_call,
+            token_limit=250,  # 100+100 = 200 ok; 200+100 = 300 ≥ 250 → stop on 3rd
+            max_attempts=10,
+        )
+        await client.optimize_from_options("test-agent", options)
+        assert client._last_run_succeeded is False
+        # 3 agent calls + 2 variation calls = 5 total; no more
+        assert handle_agent_call.call_count == 5
+
+    async def test_chaos_token_limit_in_validation_phase_stops_run(self):
+        """Exceeding the limit during the validation phase also halts the run."""
+        # The main iteration passes judges (50 tokens), but each validation call
+        # adds 300 tokens, pushing the total over 200.
+        agent_responses = [
+            OptimizationResponse(output="Good answer.", usage=TokenUsage(total=50, input=30, output=20)),   # main turn
+            OptimizationResponse(output="Validation answer.", usage=TokenUsage(total=300, input=200, output=100)),  # validation
+        ]
+        handle_agent_call = AsyncMock(side_effect=agent_responses)
+        handle_judge_call = AsyncMock(
+            return_value=OptimizationResponse(output=JUDGE_PASS_RESPONSE)
+        )
+        client = _make_client(self.mock_ldai)
+        options = _make_options(
+            handle_agent_call=handle_agent_call,
+            handle_judge_call=handle_judge_call,
+            token_limit=200,  # 50 (main) + 300 (validation) = 350 > 200
+            max_attempts=5,
+            variable_choices=[{"language": "English"}, {"language": "French"}],
+        )
+        await client.optimize_from_options("test-agent", options)
+        assert client._last_run_succeeded is False
+
+    # -- ground truth (optimize_from_ground_truth_options) ---------------
+
+    async def test_gt_stops_when_token_limit_exceeded_on_first_sample(self):
+        """Token limit exceeded on the first sample should immediately fail the GT run."""
+        handle_agent_call = AsyncMock(
+            return_value=OptimizationResponse(
+                output="Answer.",
+                usage=TokenUsage(total=600, input=400, output=200),
+            )
+        )
+        handle_judge_call = AsyncMock(
+            return_value=OptimizationResponse(output=JUDGE_PASS_RESPONSE)
+        )
+        client = _make_client(self.mock_ldai)
+        opts = _make_gt_options(
+            handle_agent_call=handle_agent_call,
+            handle_judge_call=handle_judge_call,
+            token_limit=500,  # 600 > 500 → trip on first sample
+            max_attempts=5,
+        )
+        results = await client.optimize_from_ground_truth_options("test-agent", opts)
+        assert client._last_run_succeeded is False
+        # Only one agent call should have happened
+        assert handle_agent_call.call_count == 1
+        # The offending context is still returned in the results list
+        assert len(results) == 1
+
+    async def test_gt_stops_mid_batch_when_limit_exceeded_on_second_sample(self):
+        """Token limit exceeded on the second of two samples stops after that sample."""
+        agent_responses = [
+            OptimizationResponse(output="Answer 1.", usage=TokenUsage(total=100, input=60, output=40)),
+            OptimizationResponse(output="Answer 2.", usage=TokenUsage(total=200, input=120, output=80)),
+        ]
+        handle_agent_call = AsyncMock(side_effect=agent_responses)
+        handle_judge_call = AsyncMock(
+            return_value=OptimizationResponse(output=JUDGE_PASS_RESPONSE)
+        )
+        client = _make_client(self.mock_ldai)
+        opts = _make_gt_options(
+            handle_agent_call=handle_agent_call,
+            handle_judge_call=handle_judge_call,
+            token_limit=250,  # 100 + 200 = 300 ≥ 250 → trip on second sample
+            max_attempts=5,
+        )
+        results = await client.optimize_from_ground_truth_options("test-agent", opts)
+        assert client._last_run_succeeded is False
+        assert handle_agent_call.call_count == 2
+        # Both samples processed so far are in the results
+        assert len(results) == 2
+
+    async def test_gt_on_failing_result_called_on_token_limit(self):
+        """on_failing_result callback fires when GT run halts due to token limit."""
+        on_failing = MagicMock()
+        handle_agent_call = AsyncMock(
+            return_value=OptimizationResponse(
+                output="Answer.",
+                usage=TokenUsage(total=600, input=400, output=200),
+            )
+        )
+        client = _make_client(self.mock_ldai)
+        opts = _make_gt_options(
+            handle_agent_call=handle_agent_call,
+            token_limit=100,
+            max_attempts=5,
+            on_failing_result=on_failing,
+        )
+        await client.optimize_from_ground_truth_options("test-agent", opts)
+        on_failing.assert_called_once()
+
+    async def test_gt_no_limit_does_not_enforce_token_cap(self):
+        """When token_limit is None on GT options, no cap is applied."""
+        handle_agent_call = AsyncMock(
+            return_value=OptimizationResponse(
+                output="Answer.",
+                usage=TokenUsage(total=999999, input=500000, output=499999),
+            )
+        )
+        handle_judge_call = AsyncMock(
+            return_value=OptimizationResponse(output=JUDGE_PASS_RESPONSE)
+        )
+        client = _make_client(self.mock_ldai)
+        opts = _make_gt_options(
+            handle_agent_call=handle_agent_call,
+            handle_judge_call=handle_judge_call,
+            # no token_limit
+        )
+        results = await client.optimize_from_ground_truth_options("test-agent", opts)
+        assert client._last_run_succeeded is True
+
+    async def test_gt_accumulates_tokens_across_samples_in_same_attempt(self):
+        """Tokens from all samples in the same attempt add up correctly."""
+        agent_responses = [
+            OptimizationResponse(output="Answer 1.", usage=TokenUsage(total=80, input=50, output=30)),
+            OptimizationResponse(output="Answer 2.", usage=TokenUsage(total=80, input=50, output=30)),
+        ]
+        handle_agent_call = AsyncMock(side_effect=agent_responses)
+        handle_judge_call = AsyncMock(
+            return_value=OptimizationResponse(output=JUDGE_PASS_RESPONSE)
+        )
+        client = _make_client(self.mock_ldai)
+        opts = _make_gt_options(
+            handle_agent_call=handle_agent_call,
+            handle_judge_call=handle_judge_call,
+            token_limit=200,  # 80 + 80 = 160 < 200, run should succeed
+        )
+        results = await client.optimize_from_ground_truth_options("test-agent", opts)
+        assert client._last_run_succeeded is True
+        assert len(results) == 2
+
+    # -- _total_token_usage reset between runs ---------------------------
+
+    async def test_total_token_usage_resets_between_runs(self):
+        """_total_token_usage is reset at the start of each run so a reused
+        client does not carry over counts from previous optimizations."""
+        handle_agent_call = AsyncMock(
+            return_value=OptimizationResponse(
+                output="Answer.",
+                usage=TokenUsage(total=100, input=60, output=40),
+            )
+        )
+        handle_judge_call = AsyncMock(
+            return_value=OptimizationResponse(output=JUDGE_PASS_RESPONSE)
+        )
+        client = _make_client(self.mock_ldai)
+
+        # First run accumulates tokens
+        options = _make_options(
+            handle_agent_call=handle_agent_call,
+            handle_judge_call=handle_judge_call,
+            token_limit=10000,
+        )
+        await client.optimize_from_options("test-agent", options)
+        assert client._total_token_usage > 0
+
+        # Second run starts fresh — use a tight limit that would fail if
+        # tokens from run 1 were carried over
+        handle_agent_call2 = AsyncMock(
+            return_value=OptimizationResponse(
+                output="Answer.",
+                usage=TokenUsage(total=50, input=30, output=20),
+            )
+        )
+        handle_judge_call2 = AsyncMock(
+            return_value=OptimizationResponse(output=JUDGE_PASS_RESPONSE)
+        )
+        options2 = _make_options(
+            handle_agent_call=handle_agent_call2,
+            handle_judge_call=handle_judge_call2,
+            token_limit=10000,
+        )
+        await client.optimize_from_options("test-agent", options2)
+        assert client._last_run_succeeded is True
 
 
 # ---------------------------------------------------------------------------

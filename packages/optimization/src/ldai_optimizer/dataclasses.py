@@ -346,6 +346,7 @@ class OptimizationOptions:
     on_failing_result: Optional[Callable[[OptimizationContext], None]] = None
     # called to provide status updates during the optimization flow
     on_status_update: Optional[Callable[[_StatusLiteral, OptimizationContext], None]] = None
+    token_limit: Optional[int] = None  # stop the run when total token usage reaches this value
 
     def __post_init__(self):
         """Validate required options."""
@@ -433,6 +434,7 @@ class GroundTruthOptimizationOptions:
     project_key: Optional[str] = None  # required when auto_commit=True
     output_key: Optional[str] = None   # variation key/name; auto-generated if omitted
     base_url: Optional[str] = None  # override to target a non-default LD instance
+    token_limit: Optional[int] = None  # stop the run when total token usage reaches this value
 
     def __post_init__(self):
         """Validate required options."""

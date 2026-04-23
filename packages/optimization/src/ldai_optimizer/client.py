@@ -157,6 +157,7 @@ class OptimizationClient:
         self._last_succeeded_context: Optional[OptimizationContext] = None
         self._last_optimization_result_id: Optional[str] = None
         self._initial_tool_keys: List[str] = []
+        self._total_token_usage: int = 0
 
         if os.environ.get("LAUNCHDARKLY_API_KEY"):
             self._has_api_key = True
@@ -966,12 +967,14 @@ class OptimizationClient:
             on_passing_result=gt_options.on_passing_result,
             on_failing_result=gt_options.on_failing_result,
             on_status_update=gt_options.on_status_update,
+            token_limit=gt_options.token_limit,
         )
         self._options = bridge
         self._agent_config = agent_config
         self._last_run_succeeded = False
         self._last_succeeded_context = None
         self._last_optimization_result_id = None
+        self._total_token_usage = 0
         self._initialize_class_members_from_config(agent_config)
 
         # Seed from the first model choice on the first iteration
@@ -1036,6 +1039,26 @@ class OptimizationClient:
                     linear_iter,
                     expected_response=sample.expected_response,
                 )
+                self._accumulate_tokens(optimize_context)
+                if self._is_token_limit_exceeded():
+                    logger.error(
+                        "[GT Attempt %d] -> Token limit exceeded on sample %d (total=%d)",
+                        attempt,
+                        i + 1,
+                        self._total_token_usage,
+                    )
+                    attempt_results.append(optimize_context)
+                    self._last_run_succeeded = False
+                    self._last_succeeded_context = None
+                    self._safe_status_update("failure", optimize_context, linear_iter)
+                    if self._options.on_failing_result:
+                        try:
+                            self._options.on_failing_result(optimize_context)
+                        except Exception:
+                            logger.exception(
+                                "[GT Attempt %d] -> on_failing_result callback failed", attempt
+                            )
+                    return attempt_results
 
                 # Per-sample pass/fail check
                 if self._options.on_turn is not None:
@@ -1681,6 +1704,7 @@ class OptimizationClient:
                 on_passing_result=options.on_passing_result,
                 on_failing_result=options.on_failing_result,
                 on_status_update=_persist_and_forward,
+                token_limit=config.get("tokenLimit"),
             )
 
         variable_choices: List[Dict[str, Any]] = config["variableChoices"] or [{}]
@@ -1700,6 +1724,7 @@ class OptimizationClient:
             on_passing_result=options.on_passing_result,
             on_failing_result=options.on_failing_result,
             on_status_update=_persist_and_forward,
+            token_limit=config.get("tokenLimit"),
         )
 
     async def _execute_agent_turn(
@@ -1779,6 +1804,31 @@ class OptimizationClient:
             self._safe_status_update("evaluating", result_ctx, iteration)
 
         return result_ctx
+
+    def _accumulate_tokens(self, optimize_context: OptimizationContext) -> None:
+        """Add token usage from a completed turn to the running total.
+
+        Sums the agent's token usage and each judge's token usage from the given
+        context and adds them to ``_total_token_usage``.
+
+        :param optimize_context: The completed turn context containing usage data.
+        """
+        if optimize_context.usage is not None:
+            self._total_token_usage += optimize_context.usage.total or 0
+        for judge_result in optimize_context.scores.values():
+            if judge_result.usage is not None:
+                self._total_token_usage += judge_result.usage.total or 0
+
+    def _is_token_limit_exceeded(self) -> bool:
+        """Return True if the accumulated token usage has met or exceeded the configured limit.
+
+        Returns False when no token limit is set so callers can use this as a
+        simple guard without needing to check for ``None`` themselves.
+
+        :return: True if token limit is set and ``_total_token_usage >= token_limit``.
+        """
+        limit: Optional[int] = getattr(self._options, "token_limit", None)
+        return limit is not None and self._total_token_usage >= limit
 
     def _evaluate_response(self, optimize_context: OptimizationContext) -> bool:
         """
@@ -2091,6 +2141,15 @@ class OptimizationClient:
             )
             self._safe_status_update("generating", val_ctx, val_iter)
             val_ctx = await self._execute_agent_turn(val_ctx, val_iter)
+            self._accumulate_tokens(val_ctx)
+            if self._is_token_limit_exceeded():
+                logger.error(
+                    "[Validation %d/%d] -> Token limit exceeded (total=%d)",
+                    i + 1,
+                    validation_count,
+                    self._total_token_usage,
+                )
+                return False, val_ctx
 
             if options.on_turn is not None:
                 try:
@@ -2147,6 +2206,7 @@ class OptimizationClient:
         self._last_run_succeeded = False
         self._last_succeeded_context = None
         self._last_optimization_result_id = None
+        self._total_token_usage = 0
         self._initialize_class_members_from_config(agent_config)
 
         # If the LD flag doesn't carry a model name, seed from the first model choice
@@ -2192,6 +2252,14 @@ class OptimizationClient:
             optimize_context = await self._execute_agent_turn(
                 optimize_context, iteration
             )
+            self._accumulate_tokens(optimize_context)
+            if self._is_token_limit_exceeded():
+                logger.error(
+                    "[Iteration %d] -> Token limit exceeded (total=%d)",
+                    iteration,
+                    self._total_token_usage,
+                )
+                return self._handle_failure(optimize_context, iteration)
 
             # Manual path: on_turn callback gives caller full control over pass/fail
             if self._options.on_turn is not None:
@@ -2229,6 +2297,8 @@ class OptimizationClient:
                 )
                 if all_valid:
                     return self._handle_success(optimize_context, iteration)
+                if self._is_token_limit_exceeded():
+                    return self._handle_failure(last_ctx, iteration)
                 # Validation failed — treat as a normal failed attempt.
                 # Use optimize_context (the main iteration) for terminal API events so
                 # the persisted record's completionResponse and userInput stay aligned.

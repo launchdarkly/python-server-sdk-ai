@@ -89,6 +89,7 @@ class AgentOptimizationConfig(_AgentOptimizationConfigRequired, total=False):
 
     groundTruthResponses: List[str]
     metricKey: str
+    tokenLimit: int
 
 
 # ---------------------------------------------------------------------------
