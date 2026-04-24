@@ -36,7 +36,7 @@ class Evaluator:
         self,
         input_text: str,
         output_text: str,
-    ) -> 'asyncio.Task[List[JudgeResult]]':
+    ) -> asyncio.Task[List[JudgeResult]]:
         """
         Run all configured judges against the given input/output pair.
 

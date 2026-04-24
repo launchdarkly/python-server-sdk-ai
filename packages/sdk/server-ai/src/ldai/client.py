@@ -459,7 +459,7 @@ class LDAIClient:
         """
         self._client.track(_TRACK_USAGE_CREATE_AGENT, context, key, 1)
         log.debug(f"Creating managed agent for key: {key}")
-        config = self.__evaluate_agent(key, context, default or _DISABLED_AGENT_DEFAULT, variables)
+        config = self.__evaluate_agent(key, context, default or _DISABLED_AGENT_DEFAULT, variables, default_ai_provider=default_ai_provider)
 
         if not config.enabled:
             return None

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional
 
@@ -44,7 +45,7 @@ class ModelResponse:
     """
     message: LDMessage
     metrics: LDAIMetrics
-    evaluations: Optional[List[JudgeResult]] = None
+    evaluations: Optional[asyncio.Task[List[JudgeResult]]] = None
 
 
 @dataclass

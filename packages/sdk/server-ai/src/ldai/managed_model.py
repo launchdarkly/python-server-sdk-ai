@@ -3,7 +3,7 @@ from typing import List, Optional
 
 from ldai.models import AICompletionConfig, LDMessage
 from ldai.providers.model_runner import ModelRunner
-from ldai.providers.types import ModelResponse
+from ldai.providers.types import JudgeResult, ModelResponse
 from ldai.tracker import LDAIConfigTracker
 
 
@@ -58,7 +58,7 @@ class ManagedModel:
         self._messages.append(response.message)
         return response
 
-    def _track_judge_results(self, tracker: LDAIConfigTracker, eval_task: 'asyncio.Task') -> None:
+    def _track_judge_results(self, tracker: LDAIConfigTracker, eval_task: asyncio.Task[List[JudgeResult]]) -> None:
         async def _run() -> None:
             results = await eval_task
             for r in results:
