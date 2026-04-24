@@ -195,8 +195,9 @@ class LDMetricsCallbackHandler(BaseCallbackHandler):
         Call this once after the graph run completes.
 
         :param graph: The AgentGraphDefinition whose nodes hold the LD config trackers.
-        :param eval_tasks: Optional dict mapping node key to an awaitable that returns
-            judge evaluation results.
+        :param eval_tasks: Optional dict mapping node key to a list of awaitables that
+            return judge evaluation results. Multiple tasks arise when a node is visited
+            more than once (e.g. in a graph with cycles).
         """
         node_trackers: Dict[str, Any] = {}
         for node_key in self._path:
@@ -226,11 +227,8 @@ class LDMetricsCallbackHandler(BaseCallbackHandler):
             if not eval_tasks:
                 continue
 
-            eval_task = eval_tasks.get(node_key)
-            if not eval_task:
-                continue
-
-            results = await eval_task
-            for r in results:
-                if r.success:
-                    config_tracker.track_judge_result(r)
+            for eval_task in eval_tasks.get(node_key, []):
+                results = await eval_task
+                for r in results:
+                    if r.success:
+                        config_tracker.track_judge_result(r)

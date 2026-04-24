@@ -84,7 +84,7 @@ class LangGraphAgentGraphRunner(AgentGraphRunner):
         self._compiled: Any = None
         self._fn_name_to_config_key: Dict[str, str] = {}
         self._node_keys: Set[str] = set()
-        self._pending_eval_tasks: Dict[str, asyncio.Task] = {}
+        self._pending_eval_tasks: Dict[str, List[asyncio.Task]] = {}
 
     def _ensure_compiled(self) -> None:
         """Build and cache the compiled graph if not already done."""
@@ -188,7 +188,8 @@ class LangGraphAgentGraphRunner(AgentGraphRunner):
                         output_text = (
                             response.content if hasattr(response, 'content') else str(response)
                         )
-                        self._pending_eval_tasks[nk] = node_obj.get_config().evaluator.evaluate(input_text, output_text)
+                        task = node_obj.get_config().evaluator.evaluate(input_text, output_text)
+                        self._pending_eval_tasks.setdefault(nk, []).append(task)
 
                     return {'messages': [response]}
 
