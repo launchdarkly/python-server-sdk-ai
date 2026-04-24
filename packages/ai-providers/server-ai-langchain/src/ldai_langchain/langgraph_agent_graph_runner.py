@@ -1,7 +1,8 @@
 """LangGraph agent graph runner for LaunchDarkly AI SDK."""
 
+import asyncio
 import time
-from typing import Annotated, Any, Dict, List, Optional, Set, Tuple
+from typing import Annotated, Any, Dict, List, Set, Tuple
 
 from ldai import log
 from ldai.agent_graph import AgentGraphDefinition, AgentGraphNode
@@ -67,7 +68,11 @@ class LangGraphAgentGraphRunner(AgentGraphRunner):
     Requires ``langgraph`` to be installed.
     """
 
-    def __init__(self, graph: AgentGraphDefinition, tools: ToolRegistry):
+    def __init__(
+        self,
+        graph: AgentGraphDefinition,
+        tools: ToolRegistry,
+    ):
         """
         Initialize the runner.
 
@@ -79,6 +84,7 @@ class LangGraphAgentGraphRunner(AgentGraphRunner):
         self._compiled: Any = None
         self._fn_name_to_config_key: Dict[str, str] = {}
         self._node_keys: Set[str] = set()
+        self._pending_eval_tasks: Dict[str, asyncio.Task] = {}
 
     def _ensure_compiled(self) -> None:
         """Build and cache the compiled graph if not already done."""
@@ -172,6 +178,18 @@ class LangGraphAgentGraphRunner(AgentGraphRunner):
                     if node_instructions:
                         msgs = [SystemMessage(content=node_instructions)] + msgs
                     response = await bound_model.ainvoke(msgs)
+
+                    node_obj = self._graph.get_node(nk)
+                    if node_obj is not None:
+                        input_text = '\r\n'.join(
+                            m.content if isinstance(m.content, str) else str(m.content)
+                            for m in msgs
+                        ) if msgs else ''
+                        output_text = (
+                            response.content if hasattr(response, 'content') else str(response)
+                        )
+                        self._pending_eval_tasks[nk] = node_obj.get_config().evaluator.evaluate(input_text, output_text)
+
                     return {'messages': [response]}
 
                 invoke.__name__ = nk
@@ -280,6 +298,7 @@ class LangGraphAgentGraphRunner(AgentGraphRunner):
         :param input: The string prompt to send to the agent graph
         :return: AgentGraphResult with the final output and metrics
         """
+        self._pending_eval_tasks = {}
         tracker = self._graph.create_tracker() if self._graph.create_tracker is not None else None
         start_ns = time.perf_counter_ns()
 
@@ -299,7 +318,7 @@ class LangGraphAgentGraphRunner(AgentGraphRunner):
             output = extract_last_message_content(messages)
 
             # Flush per-node metrics to LD trackers
-            handler.flush(self._graph)
+            await handler.flush(self._graph, self._pending_eval_tasks)
 
             # Graph-level metrics
             if tracker:

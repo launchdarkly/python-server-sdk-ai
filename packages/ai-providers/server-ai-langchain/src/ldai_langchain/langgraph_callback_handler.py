@@ -188,13 +188,15 @@ class LDMetricsCallbackHandler(BaseCallbackHandler):
     # Flush
     # ------------------------------------------------------------------
 
-    def flush(self, graph: AgentGraphDefinition) -> None:
+    async def flush(self, graph: AgentGraphDefinition, eval_tasks=None) -> None:
         """
         Emit all collected per-node metrics to the LaunchDarkly trackers.
 
         Call this once after the graph run completes.
 
         :param graph: The AgentGraphDefinition whose nodes hold the LD config trackers.
+        :param eval_tasks: Optional dict mapping node key to an awaitable that returns
+            judge evaluation results.
         """
         node_trackers: Dict[str, Any] = {}
         for node_key in self._path:
@@ -220,3 +222,15 @@ class LDMetricsCallbackHandler(BaseCallbackHandler):
 
             for tool_key in self._node_tool_calls.get(node_key, []):
                 config_tracker.track_tool_call(tool_key)
+
+            if not eval_tasks:
+                continue
+
+            eval_task = eval_tasks.get(node_key)
+            if not eval_task:
+                continue
+
+            results = await eval_task
+            for r in results:
+                if r.success:
+                    config_tracker.track_judge_result(r)

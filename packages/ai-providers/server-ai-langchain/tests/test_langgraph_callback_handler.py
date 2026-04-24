@@ -17,6 +17,7 @@ from langchain_core.outputs import ChatGeneration, LLMResult
 from ldai.agent_graph import AgentGraphDefinition
 from ldai.models import AIAgentConfig, AIAgentGraphConfig, ModelConfig, ProviderConfig
 from ldai.tracker import AIGraphTracker, LDAIConfigTracker, TokenUsage
+from ldai.evaluator import Evaluator
 from ldai_langchain.langgraph_callback_handler import LDMetricsCallbackHandler
 
 
@@ -48,6 +49,7 @@ def _make_graph(mock_ld_client: MagicMock, node_key: str = 'root-agent', graph_k
     node_config = AIAgentConfig(
         key=node_key,
         enabled=True,
+        evaluator=Evaluator.noop(),
         model=ModelConfig(name='gpt-4', parameters={}),
         provider=ProviderConfig(name='openai'),
         instructions='Be helpful.',
@@ -317,7 +319,8 @@ def test_on_tool_end_none_name_ignored():
 # flush() tests
 # ---------------------------------------------------------------------------
 
-def test_flush_emits_token_events_to_ld_tracker():
+@pytest.mark.asyncio
+async def test_flush_emits_token_events_to_ld_tracker():
     """flush() calls track_tokens on the node's config tracker."""
     mock_ld_client = MagicMock()
     graph = _make_graph(mock_ld_client, node_key='root-agent', graph_key='g1')
@@ -327,7 +330,7 @@ def test_flush_emits_token_events_to_ld_tracker():
     node_run_id = uuid4()
     handler.on_chain_start({}, {}, run_id=node_run_id, name='root-agent')
     handler.on_llm_end(_llm_result(15, 10, 5), run_id=uuid4(), parent_run_id=node_run_id)
-    handler.flush(graph)
+    await handler.flush(graph)
 
     ev = _events(mock_ld_client)
     assert ev['$ld:ai:tokens:total'][0][1] == 15
@@ -336,7 +339,8 @@ def test_flush_emits_token_events_to_ld_tracker():
     assert ev['$ld:ai:generation:success'][0][1] == 1
 
 
-def test_flush_emits_duration():
+@pytest.mark.asyncio
+async def test_flush_emits_duration():
     """flush() calls track_duration when duration was recorded."""
     mock_ld_client = MagicMock()
     graph = _make_graph(mock_ld_client)
@@ -346,13 +350,14 @@ def test_flush_emits_duration():
     run_id = uuid4()
     handler.on_chain_start({}, {}, run_id=run_id, name='root-agent')
     handler.on_chain_end({}, run_id=run_id)
-    handler.flush(graph)
+    await handler.flush(graph)
 
     ev = _events(mock_ld_client)
     assert '$ld:ai:duration:total' in ev
 
 
-def test_flush_emits_tool_calls():
+@pytest.mark.asyncio
+async def test_flush_emits_tool_calls():
     """flush() calls track_tool_call for each recorded tool invocation."""
     mock_ld_client = MagicMock()
     graph = _make_graph(mock_ld_client)
@@ -366,7 +371,7 @@ def test_flush_emits_tool_calls():
     tools_run_id = uuid4()
     handler.on_chain_start({}, {}, run_id=tools_run_id, name='root-agent__tools')
     handler.on_tool_end('r', run_id=uuid4(), parent_run_id=tools_run_id, name='fn_search')
-    handler.flush(graph)
+    await handler.flush(graph)
 
     ev = _events(mock_ld_client)
     tool_events = ev.get('$ld:ai:tool_call', [])
@@ -374,7 +379,8 @@ def test_flush_emits_tool_calls():
     assert tool_events[0][0]['toolKey'] == 'search'
 
 
-def test_flush_includes_graph_key_in_node_events():
+@pytest.mark.asyncio
+async def test_flush_includes_graph_key_in_node_events():
     """flush() passes graph_key to the node tracker so graphKey appears in events."""
     mock_ld_client = MagicMock()
     graph = _make_graph(mock_ld_client, graph_key='my-graph')
@@ -384,14 +390,15 @@ def test_flush_includes_graph_key_in_node_events():
     node_run_id = uuid4()
     handler.on_chain_start({}, {}, run_id=node_run_id, name='root-agent')
     handler.on_llm_end(_llm_result(5, 3, 2), run_id=uuid4(), parent_run_id=node_run_id)
-    handler.flush(graph)
+    await handler.flush(graph)
 
     ev = _events(mock_ld_client)
     token_data = ev['$ld:ai:tokens:total'][0][0]
     assert token_data.get('graphKey') == 'my-graph'
 
 
-def test_flush_with_no_graph_key_on_node_tracker():
+@pytest.mark.asyncio
+async def test_flush_with_no_graph_key_on_node_tracker():
     """When node tracker has no graph_key, events omit graphKey."""
     mock_ld_client = MagicMock()
     context = MagicMock()
@@ -408,6 +415,7 @@ def test_flush_with_no_graph_key_on_node_tracker():
     node_config = AIAgentConfig(
         key='root-agent',
         enabled=True,
+        evaluator=Evaluator.noop(),
         model=ModelConfig(name='gpt-4', parameters={}),
         provider=ProviderConfig(name='openai'),
         instructions='Be helpful.',
@@ -432,14 +440,15 @@ def test_flush_with_no_graph_key_on_node_tracker():
     node_run_id = uuid4()
     handler.on_chain_start({}, {}, run_id=node_run_id, name='root-agent')
     handler.on_llm_end(_llm_result(5, 3, 2), run_id=uuid4(), parent_run_id=node_run_id)
-    handler.flush(graph)
+    await handler.flush(graph)
 
     ev = _events(mock_ld_client)
     token_data = ev['$ld:ai:tokens:total'][0][0]
     assert 'graphKey' not in token_data
 
 
-def test_flush_skips_nodes_not_in_path():
+@pytest.mark.asyncio
+async def test_flush_skips_nodes_not_in_path():
     """flush() only emits events for nodes that were actually executed."""
     mock_ld_client = MagicMock()
     graph = _make_graph(mock_ld_client)
@@ -447,14 +456,15 @@ def test_flush_skips_nodes_not_in_path():
 
     # Handler with 'root-agent' in node_keys but never started
     handler = LDMetricsCallbackHandler({'root-agent'}, {})
-    handler.flush(graph)
+    await handler.flush(graph)
 
     ev = _events(mock_ld_client)
     assert '$ld:ai:tokens:total' not in ev
     assert '$ld:ai:generation:success' not in ev
 
 
-def test_flush_skips_node_without_tracker():
+@pytest.mark.asyncio
+async def test_flush_skips_node_without_tracker():
     """flush() silently skips nodes whose config has no tracker."""
     mock_ld_client = MagicMock()
     context = MagicMock()
@@ -463,6 +473,7 @@ def test_flush_skips_node_without_tracker():
         key='no-track',
         enabled=True,
         create_tracker=lambda: None,
+        evaluator=Evaluator.noop(),
         model=ModelConfig(name='gpt-4', parameters={}),
         provider=ProviderConfig(name='openai'),
         instructions='',
@@ -483,7 +494,7 @@ def test_flush_skips_node_without_tracker():
     node_run_id = uuid4()
     handler.on_chain_start({}, {}, run_id=node_run_id, name='no-track')
     handler.on_llm_end(_llm_result(5, 3, 2), run_id=uuid4(), parent_run_id=node_run_id)
-    handler.flush(graph)  # should not raise
+    await handler.flush(graph)  # should not raise
 
     mock_ld_client.track.assert_not_called()
 

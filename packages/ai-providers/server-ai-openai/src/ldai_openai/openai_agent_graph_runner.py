@@ -1,3 +1,4 @@
+import asyncio
 import re
 import time
 from typing import Any, Dict, List, Optional
@@ -25,9 +26,10 @@ def _sanitize_agent_name(key: str) -> str:
 class _RunState:
     """Mutable state shared across handoff and tool callbacks during a single run."""
 
-    def __init__(self, last_handoff_ns: int, last_node_key: str) -> None:
+    def __init__(self, last_handoff_ns: int, last_node_key: str, input_str: str = '') -> None:
         self.last_handoff_ns = last_handoff_ns
         self.last_node_key = last_node_key
+        self.input_str = input_str
 
 
 class OpenAIAgentGraphRunner(AgentGraphRunner):
@@ -46,7 +48,11 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
     Requires ``openai-agents`` to be installed.
     """
 
-    def __init__(self, graph: AgentGraphDefinition, tools: ToolRegistry):
+    def __init__(
+        self,
+        graph: AgentGraphDefinition,
+        tools: ToolRegistry,
+    ):
         """
         Initialize the runner.
 
@@ -77,13 +83,14 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
         if root_key:
             path.append(root_key)
 
+        input_str = str(input)
         start_ns = time.perf_counter_ns()
-        state = _RunState(last_handoff_ns=start_ns, last_node_key=root_key)
+        state = _RunState(last_handoff_ns=start_ns, last_node_key=root_key, input_str=input_str)
         try:
             from agents import Runner
             root_agent = self._build_agents(path, state, tracker)
-            result = await Runner.run(root_agent, str(input))
-            self._flush_final_segment(state, result)
+            result = await Runner.run(root_agent, input_str)
+            self._flush_final_segment(state, result, input_str)
             self._track_tool_calls(result)
 
             duration = (time.perf_counter_ns() - start_ns) // 1_000_000
@@ -223,7 +230,8 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
     ):
         def on_handoff(run_ctx: Any) -> None:
             self._handle_handoff(
-                run_ctx, src, tgt, path, tracker, config_tracker, state
+                run_ctx, src, tgt, path, tracker, config_tracker, state,
+                input_str=state.input_str,
             )
         return on_handoff
 
@@ -236,6 +244,7 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
         tracker: Any,
         config_tracker: Any,
         state: _RunState,
+        input_str: str = '',
     ) -> None:
         path.append(tgt)
         state.last_node_key = tgt
@@ -261,10 +270,25 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
                 config_tracker.track_duration(int(duration_ms))
             config_tracker.track_success()
 
+            # Fire judge evaluation for the src node (fire-and-forget)
+            src_node = self._graph.get_node(src)
+            if src_node is not None:
+                evaluator = src_node.get_config().evaluator
+                # Use empty string as output since we don't have the node's final output here
+                eval_task = evaluator.evaluate(input_str, '')
+
+                async def _track(trk, et):
+                    results = await et
+                    for r in results:
+                        if r.success:
+                            trk.track_judge_result(r)
+                asyncio.create_task(_track(config_tracker, eval_task))
+
     def _flush_final_segment(
         self,
         state: _RunState,
         result: Any,
+        input_str: str = '',
     ) -> None:
         """Record duration/tokens for the last active agent (no handoff after it)."""
         if not state.last_node_key:
@@ -288,6 +312,20 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
             config_tracker.track_tokens(usage)
         config_tracker.track_duration(int(duration_ms))
         config_tracker.track_success()
+
+        # Fire judge evaluation for the final node (fire-and-forget)
+        final_node = self._graph.get_node(state.last_node_key)
+        if final_node is not None:
+            evaluator = final_node.get_config().evaluator
+            output_str = str(result.final_output) if result is not None else ''
+            eval_task = evaluator.evaluate(input_str, output_str)
+
+            async def _track(trk, et):
+                results = await et
+                for r in results:
+                    if r.success:
+                        trk.track_judge_result(r)
+            asyncio.create_task(_track(config_tracker, eval_task))
 
     def _track_tool_calls(self, result: Any) -> None:
         """Track all tool calls from the run result, attributed to the node that called them."""

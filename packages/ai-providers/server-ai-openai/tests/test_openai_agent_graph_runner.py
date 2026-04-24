@@ -8,6 +8,7 @@ from ldai.models import AIAgentGraphConfig, AIAgentConfig, Edge, ModelConfig, Pr
 from ldai.providers import AgentGraphResult, ToolRegistry
 from ldai_openai.openai_agent_graph_runner import OpenAIAgentGraphRunner
 from ldai_openai.openai_runner_factory import OpenAIRunnerFactory
+from ldai.evaluator import Evaluator
 
 
 def _make_graph(enabled: bool = True) -> AgentGraphDefinition:
@@ -19,6 +20,7 @@ def _make_graph(enabled: bool = True) -> AgentGraphDefinition:
     root_config = AIAgentConfig(
         key='root-agent',
         enabled=enabled,
+        evaluator=Evaluator.noop(),
         model=ModelConfig(name='gpt-4'),
         provider=ProviderConfig(name='openai'),
         instructions='You are a helpful assistant.',

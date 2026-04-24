@@ -5,6 +5,7 @@ from ldclient import log
 from ldai.agent_graph import AgentGraphDefinition
 from ldai.chat import Chat  # Deprecated — use ManagedModel
 from ldai.client import LDAIClient
+from ldai.evaluator import Evaluator
 from ldai.judge import Judge
 from ldai.managed_agent import ManagedAgent
 from ldai.managed_agent_graph import ManagedAgentGraph
@@ -41,6 +42,7 @@ from ldai.tracker import AIGraphTracker
 
 __all__ = [
     'LDAIClient',
+    'Evaluator',
     'AgentRunner',
     'AgentGraphRunner',
     'AgentResult',

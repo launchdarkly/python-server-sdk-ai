@@ -39,7 +39,11 @@ class LangChainRunnerFactory(AIProvider):
         )
         return LangChainAgentRunner(agent)
 
-    def create_agent_graph(self, graph_def: Any, tools: ToolRegistry) -> Any:
+    def create_agent_graph(
+        self,
+        graph_def: Any,
+        tools: ToolRegistry,
+    ) -> Any:
         """
         CAUTION:
         This feature is experimental and should NOT be considered ready for production use.

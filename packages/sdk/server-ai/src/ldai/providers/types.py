@@ -109,3 +109,4 @@ class AgentGraphResult:
     output: str
     raw: Any
     metrics: LDAIMetrics
+    evaluations: Optional[List[Any]] = None

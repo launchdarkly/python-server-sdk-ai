@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from ldai.agent_graph import AgentGraphDefinition
 from ldai.models import AIAgentGraphConfig, AIAgentConfig, Edge, ModelConfig, ProviderConfig
 from ldai.tracker import AIGraphTracker, LDAIConfigTracker
+from ldai.evaluator import Evaluator
 from ldai_langchain.langgraph_agent_graph_runner import LangGraphAgentGraphRunner
 
 pytestmark = pytest.mark.skipif(
@@ -66,6 +67,7 @@ def _make_graph(
     root_config = AIAgentConfig(
         key=node_key,
         enabled=True,
+        evaluator=Evaluator.noop(),
         model=ModelConfig(name='gpt-4', parameters={'tools': tool_defs} if tool_defs else {}),
         provider=ProviderConfig(name='openai'),
         instructions='You are a helpful assistant.',
@@ -168,6 +170,7 @@ def _make_two_node_graph(mock_ld_client: MagicMock) -> 'AgentGraphDefinition':
     root_config = AIAgentConfig(
         key='root-agent',
         enabled=True,
+        evaluator=Evaluator.noop(),
         model=ModelConfig(name='gpt-4', parameters={}),
         provider=ProviderConfig(name='openai'),
         instructions='You are root.',
@@ -176,6 +179,7 @@ def _make_two_node_graph(mock_ld_client: MagicMock) -> 'AgentGraphDefinition':
     child_config = AIAgentConfig(
         key='child-agent',
         enabled=True,
+        evaluator=Evaluator.noop(),
         model=ModelConfig(name='gpt-4', parameters={}),
         provider=ProviderConfig(name='openai'),
         instructions='You are child.',
@@ -246,7 +250,7 @@ async def test_tracks_node_and_graph_tokens_on_success():
     )
     handler.on_llm_end(llm_result, run_id=uuid4(), parent_run_id=node_run_id)
     handler.on_chain_end({}, run_id=node_run_id)
-    handler.flush(graph2)
+    await handler.flush(graph2)
 
     ev2 = _events(mock_ld_client2)
     assert ev2['$ld:ai:tokens:total'][0][1] == 15
@@ -320,7 +324,7 @@ async def test_tracks_tool_calls():
     tools_run_id = uuid4()
     handler.on_chain_start({}, {}, run_id=tools_run_id, name='root-agent__tools')
     handler.on_tool_end('sunny', run_id=uuid4(), parent_run_id=tools_run_id, name='get_weather')
-    handler.flush(graph2)
+    await handler.flush(graph2)
 
     ev2 = _events(mock_ld_client2)
     tool_events = ev2.get('$ld:ai:tool_call', [])
@@ -374,7 +378,7 @@ async def test_tracks_multiple_tool_calls():
     handler.on_chain_start({}, {}, run_id=tools_run_id, name='root-agent__tools')
     handler.on_tool_end('result', run_id=uuid4(), parent_run_id=tools_run_id, name='search')
     handler.on_tool_end('summary', run_id=uuid4(), parent_run_id=tools_run_id, name='summarize')
-    handler.flush(graph2)
+    await handler.flush(graph2)
 
     ev2 = _events(mock_ld_client2)
     tool_keys = [data['toolKey'] for data, _ in ev2.get('$ld:ai:tool_call', [])]
@@ -405,7 +409,7 @@ async def test_tracks_graph_key_on_node_events():
         llm_output={},
     )
     handler.on_llm_end(llm_result, run_id=uuid4(), parent_run_id=node_run_id)
-    handler.flush(graph)
+    await handler.flush(graph)
 
     ev = _events(mock_ld_client)
     token_data = ev['$ld:ai:tokens:total'][0][0]
@@ -490,7 +494,7 @@ async def test_multi_node_tracks_per_node_tokens_and_path():
     )
     handler.on_llm_end(child_llm_result, run_id=uuid4(), parent_run_id=child_run_id)
 
-    handler.flush(graph2)
+    await handler.flush(graph2)
 
     ev2 = _events(mock_ld_client2)
 
@@ -539,6 +543,7 @@ def _make_multi_child_graph(mock_ld_client: MagicMock) -> 'AgentGraphDefinition'
         'orchestrator': AIAgentConfig(
             key='orchestrator',
             enabled=True,
+            evaluator=Evaluator.noop(),
             model=ModelConfig(name='gpt-4', parameters={}),
             provider=ProviderConfig(name='openai'),
             instructions='Route to the appropriate specialist agent.',
@@ -547,6 +552,7 @@ def _make_multi_child_graph(mock_ld_client: MagicMock) -> 'AgentGraphDefinition'
         'agent-a': AIAgentConfig(
             key='agent-a',
             enabled=True,
+            evaluator=Evaluator.noop(),
             model=ModelConfig(name='gpt-4', parameters={}),
             provider=ProviderConfig(name='openai'),
             instructions='You handle topic A.',
@@ -555,6 +561,7 @@ def _make_multi_child_graph(mock_ld_client: MagicMock) -> 'AgentGraphDefinition'
         'agent-b': AIAgentConfig(
             key='agent-b',
             enabled=True,
+            evaluator=Evaluator.noop(),
             model=ModelConfig(name='gpt-4', parameters={}),
             provider=ProviderConfig(name='openai'),
             instructions='You handle topic B.',
@@ -652,6 +659,7 @@ def _make_multi_child_graph_with_tools(mock_ld_client: MagicMock, tool_names: li
         'orchestrator': AIAgentConfig(
             key='orchestrator',
             enabled=True,
+            evaluator=Evaluator.noop(),
             model=ModelConfig(name='gpt-4', parameters={'tools': tool_defs}),
             provider=ProviderConfig(name='openai'),
             instructions='Route to a specialist after gathering info.',
@@ -660,6 +668,7 @@ def _make_multi_child_graph_with_tools(mock_ld_client: MagicMock, tool_names: li
         'agent-a': AIAgentConfig(
             key='agent-a',
             enabled=True,
+            evaluator=Evaluator.noop(),
             model=ModelConfig(name='gpt-4', parameters={}),
             provider=ProviderConfig(name='openai'),
             instructions='You handle topic A.',
@@ -668,6 +677,7 @@ def _make_multi_child_graph_with_tools(mock_ld_client: MagicMock, tool_names: li
         'agent-b': AIAgentConfig(
             key='agent-b',
             enabled=True,
+            evaluator=Evaluator.noop(),
             model=ModelConfig(name='gpt-4', parameters={}),
             provider=ProviderConfig(name='openai'),
             instructions='You handle topic B.',

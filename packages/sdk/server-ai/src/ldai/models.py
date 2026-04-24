@@ -1,6 +1,9 @@
 import warnings
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Literal, Optional, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Literal, Optional, Union
+
+if TYPE_CHECKING:
+    from ldai.evaluator import Evaluator
 
 from typing_extensions import Self
 
@@ -225,6 +228,7 @@ class AICompletionConfig(AIConfig):
     """
     Completion AI Config (default mode).
     """
+    evaluator: 'Evaluator' = field(kw_only=True, repr=False, compare=False, hash=False)
     messages: Optional[List[LDMessage]] = None
     judge_configuration: Optional[JudgeConfiguration] = None
 
@@ -268,6 +272,7 @@ class AIAgentConfig(AIConfig):
     """
     Agent-specific AI Config with instructions.
     """
+    evaluator: 'Evaluator' = field(kw_only=True, repr=False, compare=False, hash=False)
     instructions: Optional[str] = None
     judge_configuration: Optional[JudgeConfiguration] = None
 
