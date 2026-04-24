@@ -65,6 +65,7 @@ __all__ = [
     'Judge',
     'JudgeConfiguration',
     'JudgeResult',
+    'AITool',
     'LDMessage',
     'ModelConfig',
     'ProviderConfig',
