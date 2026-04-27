@@ -45,8 +45,8 @@ class ManagedModel:
         all_messages = config_messages + self._messages
 
         response = await tracker.track_metrics_of_async(
-            lambda: self._model_runner.invoke_model(all_messages),
             lambda result: result.metrics,
+            lambda: self._model_runner.invoke_model(all_messages),
         )
 
         input_text = '\r\n'.join(m.content for m in self._messages) if self._messages else ''

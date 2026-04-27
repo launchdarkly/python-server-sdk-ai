@@ -531,7 +531,7 @@ def test_config_tracker_track_metrics_of(client: LDClient):
     def extract(r):
         return LDAIMetrics(success=True, usage=TokenUsage(5, 2, 3))
 
-    out = tracker.track_metrics_of(fn, extract)
+    out = tracker.track_metrics_of(extract, fn)
     assert out == "done"
     calls = client.track.mock_calls  # type: ignore
     assert any(c.args[0] == "$ld:ai:generation:success" for c in calls)
@@ -551,7 +551,7 @@ async def test_config_tracker_track_metrics_of_async_passes_graph_key(client: LD
     def extract(r):
         return LDAIMetrics(success=True, usage=TokenUsage(5, 2, 3))
 
-    await tracker.track_metrics_of_async(fn, extract)
+    await tracker.track_metrics_of_async(extract, fn)
     gk_td = {**_base_td(), "graphKey": "gg"}
     calls = client.track.mock_calls  # type: ignore
     assert any(
