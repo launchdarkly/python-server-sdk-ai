@@ -12,12 +12,15 @@ class LDTool:
     Distinct from model.parameters.tools[] which is the raw array passed to LLM providers.
     """
     name: str
+    description: Optional[str] = None
     type: Optional[str] = None
     parameters: Optional[Dict[str, Any]] = None
     custom_parameters: Optional[Dict[str, Any]] = None
 
     def to_dict(self) -> dict:
         result: Dict[str, Any] = {'name': self.name}
+        if self.description is not None:
+            result['description'] = self.description
         if self.type is not None:
             result['type'] = self.type
         if self.parameters is not None:

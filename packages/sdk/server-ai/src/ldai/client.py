@@ -62,6 +62,7 @@ def _parse_tools(tools_data: Optional[Dict[str, Any]]) -> Optional[Dict[str, LDT
             continue
         result[tool_name] = LDTool(
             name=tool_dict.get('name', tool_name),
+            description=tool_dict.get('description'),
             type=tool_dict.get('type'),
             parameters=tool_dict.get('parameters'),
             custom_parameters=tool_dict.get('customParameters'),
