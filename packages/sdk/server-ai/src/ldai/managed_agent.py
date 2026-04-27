@@ -29,8 +29,8 @@ class ManagedAgent:
         """
         tracker = self._ai_config.create_tracker()
         return await tracker.track_metrics_of_async(
-            lambda: self._agent_runner.run(input),
             lambda result: result.metrics,
+            lambda: self._agent_runner.run(input),
         )
 
     def get_agent_runner(self) -> AgentRunner:
