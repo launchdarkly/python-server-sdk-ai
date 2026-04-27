@@ -2,6 +2,13 @@
 
 All notable changes to the LaunchDarkly Python AI package will be documented in this file. This project adheres to [Semantic Versioning](http://semver.org).
 
+## [0.19.0](https://github.com/launchdarkly/python-server-sdk-ai/compare/launchdarkly-server-sdk-ai-0.18.0...launchdarkly-server-sdk-ai-0.19.0) (2026-04-27)
+
+
+### Features
+
+* Add root-level tools map with customParameters to AI Config types ([#141](https://github.com/launchdarkly/python-server-sdk-ai/issues/141)) ([f17c535](https://github.com/launchdarkly/python-server-sdk-ai/commit/f17c53571e707a46c695f0955163776a2999f49a))
+
 ## [0.18.0](https://github.com/launchdarkly/python-server-sdk-ai/compare/launchdarkly-server-sdk-ai-0.17.0...launchdarkly-server-sdk-ai-0.18.0) (2026-04-21)
 
 
