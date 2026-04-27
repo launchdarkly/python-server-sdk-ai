@@ -339,7 +339,8 @@ class LDAIClient:
                 )
                 if judge:
                     judges[judge_config.key] = judge
-            except Exception:
+            except Exception as e:
+                log.warning(f'Failed to initialize judge {judge_config.key!r}: {e}')
                 continue
 
         return judges

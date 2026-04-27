@@ -1,5 +1,7 @@
 """Evaluator implementation for coordinating multiple judges."""
 
+from __future__ import annotations
+
 import asyncio
 from typing import Dict, List
 
@@ -29,7 +31,7 @@ class Evaluator:
         self._judge_configuration = judge_configuration
 
     @classmethod
-    def noop(cls) -> 'Evaluator':
+    def noop(cls) -> Evaluator:
         return cls({}, JudgeConfiguration(judges=[]))
 
     def evaluate(
