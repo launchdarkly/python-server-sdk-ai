@@ -1,4 +1,3 @@
-import asyncio
 import re
 import time
 from typing import Any, Dict, List, Optional
@@ -30,6 +29,7 @@ class _RunState:
         self.last_handoff_ns = last_handoff_ns
         self.last_node_key = last_node_key
         self.input_str = input_str
+        self.pending_eval_tasks: List[tuple] = []
 
 
 class OpenAIAgentGraphRunner(AgentGraphRunner):
@@ -91,6 +91,11 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
             root_agent = self._build_agents(path, state, tracker)
             result = await Runner.run(root_agent, input_str)
             self._flush_final_segment(state, result, input_str)
+            for node_tracker, eval_task in state.pending_eval_tasks:
+                eval_results = await eval_task
+                for r in eval_results:
+                    if r.success:
+                        node_tracker.track_judge_result(r)
             self._track_tool_calls(result)
 
             duration = (time.perf_counter_ns() - start_ns) // 1_000_000
@@ -106,7 +111,7 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
             return AgentGraphResult(
                 output=str(result.final_output),
                 raw=result,
-                metrics=LDAIMetrics(success=True),
+                metrics=LDAIMetrics(success=True, usage=token_usage),
             )
         except Exception as exc:
             if isinstance(exc, ImportError):
@@ -270,19 +275,10 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
                 config_tracker.track_duration(int(duration_ms))
             config_tracker.track_success()
 
-            # Fire judge evaluation for the src node (fire-and-forget)
             src_node = self._graph.get_node(src)
             if src_node is not None:
-                evaluator = src_node.get_config().evaluator
-                # Use empty string as output since we don't have the node's final output here
-                eval_task = evaluator.evaluate(input_str, '')
-
-                async def _track(trk, et):
-                    results = await et
-                    for r in results:
-                        if r.success:
-                            trk.track_judge_result(r)
-                asyncio.create_task(_track(config_tracker, eval_task))
+                eval_task = src_node.get_config().evaluator.evaluate(input_str, '')
+                state.pending_eval_tasks.append((config_tracker, eval_task))
 
     def _flush_final_segment(
         self,
@@ -313,19 +309,11 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
         config_tracker.track_duration(int(duration_ms))
         config_tracker.track_success()
 
-        # Fire judge evaluation for the final node (fire-and-forget)
         final_node = self._graph.get_node(state.last_node_key)
         if final_node is not None:
-            evaluator = final_node.get_config().evaluator
             output_str = str(result.final_output) if result is not None else ''
-            eval_task = evaluator.evaluate(input_str, output_str)
-
-            async def _track(trk, et):
-                results = await et
-                for r in results:
-                    if r.success:
-                        trk.track_judge_result(r)
-            asyncio.create_task(_track(config_tracker, eval_task))
+            eval_task = final_node.get_config().evaluator.evaluate(input_str, output_str)
+            state.pending_eval_tasks.append((config_tracker, eval_task))
 
     def _track_tool_calls(self, result: Any) -> None:
         """Track all tool calls from the run result, attributed to the node that called them."""

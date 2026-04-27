@@ -2,6 +2,7 @@
 
 import asyncio
 import time
+from contextvars import ContextVar
 from typing import Annotated, Any, Dict, List, Set, Tuple
 
 from ldai import log
@@ -16,6 +17,9 @@ from ldai_langchain.langchain_helper import (
     sum_token_usage_from_messages,
 )
 from ldai_langchain.langgraph_callback_handler import LDMetricsCallbackHandler
+
+# Per-run eval task accumulator, isolated per concurrent run() call via ContextVar.
+_run_eval_tasks: ContextVar[Dict[str, List[asyncio.Task]]] = ContextVar('_run_eval_tasks')
 
 
 def _make_handoff_tool(child_key: str, description: str) -> Any:
@@ -84,7 +88,6 @@ class LangGraphAgentGraphRunner(AgentGraphRunner):
         self._compiled: Any = None
         self._fn_name_to_config_key: Dict[str, str] = {}
         self._node_keys: Set[str] = set()
-        self._pending_eval_tasks: Dict[str, List[asyncio.Task]] = {}
 
     def _ensure_compiled(self) -> None:
         """Build and cache the compiled graph if not already done."""
@@ -189,7 +192,7 @@ class LangGraphAgentGraphRunner(AgentGraphRunner):
                             response.content if hasattr(response, 'content') else str(response)
                         )
                         task = node_obj.get_config().evaluator.evaluate(input_text, output_text)
-                        self._pending_eval_tasks.setdefault(nk, []).append(task)
+                        _run_eval_tasks.get({}).setdefault(nk, []).append(task)
 
                     return {'messages': [response]}
 
@@ -299,7 +302,8 @@ class LangGraphAgentGraphRunner(AgentGraphRunner):
         :param input: The string prompt to send to the agent graph
         :return: AgentGraphResult with the final output and metrics
         """
-        self._pending_eval_tasks = {}
+        pending_eval_tasks: Dict[str, List[asyncio.Task]] = {}
+        token = _run_eval_tasks.set(pending_eval_tasks)
         tracker = self._graph.create_tracker() if self._graph.create_tracker is not None else None
         start_ns = time.perf_counter_ns()
 
@@ -319,7 +323,7 @@ class LangGraphAgentGraphRunner(AgentGraphRunner):
             output = extract_last_message_content(messages)
 
             # Flush per-node metrics to LD trackers
-            await handler.flush(self._graph, self._pending_eval_tasks)
+            await handler.flush(self._graph, pending_eval_tasks)
 
             # Graph-level metrics
             if tracker:
@@ -351,3 +355,5 @@ class LangGraphAgentGraphRunner(AgentGraphRunner):
                 raw=None,
                 metrics=LDAIMetrics(success=False),
             )
+        finally:
+            _run_eval_tasks.reset(token)
