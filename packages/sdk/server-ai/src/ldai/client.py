@@ -1,4 +1,5 @@
 import uuid
+import warnings
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import chevron
@@ -169,6 +170,7 @@ class LDAIClient:
         :param variables: Additional variables for the model configuration.
         :return: The value of the model configuration along with a tracker used for gathering metrics.
         """
+        warnings.warn("config() is deprecated, use completion_config() instead", DeprecationWarning, stacklevel=2)
         return self.completion_config(key, context, default, variables)
 
     def _judge_config(
@@ -417,12 +419,9 @@ class LDAIClient:
         default_ai_provider: Optional[str] = None,
     ) -> Optional[ManagedModel]:
         """
-        .. deprecated:: Use :meth:`create_model` instead.
-
-        Creates and returns a ManagedModel for AI conversations.
-        This method is a deprecated alias for :meth:`create_model`.
+        .. deprecated:: Use :meth:`create_model` instead. This method will be removed in a future version.
         """
-        log.warning('create_chat() is deprecated, use create_model() instead')
+        warnings.warn("create_chat() is deprecated, use create_model() instead", DeprecationWarning, stacklevel=2)
         return await self.create_model(key, context, default, variables, default_ai_provider)
 
     async def create_agent(
@@ -545,6 +544,7 @@ class LDAIClient:
         :param context: The context to evaluate the agent configuration in.
         :return: Configured AIAgentConfig instance.
         """
+        warnings.warn("agent() is deprecated, use agent_config() instead", DeprecationWarning, stacklevel=2)
         return self.agent_config(config.key, context, config.default, config.variables)
 
     def agent_configs(
@@ -791,6 +791,7 @@ class LDAIClient:
         :param context: The context to evaluate the agent configurations in.
         :return: Dictionary mapping agent keys to their AIAgentConfig configurations.
         """
+        warnings.warn("agents() is deprecated, use agent_configs() instead", DeprecationWarning, stacklevel=2)
         return self.agent_configs(agent_configs, context)
 
     def __evaluate(

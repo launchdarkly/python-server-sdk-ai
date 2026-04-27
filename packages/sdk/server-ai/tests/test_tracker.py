@@ -294,7 +294,8 @@ def test_tracks_openai_metrics(client: LDClient):
     def get_result():
         return Result()
 
-    tracker.track_openai_metrics(get_result)
+    with pytest.warns(DeprecationWarning, match="track_openai_metrics is deprecated"):
+        tracker.track_openai_metrics(get_result)
 
     calls = [
         call(
@@ -335,11 +336,12 @@ def test_tracks_openai_metrics_with_exception(client: LDClient):
     def raise_exception():
         raise ValueError("Something went wrong")
 
-    try:
-        tracker.track_openai_metrics(raise_exception)
-        assert False, "Should have thrown an exception"
-    except ValueError:
-        pass
+    with pytest.warns(DeprecationWarning, match="track_openai_metrics is deprecated"):
+        try:
+            tracker.track_openai_metrics(raise_exception)
+            assert False, "Should have thrown an exception"
+        except ValueError:
+            pass
 
     calls = [
         call(

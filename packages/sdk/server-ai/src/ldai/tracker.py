@@ -1,6 +1,7 @@
 import base64
 import json
 import time
+import warnings
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Callable, Dict, Iterable, List, Optional
@@ -391,6 +392,9 @@ class LDAIConfigTracker:
         """
         Track OpenAI-specific operations.
 
+        .. deprecated:: Use :meth:`track_metrics_of` with ``get_ai_metrics_from_response``
+            from ``ldai_openai`` instead. This method will be removed in a future version.
+
         This function will track the duration of the operation, the token
         usage, and the success or error status.
 
@@ -404,6 +408,12 @@ class LDAIConfigTracker:
         :param func: Function to track.
         :return: Result of the tracked function.
         """
+        warnings.warn(
+            "track_openai_metrics is deprecated. Use track_metrics_of with "
+            "get_ai_metrics_from_response from ldai_openai instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         start_ns = time.perf_counter_ns()
         try:
             result = func()
