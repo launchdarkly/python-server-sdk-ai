@@ -25,11 +25,9 @@ def _sanitize_agent_name(key: str) -> str:
 class _RunState:
     """Mutable state shared across handoff and tool callbacks during a single run."""
 
-    def __init__(self, last_handoff_ns: int, last_node_key: str, input_str: str = '') -> None:
+    def __init__(self, last_handoff_ns: int, last_node_key: str) -> None:
         self.last_handoff_ns = last_handoff_ns
         self.last_node_key = last_node_key
-        self.input_str = input_str
-        self.pending_eval_tasks: List[tuple] = []
 
 
 class OpenAIAgentGraphRunner(AgentGraphRunner):
@@ -85,19 +83,12 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
 
         input_str = str(input)
         start_ns = time.perf_counter_ns()
-        state = _RunState(last_handoff_ns=start_ns, last_node_key=root_key, input_str=input_str)
+        state = _RunState(last_handoff_ns=start_ns, last_node_key=root_key)
         try:
             from agents import Runner
             root_agent = self._build_agents(path, state, tracker)
             result = await Runner.run(root_agent, input_str)
-            self._flush_final_segment(state, result, input_str)
-            all_eval_results = []
-            for node_tracker, eval_task in state.pending_eval_tasks:
-                eval_results = await eval_task
-                all_eval_results.extend(eval_results)
-                for r in eval_results:
-                    if r.success:
-                        node_tracker.track_judge_result(r)
+            self._flush_final_segment(state, result)
             self._track_tool_calls(result)
 
             duration = (time.perf_counter_ns() - start_ns) // 1_000_000
@@ -113,7 +104,6 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
                 output=str(result.final_output),
                 raw=result,
                 metrics=LDAIMetrics(success=True, usage=token_usage),
-                evaluations=all_eval_results,
             )
         except Exception as exc:
             if isinstance(exc, ImportError):
@@ -235,10 +225,7 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
         state: _RunState,
     ):
         def on_handoff(run_ctx: Any) -> None:
-            self._handle_handoff(
-                run_ctx, src, tgt, path, tracker, config_tracker, state,
-                input_str=state.input_str,
-            )
+            self._handle_handoff(run_ctx, src, tgt, path, tracker, config_tracker, state)
         return on_handoff
 
     def _handle_handoff(
@@ -250,7 +237,6 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
         tracker: Any,
         config_tracker: Any,
         state: _RunState,
-        input_str: str = '',
     ) -> None:
         path.append(tgt)
         state.last_node_key = tgt
@@ -275,19 +261,7 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
                 config_tracker.track_duration(int(duration_ms))
             config_tracker.track_success()
 
-            src_node = self._graph.get_node(src)
-            if src_node is not None:
-                # The OpenAI Agents SDK does not expose the agent's text output at
-                # handoff time via RunContextWrapper, so output_text is empty here.
-                eval_task = src_node.get_config().evaluator.evaluate(input_str, '')
-                state.pending_eval_tasks.append((config_tracker, eval_task))
-
-    def _flush_final_segment(
-        self,
-        state: _RunState,
-        result: Any,
-        input_str: str = '',
-    ) -> None:
+    def _flush_final_segment(self, state: _RunState, result: Any) -> None:
         """Record duration/tokens for the last active agent (no handoff after it)."""
         if not state.last_node_key:
             return
@@ -310,12 +284,6 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
             config_tracker.track_tokens(usage)
         config_tracker.track_duration(int(duration_ms))
         config_tracker.track_success()
-
-        final_node = self._graph.get_node(state.last_node_key)
-        if final_node is not None:
-            output_str = str(result.final_output) if result is not None else ''
-            eval_task = final_node.get_config().evaluator.evaluate(input_str, output_str)
-            state.pending_eval_tasks.append((config_tracker, eval_task))
 
     def _track_tool_calls(self, result: Any) -> None:
         """Track all tool calls from the run result, attributed to the node that called them."""
