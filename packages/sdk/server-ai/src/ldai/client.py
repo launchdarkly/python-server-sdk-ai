@@ -57,15 +57,15 @@ def _parse_tools(tools_data: Optional[Dict[str, Any]]) -> Optional[Dict[str, LDT
         return None
     result = {}
     for tool_name, tool_dict in tools_data.items():
-        if isinstance(tool_dict, dict):
-            result[tool_name] = LDTool(
-                name=tool_dict.get('name', tool_name),
-                type=tool_dict.get('type'),
-                parameters=tool_dict.get('parameters'),
-                custom_parameters=tool_dict.get('customParameters'),
-            )
-        else:
+        if not isinstance(tool_dict, dict):
             log.warning('Skipping tool "%s": expected a dict, got %s', tool_name, type(tool_dict).__name__)
+            continue
+        result[tool_name] = LDTool(
+            name=tool_dict.get('name', tool_name),
+            type=tool_dict.get('type'),
+            parameters=tool_dict.get('parameters'),
+            custom_parameters=tool_dict.get('customParameters'),
+        )
     return result or None
 
 
