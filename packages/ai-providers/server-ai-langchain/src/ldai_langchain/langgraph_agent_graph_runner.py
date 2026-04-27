@@ -304,7 +304,7 @@ class LangGraphAgentGraphRunner(AgentGraphRunner):
         """
         pending_eval_tasks: Dict[str, List[asyncio.Task]] = {}
         token = _run_eval_tasks.set(pending_eval_tasks)
-        tracker = self._graph.create_tracker() if self._graph.create_tracker is not None else None
+        tracker = self._graph.create_tracker()
         start_ns = time.perf_counter_ns()
 
         try:
@@ -325,12 +325,10 @@ class LangGraphAgentGraphRunner(AgentGraphRunner):
             # Flush per-node metrics to LD trackers
             await handler.flush(self._graph, pending_eval_tasks)
 
-            # Graph-level metrics
-            if tracker:
-                tracker.track_path(handler.path)
-                tracker.track_duration(duration)
-                tracker.track_invocation_success()
-                tracker.track_total_tokens(sum_token_usage_from_messages(messages))
+            tracker.track_path(handler.path)
+            tracker.track_duration(duration)
+            tracker.track_invocation_success()
+            tracker.track_total_tokens(sum_token_usage_from_messages(messages))
 
             return AgentGraphResult(
                 output=output,
@@ -347,9 +345,8 @@ class LangGraphAgentGraphRunner(AgentGraphRunner):
             else:
                 log.warning(f'LangGraphAgentGraphRunner run failed: {exc}')
             duration = (time.perf_counter_ns() - start_ns) // 1_000_000
-            if tracker:
-                tracker.track_duration(duration)
-                tracker.track_invocation_failure()
+            tracker.track_duration(duration)
+            tracker.track_invocation_failure()
             return AgentGraphResult(
                 output='',
                 raw=None,

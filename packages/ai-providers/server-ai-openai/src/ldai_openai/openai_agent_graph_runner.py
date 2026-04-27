@@ -76,7 +76,7 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
         :param input: The string prompt to send to the agent graph
         :return: AgentGraphResult with the final output and metrics
         """
-        tracker = self._graph.create_tracker() if self._graph.create_tracker is not None else None
+        tracker = self._graph.create_tracker()
         path: List[str] = []
         root_node = self._graph.root()
         root_key = root_node.get_key() if root_node else ''
@@ -99,14 +99,13 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
             self._track_tool_calls(result)
 
             duration = (time.perf_counter_ns() - start_ns) // 1_000_000
+            token_usage = get_ai_usage_from_response(result)
 
-            if tracker:
-                tracker.track_path(path)
-                tracker.track_duration(duration)
-                tracker.track_invocation_success()
-                token_usage = get_ai_usage_from_response(result)
-                if token_usage is not None:
-                    tracker.track_total_tokens(token_usage)
+            tracker.track_path(path)
+            tracker.track_duration(duration)
+            tracker.track_invocation_success()
+            if token_usage is not None:
+                tracker.track_total_tokens(token_usage)
 
             return AgentGraphResult(
                 output=str(result.final_output),
@@ -122,9 +121,8 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
             else:
                 log.warning(f'OpenAIAgentGraphRunner run failed: {exc}')
             duration = (time.perf_counter_ns() - start_ns) // 1_000_000
-            if tracker:
-                tracker.track_duration(duration)
-                tracker.track_invocation_failure()
+            tracker.track_duration(duration)
+            tracker.track_invocation_failure()
             return AgentGraphResult(
                 output='',
                 raw=None,

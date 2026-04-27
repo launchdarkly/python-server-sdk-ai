@@ -95,7 +95,7 @@ class LDAIClient:
             key, context, default.to_dict(), variables
         )
 
-        evaluator = self._build_evaluator(judge_configuration, context, default_ai_provider)
+        evaluator = self._build_evaluator(judge_configuration, context, default_ai_provider, variables)
 
         config = AICompletionConfig(
             key=key,
@@ -327,6 +327,7 @@ class LDAIClient:
         judge_configuration: Optional[JudgeConfiguration],
         context: Context,
         default_ai_provider: Optional[str] = None,
+        variables: Optional[Dict[str, Any]] = None,
     ) -> Evaluator:
         """
         Build an Evaluator for the given judge configuration.
@@ -334,13 +335,15 @@ class LDAIClient:
         :param judge_configuration: The judge configuration listing judges to initialize
         :param context: Standard Context used when evaluating flags
         :param default_ai_provider: Optional default AI provider to use
+        :param variables: Optional variables for judge instruction interpolation
         :return: Evaluator wrapping the initialized judges, or a no-op Evaluator if
             judge_configuration is None or has no judges
         """
         if not judge_configuration or not judge_configuration.judges:
             return Evaluator.noop()
         judges = self._initialize_judges(
-            judge_configuration.judges, context, default_ai_provider=default_ai_provider
+            judge_configuration.judges, context, default_ai_provider=default_ai_provider,
+            variables=variables,
         )
         return Evaluator(judges, judge_configuration)
 
@@ -604,6 +607,7 @@ class LDAIClient:
         self,
         key: str,
         context: Context,
+        default_ai_provider: Optional[str] = None,
     ) -> AgentGraphDefinition:
         """`
         Retrieve an AI agent graph.
@@ -648,7 +652,8 @@ class LDAIClient:
         graph_key_value = key
         agent_configs = {
             agent_key: self.__evaluate_agent(
-                agent_key, context, AIAgentConfigDefault.disabled(), graph_key=graph_key_value
+                agent_key, context, AIAgentConfigDefault.disabled(), graph_key=graph_key_value,
+                default_ai_provider=default_ai_provider,
             )
             for agent_key in all_agent_keys
         }
@@ -756,7 +761,7 @@ class LDAIClient:
         self._client.track(_TRACK_USAGE_CREATE_AGENT_GRAPH, context, key, 1)
         log.debug(f"Creating managed agent graph for key: {key}")
 
-        graph = self.agent_graph(key, context)
+        graph = self.agent_graph(key, context, default_ai_provider)
         if not graph.enabled:
             return None
 
@@ -916,7 +921,7 @@ class LDAIClient:
 
         effective_judge_configuration = judge_configuration or JudgeConfiguration(judges=[])
 
-        evaluator = self._build_evaluator(effective_judge_configuration, context, default_ai_provider)
+        evaluator = self._build_evaluator(effective_judge_configuration, context, default_ai_provider, variables)
 
         return AIAgentConfig(
             key=key,
