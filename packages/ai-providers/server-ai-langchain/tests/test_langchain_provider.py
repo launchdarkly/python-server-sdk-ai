@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
 from ldai import LDMessage
+from ldai.evaluator import Evaluator
 
 from ldai_langchain import (
     LangChainModelRunner,
@@ -530,6 +531,7 @@ class TestBuildTools:
         cfg = AIAgentConfig(
             key='n',
             enabled=True,
+            evaluator=Evaluator.noop(),
             create_tracker=MagicMock(),
             model=ModelConfig(
                 name='gpt-4',
@@ -553,6 +555,7 @@ class TestBuildTools:
         cfg = AIAgentConfig(
             key='n',
             enabled=True,
+            evaluator=Evaluator.noop(),
             create_tracker=MagicMock(),
             model=ModelConfig(
                 name='gpt-4',

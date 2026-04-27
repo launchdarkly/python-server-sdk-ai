@@ -4,6 +4,7 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from ldai.agent_graph import AgentGraphDefinition
+from ldai.evaluator import Evaluator
 from ldai.models import AIAgentGraphConfig, AIAgentConfig, ModelConfig, ProviderConfig
 from ldai.providers import AgentGraphResult, ToolRegistry
 from ldai_langchain.langgraph_agent_graph_runner import LangGraphAgentGraphRunner
@@ -20,6 +21,7 @@ def _make_graph(enabled: bool = True) -> AgentGraphDefinition:
         model=ModelConfig(name='gpt-4'),
         provider=ProviderConfig(name='openai'),
         instructions='You are a helpful assistant.',
+        evaluator=Evaluator.noop(),
     )
     graph_config = AIAgentGraphConfig(
         key='test-graph',

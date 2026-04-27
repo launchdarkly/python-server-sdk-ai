@@ -91,7 +91,11 @@ class AIProvider(ABC):
         log.warning('create_agent not implemented by this provider')
         return None
 
-    def create_agent_graph(self, graph_def: Any, tools: Any) -> Optional[Any]:
+    def create_agent_graph(
+        self,
+        graph_def: Any,
+        tools: Any,
+    ) -> Optional[Any]:
         """
         CAUTION:
         This feature is experimental and should NOT be considered ready for production use.

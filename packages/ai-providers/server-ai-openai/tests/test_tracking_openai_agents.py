@@ -14,6 +14,7 @@ from ldai.agent_graph import AgentGraphDefinition
 from ldai.models import AIAgentGraphConfig, AIAgentConfig, Edge, ModelConfig, ProviderConfig
 from ldai.tracker import AIGraphTracker, LDAIConfigTracker
 from ldai_openai.openai_agent_graph_runner import OpenAIAgentGraphRunner
+from ldai.evaluator import Evaluator
 
 
 # ---------------------------------------------------------------------------
@@ -61,6 +62,7 @@ def _make_graph(
     root_config = AIAgentConfig(
         key=node_key,
         enabled=True,
+        evaluator=Evaluator.noop(),
         model=ModelConfig(name='gpt-4', parameters={'tools': tool_defs} if tool_defs else {}),
         provider=ProviderConfig(name='openai'),
         instructions='You are a helpful assistant.',
@@ -205,6 +207,7 @@ def _make_two_node_graph(mock_ld_client: MagicMock) -> AgentGraphDefinition:
     root_config = AIAgentConfig(
         key='root-agent',
         enabled=True,
+        evaluator=Evaluator.noop(),
         model=ModelConfig(name='gpt-4', parameters={}),
         provider=ProviderConfig(name='openai'),
         instructions='You are root.',
@@ -213,6 +216,7 @@ def _make_two_node_graph(mock_ld_client: MagicMock) -> AgentGraphDefinition:
     child_config = AIAgentConfig(
         key='child-agent',
         enabled=True,
+        evaluator=Evaluator.noop(),
         model=ModelConfig(name='gpt-4', parameters={}),
         provider=ProviderConfig(name='openai'),
         instructions='You are child.',

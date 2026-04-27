@@ -1,8 +1,6 @@
 import asyncio
-from typing import Any, Dict, List, Optional
+from typing import List, Optional
 
-from ldai import log
-from ldai.judge import Judge
 from ldai.models import AICompletionConfig, LDMessage
 from ldai.providers.model_runner import ModelRunner
 from ldai.providers.types import JudgeResult, ModelResponse
@@ -22,11 +20,9 @@ class ManagedModel:
         self,
         ai_config: AICompletionConfig,
         model_runner: ModelRunner,
-        judges: Optional[Dict[str, Judge]] = None,
     ):
         self._ai_config = ai_config
         self._model_runner = model_runner
-        self._judges = judges or {}
         self._messages: List[LDMessage] = []
 
     async def invoke(self, prompt: str) -> ModelResponse:
@@ -53,38 +49,22 @@ class ManagedModel:
             lambda result: result.metrics,
         )
 
-        if (
-            self._ai_config.judge_configuration
-            and self._ai_config.judge_configuration.judges
-        ):
-            response.evaluations = self._start_judge_evaluations(tracker, self._messages, response)
+        evaluator = self._ai_config.evaluator
+        input_text = '\r\n'.join(m.content for m in self._messages) if self._messages else ''
+        output_text = response.message.content
+        response.evaluations = evaluator.evaluate(input_text, output_text)
+        self._track_judge_results(tracker, response.evaluations)
 
         self._messages.append(response.message)
         return response
 
-    def _start_judge_evaluations(
-        self,
-        tracker: LDAIConfigTracker,
-        messages: List[LDMessage],
-        response: ModelResponse,
-    ) -> List[asyncio.Task[Optional[JudgeResult]]]:
-        if not self._ai_config.judge_configuration or not self._ai_config.judge_configuration.judges:
-            return []
-
-        async def evaluate_judge(judge_config: Any) -> Optional[JudgeResult]:
-            judge = self._judges.get(judge_config.key)
-            if not judge:
-                log.warning(f'Judge configuration is not enabled: {judge_config.key}')
-                return None
-            judge_result = await judge.evaluate_messages(messages, response, judge_config.sampling_rate)
-            if judge_result.success:
-                tracker.track_judge_result(judge_result)
-            return judge_result
-
-        return [
-            asyncio.create_task(evaluate_judge(jc))
-            for jc in self._ai_config.judge_configuration.judges
-        ]
+    def _track_judge_results(self, tracker: LDAIConfigTracker, eval_task: asyncio.Task[List[JudgeResult]]) -> None:
+        async def _run() -> None:
+            results = await eval_task
+            for r in results:
+                if r.success:
+                    tracker.track_judge_result(r)
+        asyncio.create_task(_run())
 
     def get_messages(self, include_config_messages: bool = False) -> List[LDMessage]:
         """
@@ -116,7 +96,3 @@ class ManagedModel:
     def get_config(self) -> AICompletionConfig:
         """Return the AI completion config."""
         return self._ai_config
-
-    def get_judges(self) -> Dict[str, Judge]:
-        """Return the judges associated with this model."""
-        return self._judges
