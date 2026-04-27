@@ -92,15 +92,13 @@ def test_completion_config_tools_none_when_not_in_variation(client, context):
     assert result.tools is None
 
 
-def test_completion_config_falls_back_to_default_tools(client, context):
+def test_completion_config_tools_none_when_variation_has_no_tools(client, context):
     default_tool = LDTool(name='default-tool', type='function', custom_parameters={'priority': 'high'})
     default = AICompletionConfigDefault(tools={'default-tool': default_tool})
 
     result = client.completion_config('completion-no-tools', context, default)
 
-    assert result.tools is not None
-    assert 'default-tool' in result.tools
-    assert result.tools['default-tool'].custom_parameters == {'priority': 'high'}
+    assert result.tools is None
 
 
 def test_agent_config_includes_tools_from_variation(client, context):

@@ -112,8 +112,7 @@ class LDAIClient:
             key, context, default.to_dict(), variables
         )
 
-        tools_data = variation.get('tools')
-        tools = _parse_tools(tools_data) if tools_data is not None else default.tools
+        tools = _parse_tools(variation.get('tools'))
 
         config = AICompletionConfig(
             key=key,
@@ -921,8 +920,7 @@ class LDAIClient:
         # For agents, prioritize instructions over messages
         final_instructions = instructions if instructions is not None else default.instructions
 
-        tools_data = variation.get('tools')
-        tools = _parse_tools(tools_data) if tools_data is not None else default.tools
+        tools = _parse_tools(variation.get('tools'))
 
         return AIAgentConfig(
             key=key,
