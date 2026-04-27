@@ -26,6 +26,7 @@ from ldai.models import (  # Deprecated aliases for backward compatibility
     LDAIAgentConfig,
     LDAIAgentDefaults,
     LDMessage,
+    LDTool,
     ModelConfig,
     ProviderConfig,
 )
@@ -64,6 +65,7 @@ __all__ = [
     'Judge',
     'JudgeConfiguration',
     'JudgeResult',
+    'LDTool',
     'LDMessage',
     'ModelConfig',
     'ProviderConfig',

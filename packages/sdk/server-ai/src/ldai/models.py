@@ -5,6 +5,31 @@ from typing import Any, Callable, Dict, List, Literal, Optional, Union
 from typing_extensions import Self
 
 
+@dataclass(frozen=True)
+class LDTool:
+    """
+    A single tool entry from the root-level tools map in an AI Config flag variation.
+    Distinct from model.parameters.tools[] which is the raw array passed to LLM providers.
+    """
+    name: str
+    description: Optional[str] = None
+    type: Optional[str] = None
+    parameters: Optional[Dict[str, Any]] = None
+    custom_parameters: Optional[Dict[str, Any]] = None
+
+    def to_dict(self) -> dict:
+        result: Dict[str, Any] = {'name': self.name}
+        if self.description is not None:
+            result['description'] = self.description
+        if self.type is not None:
+            result['type'] = self.type
+        if self.parameters is not None:
+            result['parameters'] = self.parameters
+        if self.custom_parameters is not None:
+            result['customParameters'] = self.custom_parameters  # camelCase in wire format
+        return result
+
+
 @dataclass
 class LDMessage:
     role: Literal['system', 'user', 'assistant']
@@ -208,6 +233,7 @@ class AICompletionConfigDefault(AIConfigDefault):
     """
     messages: Optional[List[LDMessage]] = None
     judge_configuration: Optional[JudgeConfiguration] = None
+    tools: Optional[Dict[str, 'LDTool']] = None
 
     def to_dict(self) -> dict:
         """
@@ -217,6 +243,8 @@ class AICompletionConfigDefault(AIConfigDefault):
         result['messages'] = [message.to_dict() for message in self.messages] if self.messages else None
         if self.judge_configuration is not None:
             result['judgeConfiguration'] = self.judge_configuration.to_dict()
+        if self.tools is not None:
+            result['tools'] = {k: v.to_dict() for k, v in self.tools.items()}
         return result
 
 
@@ -227,6 +255,7 @@ class AICompletionConfig(AIConfig):
     """
     messages: Optional[List[LDMessage]] = None
     judge_configuration: Optional[JudgeConfiguration] = None
+    tools: Optional[Dict[str, 'LDTool']] = None
 
     def to_dict(self) -> dict:
         """
@@ -236,6 +265,8 @@ class AICompletionConfig(AIConfig):
         result['messages'] = [message.to_dict() for message in self.messages] if self.messages else None
         if self.judge_configuration is not None:
             result['judgeConfiguration'] = self.judge_configuration.to_dict()
+        if self.tools is not None:
+            result['tools'] = {k: v.to_dict() for k, v in self.tools.items()}
         return result
 
 
@@ -250,6 +281,7 @@ class AIAgentConfigDefault(AIConfigDefault):
     """
     instructions: Optional[str] = None
     judge_configuration: Optional[JudgeConfiguration] = None
+    tools: Optional[Dict[str, 'LDTool']] = None
 
     def to_dict(self) -> Dict[str, Any]:
         """
@@ -260,6 +292,8 @@ class AIAgentConfigDefault(AIConfigDefault):
             result['instructions'] = self.instructions
         if self.judge_configuration is not None:
             result['judgeConfiguration'] = self.judge_configuration.to_dict()
+        if self.tools is not None:
+            result['tools'] = {k: v.to_dict() for k, v in self.tools.items()}
         return result
 
 
@@ -270,6 +304,7 @@ class AIAgentConfig(AIConfig):
     """
     instructions: Optional[str] = None
     judge_configuration: Optional[JudgeConfiguration] = None
+    tools: Optional[Dict[str, 'LDTool']] = None
 
     def to_dict(self) -> Dict[str, Any]:
         """
@@ -280,6 +315,8 @@ class AIAgentConfig(AIConfig):
             result['instructions'] = self.instructions
         if self.judge_configuration is not None:
             result['judgeConfiguration'] = self.judge_configuration.to_dict()
+        if self.tools is not None:
+            result['tools'] = {k: v.to_dict() for k, v in self.tools.items()}
         return result
 
 
