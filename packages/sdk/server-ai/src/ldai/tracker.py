@@ -262,8 +262,8 @@ class LDAIConfigTracker:
 
     def track_metrics_of(
         self,
-        func: Callable[[], Any],
         metrics_extractor: Callable[[Any], Any],
+        func: Callable[[], Any],
     ) -> Any:
         """
         Track metrics for a synchronous AI operation.
@@ -277,8 +277,8 @@ class LDAIConfigTracker:
 
         For async operations, use :meth:`track_metrics_of_async`.
 
-        :param func: Synchronous callable that runs the operation
         :param metrics_extractor: Function that extracts LDAIMetrics from the operation result
+        :param func: Synchronous callable that runs the operation
         :return: The result of the operation
         """
         start_ns = time.perf_counter_ns()
@@ -294,14 +294,14 @@ class LDAIConfigTracker:
         self.track_duration(duration)
         return self._track_from_metrics_extractor(result, metrics_extractor)
 
-    async def track_metrics_of_async(self, func, metrics_extractor):
+    async def track_metrics_of_async(self, metrics_extractor, func):
         """
         Track metrics for an async AI operation (``func`` is awaited).
 
         Same event semantics as :meth:`track_metrics_of`.
 
-        :param func: Async callable or zero-arg callable that returns an awaitable when called
         :param metrics_extractor: Function that extracts LDAIMetrics from the operation result
+        :param func: Async callable or zero-arg callable that returns an awaitable when called
         :return: The result of the operation
         """
         start_ns = time.perf_counter_ns()
