@@ -433,7 +433,7 @@ async def test_flush_with_no_graph_key_on_node_tracker():
         nodes=nodes,
         context=context,
         enabled=True,
-        create_tracker=lambda: None,
+        create_tracker=lambda: AIGraphTracker(mock_ld_client, 'v1', 'test-graph', 1, context),
     )
 
     handler = LDMetricsCallbackHandler({'root-agent'}, {})

@@ -49,22 +49,32 @@ class ManagedModel:
             lambda result: result.metrics,
         )
 
-        evaluator = self._ai_config.evaluator
         input_text = '\r\n'.join(m.content for m in self._messages) if self._messages else ''
         output_text = response.message.content
-        response.evaluations = evaluator.evaluate(input_text, output_text)
-        self._track_judge_results(tracker, response.evaluations)
+        response.evaluations = self._track_judge_results(tracker, input_text, output_text)
 
         self._messages.append(response.message)
         return response
 
-    def _track_judge_results(self, tracker: LDAIConfigTracker, eval_task: asyncio.Task[List[JudgeResult]]) -> None:
-        async def _run() -> None:
-            results = await eval_task
-            for r in results:
+    def _track_judge_results(
+        self,
+        tracker: LDAIConfigTracker,
+        input_text: str,
+        output_text: str,
+    ) -> asyncio.Task[List[JudgeResult]]:
+        eval_task = self._ai_config.evaluator.evaluate(input_text, output_text)
+
+        def _on_done(task: asyncio.Task) -> None:
+            if task.cancelled():
+                return
+            if task.exception() is not None:
+                return
+            for r in task.result():
                 if r.success:
                     tracker.track_judge_result(r)
-        asyncio.create_task(_run())
+
+        eval_task.add_done_callback(_on_done)
+        return eval_task
 
     def get_messages(self, include_config_messages: bool = False) -> List[LDMessage]:
         """

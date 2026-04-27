@@ -192,7 +192,14 @@ class LangGraphAgentGraphRunner(AgentGraphRunner):
                             response.content if hasattr(response, 'content') else str(response)
                         )
                         task = node_obj.get_config().evaluator.evaluate(input_text, output_text)
-                        _run_eval_tasks.get({}).setdefault(nk, []).append(task)
+                        run_tasks = _run_eval_tasks.get(None)
+                        if run_tasks is not None:
+                            run_tasks.setdefault(nk, []).append(task)
+                        else:
+                            log.warning(
+                                f"LangGraphAgentGraphRunner: eval task for node '{nk}' "
+                                "has no run context; judge results will not be tracked"
+                            )
 
                     return {'messages': [response]}
 
