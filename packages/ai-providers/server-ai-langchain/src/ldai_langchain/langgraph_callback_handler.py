@@ -5,6 +5,7 @@ from uuid import UUID
 from langchain_core.callbacks import BaseCallbackHandler
 from langchain_core.outputs import ChatGeneration, LLMResult
 from ldai.agent_graph import AgentGraphDefinition
+from ldai.providers.types import JudgeResult
 from ldai.tracker import TokenUsage
 
 from ldai_langchain.langchain_helper import get_ai_usage_from_response
@@ -188,7 +189,9 @@ class LDMetricsCallbackHandler(BaseCallbackHandler):
     # Flush
     # ------------------------------------------------------------------
 
-    async def flush(self, graph: AgentGraphDefinition, eval_tasks=None) -> None:
+    async def flush(
+        self, graph: AgentGraphDefinition, eval_tasks=None
+    ) -> List[JudgeResult]:
         """
         Emit all collected per-node metrics to the LaunchDarkly trackers.
 
@@ -198,8 +201,10 @@ class LDMetricsCallbackHandler(BaseCallbackHandler):
         :param eval_tasks: Optional dict mapping node key to a list of awaitables that
             return judge evaluation results. Multiple tasks arise when a node is visited
             more than once (e.g. in a graph with cycles).
+        :return: All judge results collected across all nodes.
         """
         node_trackers: Dict[str, Any] = {}
+        all_eval_results: List[JudgeResult] = []
         for node_key in self._path:
             if node_key in node_trackers:
                 continue
@@ -229,6 +234,9 @@ class LDMetricsCallbackHandler(BaseCallbackHandler):
 
             for eval_task in eval_tasks.get(node_key, []):
                 results = await eval_task
+                all_eval_results.extend(results)
                 for r in results:
                     if r.success:
                         config_tracker.track_judge_result(r)
+
+        return all_eval_results

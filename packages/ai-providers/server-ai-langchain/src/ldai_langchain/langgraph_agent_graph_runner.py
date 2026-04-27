@@ -330,7 +330,7 @@ class LangGraphAgentGraphRunner(AgentGraphRunner):
             output = extract_last_message_content(messages)
 
             # Flush per-node metrics to LD trackers
-            await handler.flush(self._graph, pending_eval_tasks)
+            all_eval_results = await handler.flush(self._graph, pending_eval_tasks)
 
             tracker.track_path(handler.path)
             tracker.track_duration(duration)
@@ -341,6 +341,7 @@ class LangGraphAgentGraphRunner(AgentGraphRunner):
                 output=output,
                 raw=result,
                 metrics=LDAIMetrics(success=True),
+                evaluations=all_eval_results,
             )
 
         except Exception as exc:

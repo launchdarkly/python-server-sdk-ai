@@ -91,8 +91,10 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
             root_agent = self._build_agents(path, state, tracker)
             result = await Runner.run(root_agent, input_str)
             self._flush_final_segment(state, result, input_str)
+            all_eval_results = []
             for node_tracker, eval_task in state.pending_eval_tasks:
                 eval_results = await eval_task
+                all_eval_results.extend(eval_results)
                 for r in eval_results:
                     if r.success:
                         node_tracker.track_judge_result(r)
@@ -111,6 +113,7 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
                 output=str(result.final_output),
                 raw=result,
                 metrics=LDAIMetrics(success=True, usage=token_usage),
+                evaluations=all_eval_results,
             )
         except Exception as exc:
             if isinstance(exc, ImportError):
@@ -251,8 +254,7 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
     ) -> None:
         path.append(tgt)
         state.last_node_key = tgt
-        if tracker:
-            tracker.track_handoff_success(src, tgt)
+        tracker.track_handoff_success(src, tgt)
 
         now_ns = time.perf_counter_ns()
         duration_ms = (now_ns - state.last_handoff_ns) // 1_000_000
@@ -275,6 +277,8 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
 
             src_node = self._graph.get_node(src)
             if src_node is not None:
+                # The OpenAI Agents SDK does not expose the agent's text output at
+                # handoff time via RunContextWrapper, so output_text is empty here.
                 eval_task = src_node.get_config().evaluator.evaluate(input_str, '')
                 state.pending_eval_tasks.append((config_tracker, eval_task))
 
