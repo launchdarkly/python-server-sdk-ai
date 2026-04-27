@@ -6,7 +6,7 @@ from typing_extensions import Self
 
 
 @dataclass(frozen=True)
-class AITool:
+class LDTool:
     """
     A single tool entry from the root-level tools map in an AI Config flag variation.
     Distinct from model.parameters.tools[] which is the raw array passed to LLM providers.
@@ -230,7 +230,7 @@ class AICompletionConfigDefault(AIConfigDefault):
     """
     messages: Optional[List[LDMessage]] = None
     judge_configuration: Optional[JudgeConfiguration] = None
-    tools: Optional[Dict[str, 'AITool']] = None
+    tools: Optional[Dict[str, 'LDTool']] = None
 
     def to_dict(self) -> dict:
         """
@@ -252,7 +252,7 @@ class AICompletionConfig(AIConfig):
     """
     messages: Optional[List[LDMessage]] = None
     judge_configuration: Optional[JudgeConfiguration] = None
-    tools: Optional[Dict[str, 'AITool']] = None
+    tools: Optional[Dict[str, 'LDTool']] = None
 
     def to_dict(self) -> dict:
         """
@@ -278,7 +278,7 @@ class AIAgentConfigDefault(AIConfigDefault):
     """
     instructions: Optional[str] = None
     judge_configuration: Optional[JudgeConfiguration] = None
-    tools: Optional[Dict[str, 'AITool']] = None
+    tools: Optional[Dict[str, 'LDTool']] = None
 
     def to_dict(self) -> Dict[str, Any]:
         """
@@ -301,7 +301,7 @@ class AIAgentConfig(AIConfig):
     """
     instructions: Optional[str] = None
     judge_configuration: Optional[JudgeConfiguration] = None
-    tools: Optional[Dict[str, 'AITool']] = None
+    tools: Optional[Dict[str, 'LDTool']] = None
 
     def to_dict(self) -> Dict[str, Any]:
         """

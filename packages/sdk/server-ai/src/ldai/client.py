@@ -21,7 +21,7 @@ from ldai.models import (
     AICompletionConfigDefault,
     AIJudgeConfig,
     AIJudgeConfigDefault,
-    AITool,
+    LDTool,
     Edge,
     JudgeConfiguration,
     LDMessage,
@@ -51,14 +51,14 @@ _DISABLED_AGENT_DEFAULT = AIAgentConfigDefault.disabled()
 _DISABLED_JUDGE_DEFAULT = AIJudgeConfigDefault.disabled()
 
 
-def _parse_tools(tools_data: Optional[Dict[str, Any]]) -> Optional[Dict[str, AITool]]:
+def _parse_tools(tools_data: Optional[Dict[str, Any]]) -> Optional[Dict[str, LDTool]]:
     """Parse the root-level tools map from a flag variation dict."""
     if not tools_data or not isinstance(tools_data, dict):
         return None
     result = {}
     for tool_name, tool_dict in tools_data.items():
         if isinstance(tool_dict, dict):
-            result[tool_name] = AITool(
+            result[tool_name] = LDTool(
                 name=tool_dict.get('name', tool_name),
                 type=tool_dict.get('type'),
                 parameters=tool_dict.get('parameters'),

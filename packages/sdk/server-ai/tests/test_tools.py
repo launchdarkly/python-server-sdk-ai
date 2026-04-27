@@ -2,7 +2,7 @@ import pytest
 from ldclient import Config, Context, LDClient
 from ldclient.integrations.test_data import TestData
 
-from ldai import AITool, LDAIClient
+from ldai import LDTool, LDAIClient
 from ldai.models import AIAgentConfigDefault, AICompletionConfigDefault
 
 
@@ -93,7 +93,7 @@ def test_completion_config_tools_none_when_not_in_variation(client, context):
 
 
 def test_completion_config_falls_back_to_default_tools(client, context):
-    default_tool = AITool(name='default-tool', type='function', custom_parameters={'priority': 'high'})
+    default_tool = LDTool(name='default-tool', type='function', custom_parameters={'priority': 'high'})
     default = AICompletionConfigDefault(tools={'default-tool': default_tool})
 
     result = client.completion_config('completion-no-tools', context, default)
@@ -114,7 +114,7 @@ def test_agent_config_includes_tools_from_variation(client, context):
 
 
 def test_aitool_to_dict_serializes_custom_parameters_as_camel_case():
-    tool = AITool(
+    tool = LDTool(
         name='my-tool',
         type='function',
         parameters={'type': 'object'},
@@ -131,7 +131,7 @@ def test_aitool_to_dict_serializes_custom_parameters_as_camel_case():
 
 
 def test_aitool_to_dict_omits_none_fields():
-    tool = AITool(name='bare-tool')
+    tool = LDTool(name='bare-tool')
     d = tool.to_dict()
 
     assert d == {'name': 'bare-tool'}
