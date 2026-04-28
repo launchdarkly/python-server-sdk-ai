@@ -72,6 +72,34 @@ def _parse_tools(tools_data: Optional[Dict[str, Any]]) -> Optional[Dict[str, LDT
     return result or None
 
 
+def _resolve_tools(variation: Dict[str, Any]) -> Optional[Dict[str, LDTool]]:
+    if 'tools' in variation:
+        return _parse_tools(variation['tools'])
+
+    model = variation.get('model')
+    if not isinstance(model, dict):
+        return None
+    parameters = model.get('parameters')
+    if not isinstance(parameters, dict):
+        return None
+    tools_data = parameters.get('tools')
+    if not isinstance(tools_data, dict):
+        return None
+
+    result = {}
+    for tool_name, tool_dict in tools_data.items():
+        if not isinstance(tool_dict, dict):
+            continue
+        result[tool_name] = LDTool(
+            name=tool_dict.get('name', tool_name),
+            description=tool_dict.get('description'),
+            type=tool_dict.get('type'),
+            parameters=tool_dict.get('parameters'),
+            custom_parameters=tool_dict.get('customParameters'),
+        )
+    return result or None
+
+
 class LDAIClient:
     """The LaunchDarkly AI SDK client object."""
 
@@ -117,7 +145,7 @@ class LDAIClient:
         )
 
         evaluator = self._build_evaluator(judge_configuration, context, default_ai_provider, variables)
-        tools = _parse_tools(variation.get('tools'))
+        tools = _resolve_tools(variation)
 
         config = AICompletionConfig(
             key=key,
@@ -946,7 +974,7 @@ class LDAIClient:
         effective_judge_configuration = judge_configuration or JudgeConfiguration(judges=[])
 
         evaluator = self._build_evaluator(effective_judge_configuration, context, default_ai_provider, variables)
-        tools = _parse_tools(variation.get('tools'))
+        tools = _resolve_tools(variation)
 
         return AIAgentConfig(
             key=key,
