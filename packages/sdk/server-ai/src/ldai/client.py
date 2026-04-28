@@ -799,7 +799,7 @@ class LDAIClient:
         if not runner:
             return None
 
-        return ManagedAgentGraph(runner)
+        return ManagedAgentGraph(runner, graph=graph)
 
     def agents(
         self,

@@ -6,13 +6,15 @@ from ldclient import Config, Context, LDClient
 from ldclient.integrations.test_data import TestData
 
 from ldai import LDAIClient, ManagedAgentGraph, ManagedGraphResult
-from ldai.providers.types import LDAIMetrics
+from ldai.providers.types import AgentGraphRunnerResult, GraphMetrics, LDAIMetrics
 from ldai.providers import AgentGraphResult, AgentGraphRunner, ToolRegistry
+from ldai.tracker import TokenUsage
 
 
-# --- Test double ---
+# --- Test doubles ---
 
 class StubAgentGraphRunner(AgentGraphRunner):
+    """Legacy runner that returns AgentGraphResult (old shape)."""
     def __init__(self, output: str = "stub output"):
         self._output = output
 
@@ -24,10 +26,30 @@ class StubAgentGraphRunner(AgentGraphRunner):
         )
 
 
-# --- ManagedAgentGraph unit tests ---
+class StubNewShapeRunner(AgentGraphRunner):
+    """New-shape runner that returns AgentGraphRunnerResult."""
+    def __init__(self, content: str = "new shape output"):
+        self._content = content
+
+    async def run(self, input) -> AgentGraphRunnerResult:
+        return AgentGraphRunnerResult(
+            content=self._content,
+            metrics=GraphMetrics(
+                success=True,
+                path=["root", "specialist"],
+                duration_ms=42,
+                usage=TokenUsage(total=10, input=5, output=5),
+                node_metrics={},
+            ),
+            raw={"input": input},
+        )
+
+
+# --- ManagedAgentGraph unit tests (legacy shape) ---
 
 @pytest.mark.asyncio
 async def test_managed_agent_graph_run_delegates_to_runner():
+    """Legacy AgentGraphResult shape: content comes from output field."""
     runner = StubAgentGraphRunner("hello world")
     managed = ManagedAgentGraph(runner)
     result = await managed.run("test input")
@@ -40,6 +62,56 @@ def test_managed_agent_graph_get_runner():
     runner = StubAgentGraphRunner()
     managed = ManagedAgentGraph(runner)
     assert managed.get_agent_graph_runner() is runner
+
+
+# --- ManagedAgentGraph unit tests (new AgentGraphRunnerResult shape) ---
+
+@pytest.mark.asyncio
+async def test_managed_agent_graph_run_handles_new_shape():
+    """New AgentGraphRunnerResult shape: content and GraphMetrics are surfaced."""
+    runner = StubNewShapeRunner("final answer")
+    mock_graph = MagicMock()
+    mock_tracker = MagicMock()
+    mock_graph.create_tracker = MagicMock(return_value=mock_tracker)
+
+    managed = ManagedAgentGraph(runner, graph=mock_graph)
+    result = await managed.run("test input")
+
+    assert isinstance(result, ManagedGraphResult)
+    assert result.content == "final answer"
+    assert result.metrics.success is True
+    assert result.metrics.path == ["root", "specialist"]
+    assert result.metrics.duration_ms == 42
+    assert result.metrics.usage is not None
+    assert result.metrics.usage.total == 10
+
+
+@pytest.mark.asyncio
+async def test_managed_agent_graph_new_shape_drives_tracking():
+    """New shape: managed layer calls tracker methods from result.metrics."""
+    runner = StubNewShapeRunner()
+    mock_graph = MagicMock()
+    mock_tracker = MagicMock()
+    mock_graph.create_tracker = MagicMock(return_value=mock_tracker)
+
+    managed = ManagedAgentGraph(runner, graph=mock_graph)
+    await managed.run("test input")
+
+    mock_tracker.track_path.assert_called_once_with(["root", "specialist"])
+    mock_tracker.track_duration.assert_called_once_with(42)
+    mock_tracker.track_invocation_success.assert_called_once()
+    mock_tracker.track_total_tokens.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_managed_agent_graph_new_shape_no_graph_skips_tracking():
+    """New shape without graph: no tracking called (graph not available)."""
+    runner = StubNewShapeRunner()
+    managed = ManagedAgentGraph(runner, graph=None)
+    # Should not raise even without a graph reference
+    result = await managed.run("test input")
+    assert result.content == "new shape output"
+    assert result.metrics.success is True
 
 
 
