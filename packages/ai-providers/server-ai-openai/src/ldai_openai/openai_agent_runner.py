@@ -1,28 +1,30 @@
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from ldai import log
-from ldai.providers import AgentResult, AgentRunner, ToolRegistry
+from ldai.providers import RunnerResult, ToolRegistry
 from ldai.providers.types import LDAIMetrics
 
 from ldai_openai.openai_helper import (
     get_ai_usage_from_response,
+    get_tool_calls_from_run_items,
     registry_value_to_agent_tool,
 )
 
 
-class OpenAIAgentRunner(AgentRunner):
+class OpenAIAgentRunner:
     """
     CAUTION:
     This feature is experimental and should NOT be considered ready for production use.
     It may change or be removed without notice and is not subject to backwards
     compatibility guarantees.
 
-    AgentRunner implementation for OpenAI.
+    Runner implementation for a single OpenAI agent.
 
     Executes a single agent using the OpenAI Agents SDK (``openai-agents``).
     Tool calling and the agentic loop are handled internally by ``Runner.run``.
-    Returned by OpenAIRunnerFactory.create_agent(config, tools).
+    Returned by ``OpenAIRunnerFactory.create_agent(config, tools)``.
 
+    Implements the unified :class:`~ldai.providers.runner.Runner` protocol.
     Requires ``openai-agents`` to be installed.
     """
 
@@ -40,15 +42,22 @@ class OpenAIAgentRunner(AgentRunner):
         self._tool_definitions = tool_definitions
         self._tools = tools
 
-    async def run(self, input: Any) -> AgentResult:
+    async def run(
+        self,
+        input: Any,
+        output_type: Optional[Dict[str, Any]] = None,
+    ) -> RunnerResult:
         """
-        Run the agent with the given input string.
+        Run the agent with the given input.
 
         Delegates to the OpenAI Agents SDK ``Runner.run``, which handles the
         tool-calling loop internally.
 
         :param input: The user prompt or input to the agent
-        :return: AgentResult with output, raw response, and aggregated metrics
+        :param output_type: Reserved for future structured output support;
+            currently ignored.
+        :return: :class:`RunnerResult` with ``content``, ``raw`` response, and
+            metrics including aggregated token usage and observed ``tool_calls``.
         """
         try:
             from agents import Agent, Runner
@@ -57,7 +66,10 @@ class OpenAIAgentRunner(AgentRunner):
                 "openai-agents is required for OpenAIAgentRunner. "
                 "Install it with: pip install openai-agents"
             )
-            return AgentResult(output="", raw=None, metrics=LDAIMetrics(success=False, usage=None))
+            return RunnerResult(
+                content="",
+                metrics=LDAIMetrics(success=False, usage=None),
+            )
 
         try:
             agent_tools = self._build_agent_tools()
@@ -73,17 +85,26 @@ class OpenAIAgentRunner(AgentRunner):
 
             result = await Runner.run(agent, str(input), max_turns=25)
 
-            return AgentResult(
-                output=str(result.final_output),
-                raw=result,
+            tool_calls = [
+                tool_name
+                for _agent_name, tool_name in get_tool_calls_from_run_items(result.new_items)
+            ]
+
+            return RunnerResult(
+                content=str(result.final_output),
                 metrics=LDAIMetrics(
                     success=True,
                     usage=get_ai_usage_from_response(result),
+                    tool_calls=tool_calls if tool_calls else None,
                 ),
+                raw=result,
             )
         except Exception as error:
             log.warning(f"OpenAI agent run failed: {error}")
-            return AgentResult(output="", raw=None, metrics=LDAIMetrics(success=False, usage=None))
+            return RunnerResult(
+                content="",
+                metrics=LDAIMetrics(success=False, usage=None),
+            )
 
     def _build_agent_tools(self) -> List[Any]:
         """Build tool instances from LD tool definitions and registry."""
