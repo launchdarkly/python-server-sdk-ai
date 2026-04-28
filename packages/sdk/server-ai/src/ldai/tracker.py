@@ -442,6 +442,7 @@ class LDAIConfigTracker:
         for tool_key in tool_calls_list:
             self.track_tool_call(tool_key)
 
+
     def track_success(self) -> None:
         """
         Track a successful AI generation.

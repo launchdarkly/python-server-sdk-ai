@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from ldclient import Config, Context, LDClient
 from ldclient.integrations.test_data import TestData
 
-from ldai import LDAIClient, ManagedAgentGraph
+from ldai import LDAIClient, ManagedAgentGraph, ManagedGraphResult
 from ldai.providers.types import LDAIMetrics
 from ldai.providers import AgentGraphResult, AgentGraphRunner, ToolRegistry
 
@@ -31,7 +31,8 @@ async def test_managed_agent_graph_run_delegates_to_runner():
     runner = StubAgentGraphRunner("hello world")
     managed = ManagedAgentGraph(runner)
     result = await managed.run("test input")
-    assert result.output == "hello world"
+    assert isinstance(result, ManagedGraphResult)
+    assert result.content == "hello world"
     assert result.metrics.success is True
 
 
@@ -172,7 +173,8 @@ async def test_create_agent_graph_run_produces_result(ldai_client: LDAIClient):
 
     assert managed is not None
     result = await managed.run("find restaurants")
-    assert result.output == "final answer"
+    assert isinstance(result, ManagedGraphResult)
+    assert result.content == "final answer"
     assert result.metrics.success is True
 
 
