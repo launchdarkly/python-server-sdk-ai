@@ -464,7 +464,7 @@ class TestLangChainAgentRunner:
 
     @pytest.mark.asyncio
     async def test_runs_agent_and_returns_result(self):
-        """Should return AgentResult with the last message content from the graph."""
+        """Should return RunnerResult with the last message content from the graph."""
         from ldai_langchain import LangChainAgentRunner
 
         final_msg = AIMessage(content="The answer is 42.")
@@ -474,7 +474,7 @@ class TestLangChainAgentRunner:
         runner = LangChainAgentRunner(mock_agent)
         result = await runner.run("What is the answer?")
 
-        assert result.output == "The answer is 42."
+        assert result.content == "The answer is 42."
         assert result.metrics.success is True
         mock_agent.ainvoke.assert_called_once_with(
             {"messages": [{"role": "user", "content": "What is the answer?"}]}
@@ -496,7 +496,7 @@ class TestLangChainAgentRunner:
         runner = LangChainAgentRunner(mock_agent)
         result = await runner.run("Hello")
 
-        assert result.output == "final answer"
+        assert result.content == "final answer"
         assert result.metrics.success is True
         assert result.metrics.usage is not None
         assert result.metrics.usage.total == 30
@@ -505,7 +505,7 @@ class TestLangChainAgentRunner:
 
     @pytest.mark.asyncio
     async def test_returns_failure_when_exception_thrown(self):
-        """Should return unsuccessful AgentResult when exception is thrown."""
+        """Should return unsuccessful RunnerResult when exception is thrown."""
         from ldai_langchain import LangChainAgentRunner
 
         mock_agent = MagicMock()
@@ -514,7 +514,7 @@ class TestLangChainAgentRunner:
         runner = LangChainAgentRunner(mock_agent)
         result = await runner.run("Hello")
 
-        assert result.output == ""
+        assert result.content == ""
         assert result.metrics.success is False
 
 
