@@ -465,19 +465,20 @@ class TestOpenAIAgentRunner:
 
     @pytest.mark.asyncio
     async def test_runs_agent_and_returns_result_with_no_tool_calls(self):
-        """Should return AgentResult when Runner.run returns a final output."""
+        """Should return RunnerResult when Runner.run returns a final output."""
         import sys
 
         from ldai_openai import OpenAIAgentRunner
 
         mock_run_result = self._make_run_result("The answer is 42.", total=15, input_tokens=10, output_tokens=5)
+        mock_run_result.new_items = []
         agents_mock, tc_mock = _make_agents_mock(AsyncMock(return_value=mock_run_result))
 
         runner = OpenAIAgentRunner('gpt-4', {}, 'You are helpful.', [], {})
         with patch.dict(sys.modules, {'agents': agents_mock, 'agents.tool_context': tc_mock}):
             result = await runner.run("What is the answer?")
 
-        assert result.output == "The answer is 42."
+        assert result.content == "The answer is 42."
         assert result.metrics.success is True
         assert result.metrics.usage is not None
         assert result.metrics.usage.total == 15
@@ -490,6 +491,7 @@ class TestOpenAIAgentRunner:
         from ldai_openai import OpenAIAgentRunner
 
         mock_run_result = self._make_run_result("It is sunny in Paris.", total=43, input_tokens=30, output_tokens=13)
+        mock_run_result.new_items = []
         agents_mock, tc_mock = _make_agents_mock(AsyncMock(return_value=mock_run_result))
 
         weather_fn = MagicMock(return_value="Sunny, 25°C")
@@ -501,13 +503,13 @@ class TestOpenAIAgentRunner:
         with patch.dict(sys.modules, {'agents': agents_mock, 'agents.tool_context': tc_mock}):
             result = await runner.run("What is the weather in Paris?")
 
-        assert result.output == "It is sunny in Paris."
+        assert result.content == "It is sunny in Paris."
         assert result.metrics.success is True
         assert result.metrics.usage.total == 43
 
     @pytest.mark.asyncio
     async def test_returns_failure_when_exception_thrown(self):
-        """Should return unsuccessful AgentResult when Runner.run raises."""
+        """Should return unsuccessful RunnerResult when Runner.run raises."""
         import sys
 
         from ldai_openai import OpenAIAgentRunner
@@ -518,12 +520,12 @@ class TestOpenAIAgentRunner:
         with patch.dict(sys.modules, {'agents': agents_mock, 'agents.tool_context': tc_mock}):
             result = await runner.run("Hello")
 
-        assert result.output == ""
+        assert result.content == ""
         assert result.metrics.success is False
 
     @pytest.mark.asyncio
     async def test_returns_failure_when_openai_agents_not_installed(self):
-        """Should return unsuccessful AgentResult when openai-agents is not installed."""
+        """Should return unsuccessful RunnerResult when openai-agents is not installed."""
         import sys
 
         from ldai_openai import OpenAIAgentRunner
@@ -532,5 +534,5 @@ class TestOpenAIAgentRunner:
         with patch.dict(sys.modules, {'agents': None}):
             result = await runner.run("Hello")
 
-        assert result.output == ""
+        assert result.content == ""
         assert result.metrics.success is False
