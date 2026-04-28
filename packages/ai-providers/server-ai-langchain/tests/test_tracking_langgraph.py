@@ -11,10 +11,17 @@ from collections import defaultdict
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from ldai.agent_graph import AgentGraphDefinition
+from ldai.managed_agent_graph import ManagedAgentGraph
 from ldai.models import AIAgentGraphConfig, AIAgentConfig, Edge, ModelConfig, ProviderConfig
 from ldai.tracker import AIGraphTracker, LDAIConfigTracker
 from ldai.evaluator import Evaluator
 from ldai_langchain.langgraph_agent_graph_runner import LangGraphAgentGraphRunner
+
+
+async def _run_through_managed(runner: LangGraphAgentGraphRunner, graph: AgentGraphDefinition, input: str):
+    """Run the runner through the managed layer so graph-level tracking events fire."""
+    managed = ManagedAgentGraph(graph, runner)
+    return await managed.run(input)
 
 pytestmark = pytest.mark.skipif(
     pytest.importorskip('langgraph', reason='langgraph not installed') is None,
@@ -229,7 +236,7 @@ async def test_tracks_node_and_graph_tokens_on_success():
         result = await runner.run("What's the weather?")
 
     assert result.metrics.success is True
-    assert result.output == 'Sunny.'
+    assert result.content == 'Sunny.'
 
     # Manually simulate what the callback handler would collect and flush
     # (mock models don't fire LangChain callbacks, so we test flush directly)
@@ -259,12 +266,9 @@ async def test_tracks_node_and_graph_tokens_on_success():
     assert ev2['$ld:ai:generation:success'][0][1] == 1
     assert '$ld:ai:duration:total' in ev2
 
-    # Graph-level events from the real run
-    ev = _events(mock_ld_client)
-    assert ev['$ld:ai:graph:total_tokens'][0][1] == 15
-    assert ev['$ld:ai:graph:invocation_success'][0][1] == 1
-    assert '$ld:ai:graph:duration:total' in ev
-    assert '$ld:ai:graph:path' in ev
+    # Graph-level events are now driven by ManagedAgentGraph from
+    # AgentGraphRunnerResult.metrics — see test_managed_agent_graph.py for the
+    # managed-layer flow. The runner itself no longer fires graph-level events.
 
 
 @pytest.mark.asyncio
@@ -277,11 +281,11 @@ async def test_tracks_execution_path():
     with patch('ldai_langchain.langgraph_agent_graph_runner.create_langchain_model',
                return_value=_mock_model(fake_response)):
         runner = LangGraphAgentGraphRunner(graph, {})
-        await runner.run('hello')
+        result = await runner.run('hello')
 
-    ev = _events(mock_ld_client)
-    path_data = ev['$ld:ai:graph:path'][0][0]
-    assert 'my-agent' in path_data['path']
+    # Path now lives on AgentGraphRunnerResult.metrics.path; the runner no
+    # longer emits the $ld:ai:graph:path event directly (the managed layer does).
+    assert 'my-agent' in result.metrics.path
 
 
 @pytest.mark.asyncio
@@ -432,11 +436,9 @@ async def test_tracks_failure_and_latency_on_model_error():
         result = await runner.run('fail')
 
     assert result.metrics.success is False
-
-    ev = _events(mock_ld_client)
-    assert '$ld:ai:graph:invocation_failure' in ev
-    assert '$ld:ai:graph:duration:total' in ev
-    assert '$ld:ai:graph:invocation_success' not in ev
+    assert result.metrics.duration_ms is not None
+    # Graph-level events (invocation_failure, duration) are now driven by
+    # ManagedAgentGraph from result.metrics, not by the runner directly.
 
 
 @pytest.mark.asyncio
@@ -461,7 +463,7 @@ async def test_multi_node_tracks_per_node_tokens_and_path():
     with patch('ldai_langchain.langgraph_agent_graph_runner.create_langchain_model',
                side_effect=model_factory):
         runner = LangGraphAgentGraphRunner(graph, {})
-        result = await runner.run('hello')
+        result = await _run_through_managed(runner, graph, 'hello')
 
     assert result.metrics.success is True
 
@@ -624,7 +626,7 @@ async def test_multi_child_routes_via_handoff_not_fan_out():
         result = await runner.run('hello')
 
     assert result.metrics.success is True
-    assert 'Agent A' in result.output
+    assert 'Agent A' in result.content
     # Agent B's model must never have been invoked — no fan-out
     agent_b_model.ainvoke.assert_not_called()
 
@@ -752,7 +754,7 @@ async def test_functional_tool_loops_back_when_handoff_tools_present():
         result = await runner.run('Find info and route to the right agent.')
 
     assert result.metrics.success is True
-    assert 'Agent A' in result.output
+    assert 'Agent A' in result.content
     # Orchestrator must have been called twice: once before tool result, once after
     assert orchestrator_model.ainvoke.call_count == 2
     # Agent B must never have been invoked

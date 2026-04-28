@@ -5,7 +5,7 @@ from uuid import UUID
 from langchain_core.callbacks import BaseCallbackHandler
 from langchain_core.outputs import ChatGeneration, LLMResult
 from ldai.agent_graph import AgentGraphDefinition
-from ldai.providers.types import JudgeResult
+from ldai.providers.types import JudgeResult, LDAIMetrics
 from ldai.tracker import TokenUsage
 
 from ldai_langchain.langchain_helper import get_ai_usage_from_response
@@ -193,14 +193,19 @@ class LDMetricsCallbackHandler(BaseCallbackHandler):
         self, graph: AgentGraphDefinition, eval_tasks=None
     ) -> List[JudgeResult]:
         """
-        Emit all collected per-node metrics to the LaunchDarkly trackers.
+        Emit collected per-node metrics to LaunchDarkly trackers.
 
-        Call this once after the graph run completes.
+        .. deprecated::
+            Per-node tracking is now driven by the managed layer
+            (:class:`ManagedAgentGraph`) from
+            :attr:`AgentGraphRunnerResult.metrics.node_metrics`. This method
+            is retained for tests and any external callers that still rely on
+            the original handler-driven tracking path; production code should
+            not call it.
 
         :param graph: The AgentGraphDefinition whose nodes hold the LD config trackers.
         :param eval_tasks: Optional dict mapping node key to a list of awaitables that
-            return judge evaluation results. Multiple tasks arise when a node is visited
-            more than once (e.g. in a graph with cycles).
+            return judge evaluation results.
         :return: All judge results collected across all nodes.
         """
         node_trackers: Dict[str, Any] = {}
@@ -240,3 +245,27 @@ class LDMetricsCallbackHandler(BaseCallbackHandler):
                         config_tracker.track_judge_result(r)
 
         return all_eval_results
+
+    def collect_node_metrics(self) -> Dict[str, LDAIMetrics]:
+        """
+        Build a per-node ``LDAIMetrics`` map from data collected during the run.
+
+        Pure data extraction — no LaunchDarkly tracker events are emitted.
+        :class:`LangGraphAgentGraphRunner` uses this to populate
+        ``GraphMetrics.node_metrics`` so the managed layer can drive per-node
+        events.
+
+        :return: Mapping of node key to its accumulated ``LDAIMetrics``.
+        """
+        node_metrics: Dict[str, LDAIMetrics] = {}
+        for node_key in self._path:
+            if node_key in node_metrics:
+                continue
+            tool_calls = self._node_tool_calls.get(node_key, [])
+            node_metrics[node_key] = LDAIMetrics(
+                success=True,
+                usage=self._node_tokens.get(node_key),
+                tool_calls=list(tool_calls) if tool_calls else None,
+                duration_ms=self._node_duration_ms.get(node_key),
+            )
+        return node_metrics
