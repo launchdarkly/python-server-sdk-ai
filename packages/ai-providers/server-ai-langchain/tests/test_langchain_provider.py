@@ -219,8 +219,8 @@ class TestMapProvider:
         assert map_provider('unknown') == 'unknown'
 
 
-class TestInvokeModel:
-    """Tests for invoke_model instance method."""
+class TestRunCompletion:
+    """Tests for the unified run() method (chat-completion path)."""
 
     @pytest.fixture
     def mock_llm(self):
@@ -235,10 +235,10 @@ class TestInvokeModel:
         provider = LangChainModelRunner(mock_llm)
 
         messages = [LDMessage(role='user', content='Hello')]
-        result = await provider.invoke_model(messages)
+        result = await provider.run(messages)
 
         assert result.metrics.success is True
-        assert result.message.content == 'Test response'
+        assert result.content == 'Test response'
 
     @pytest.mark.asyncio
     async def test_returns_success_false_for_non_string_content_and_logs_warning(self, mock_llm):
@@ -248,10 +248,10 @@ class TestInvokeModel:
         provider = LangChainModelRunner(mock_llm)
 
         messages = [LDMessage(role='user', content='Hello')]
-        result = await provider.invoke_model(messages)
+        result = await provider.run(messages)
 
         assert result.metrics.success is False
-        assert result.message.content == ''
+        assert result.content == ''
 
     @pytest.mark.asyncio
     async def test_returns_success_false_when_model_invocation_throws_error(self, mock_llm):
@@ -261,15 +261,14 @@ class TestInvokeModel:
         provider = LangChainModelRunner(mock_llm)
 
         messages = [LDMessage(role='user', content='Hello')]
-        result = await provider.invoke_model(messages)
+        result = await provider.run(messages)
 
         assert result.metrics.success is False
-        assert result.message.content == ''
-        assert result.message.role == 'assistant'
+        assert result.content == ''
 
 
-class TestInvokeStructuredModel:
-    """Tests for invoke_structured_model instance method."""
+class TestRunStructured:
+    """Tests for the unified run() method (structured-output path)."""
 
     @pytest.fixture
     def mock_llm(self):
@@ -288,10 +287,10 @@ class TestInvokeStructuredModel:
 
         messages = [LDMessage(role='user', content='Hello')]
         response_structure = {'type': 'object', 'properties': {}}
-        result = await provider.invoke_structured_model(messages, response_structure)
+        result = await provider.run(messages, output_type=response_structure)
 
         assert result.metrics.success is True
-        assert result.data == parsed_data
+        assert result.parsed == parsed_data
 
     @pytest.mark.asyncio
     async def test_returns_success_false_when_structured_model_invocation_throws_error(self, mock_llm):
@@ -304,11 +303,11 @@ class TestInvokeStructuredModel:
 
         messages = [LDMessage(role='user', content='Hello')]
         response_structure = {'type': 'object', 'properties': {}}
-        result = await provider.invoke_structured_model(messages, response_structure)
+        result = await provider.run(messages, output_type=response_structure)
 
         assert result.metrics.success is False
-        assert result.data == {}
-        assert result.raw_response == ''
+        assert result.parsed is None
+        assert result.content == ''
         assert result.metrics.usage is None
 
 
@@ -464,7 +463,7 @@ class TestLangChainAgentRunner:
 
     @pytest.mark.asyncio
     async def test_runs_agent_and_returns_result(self):
-        """Should return AgentResult with the last message content from the graph."""
+        """Should return RunnerResult with the last message content from the graph."""
         from ldai_langchain import LangChainAgentRunner
 
         final_msg = AIMessage(content="The answer is 42.")
@@ -474,7 +473,7 @@ class TestLangChainAgentRunner:
         runner = LangChainAgentRunner(mock_agent)
         result = await runner.run("What is the answer?")
 
-        assert result.output == "The answer is 42."
+        assert result.content == "The answer is 42."
         assert result.metrics.success is True
         mock_agent.ainvoke.assert_called_once_with(
             {"messages": [{"role": "user", "content": "What is the answer?"}]}
@@ -496,7 +495,7 @@ class TestLangChainAgentRunner:
         runner = LangChainAgentRunner(mock_agent)
         result = await runner.run("Hello")
 
-        assert result.output == "final answer"
+        assert result.content == "final answer"
         assert result.metrics.success is True
         assert result.metrics.usage is not None
         assert result.metrics.usage.total == 30
@@ -505,7 +504,7 @@ class TestLangChainAgentRunner:
 
     @pytest.mark.asyncio
     async def test_returns_failure_when_exception_thrown(self):
-        """Should return unsuccessful AgentResult when exception is thrown."""
+        """Should return unsuccessful RunnerResult when exception is thrown."""
         from ldai_langchain import LangChainAgentRunner
 
         mock_agent = MagicMock()
@@ -514,7 +513,7 @@ class TestLangChainAgentRunner:
         runner = LangChainAgentRunner(mock_agent)
         result = await runner.run("Hello")
 
-        assert result.output == ""
+        assert result.content == ""
         assert result.metrics.success is False
 
 
