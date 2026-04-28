@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional
 
 from ldai.models import LDMessage
@@ -112,6 +112,80 @@ class StructuredResponse:
     data: Dict[str, Any]
     raw_response: str
     metrics: LDAIMetrics
+
+
+@dataclass
+class GraphMetrics:
+    """Contains raw metrics from a single agent graph run."""
+
+    success: bool
+    """Whether the graph run succeeded."""
+
+    path: List[str] = field(default_factory=list)
+    """Ordered list of node keys visited during the run."""
+
+    duration_ms: Optional[int] = None
+    """Wall-clock duration of the graph run in milliseconds."""
+
+    usage: Optional[TokenUsage] = None
+    """Optional aggregate token usage information across all nodes in the graph run."""
+
+    node_metrics: Dict[str, LDAIMetrics] = field(default_factory=dict)
+    """Per-node metrics keyed by node key."""
+
+
+@dataclass
+class GraphMetricSummary:
+    """Contains a summary of metrics for an agent graph run."""
+
+    success: bool
+    """Whether the graph run succeeded."""
+
+    path: List[str] = field(default_factory=list)
+    """Ordered list of node keys visited during the run."""
+
+    duration_ms: Optional[int] = None
+    """Wall-clock duration of the graph run in milliseconds."""
+
+    usage: Optional[TokenUsage] = None
+    """Optional aggregate token usage information across all nodes in the graph run."""
+
+    node_metrics: Dict[str, LDAIMetrics] = field(default_factory=dict)
+    """Per-node metrics keyed by node key."""
+
+    resumption_token: Optional[str] = None
+    """Optional resumption token from the graph tracker for cross-process resumption."""
+
+
+@dataclass
+class ManagedGraphResult:
+    """Contains the result of a managed agent graph run, including metrics and optional judge evaluations."""
+
+    content: str
+    """The graph's final output content."""
+
+    metrics: GraphMetricSummary
+    """Aggregated metric summary from the graph tracker for this run."""
+
+    raw: Optional[Any] = None
+    """Optional provider-native response object for advanced consumers."""
+
+    evaluations: Optional[asyncio.Task[List[JudgeResult]]] = None
+    """Optional asyncio Task that resolves to the list of :class:`JudgeResult` instances when awaited."""
+
+
+@dataclass
+class AgentGraphRunnerResult:
+    """Contains the result of an agent graph runner invocation."""
+
+    content: str
+    """The graph's final output content."""
+
+    metrics: GraphMetrics
+    """Metrics from the graph run."""
+
+    raw: Optional[Any] = None
+    """Optional provider-native response object for advanced consumers."""
 
 
 @dataclass

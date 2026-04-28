@@ -1,17 +1,19 @@
 """ManagedAgentGraph — LaunchDarkly managed wrapper for agent graph execution."""
 
-from typing import Any
+import asyncio
+from typing import Any, List
 
 from ldai.providers import AgentGraphResult, AgentGraphRunner
+from ldai.providers.types import GraphMetricSummary, JudgeResult, ManagedGraphResult
 
 
 class ManagedAgentGraph:
     """
     LaunchDarkly managed wrapper for AI agent graph execution.
 
-    Holds an AgentGraphRunner. Auto-tracking of path,
-    tool calls, handoffs, latency, and invocation success/failure is handled
-    by the runner implementation.
+    Holds an AgentGraphRunner. Wraps the runner result in a
+    :class:`~ldai.providers.types.ManagedGraphResult` and builds a
+    :class:`~ldai.providers.types.GraphMetricSummary` from the runner's metrics.
 
     Obtain an instance via ``LDAIClient.create_agent_graph()``.
     """
@@ -27,17 +29,37 @@ class ManagedAgentGraph:
         """
         self._runner = runner
 
-    async def run(self, input: Any) -> AgentGraphResult:
+    async def run(self, input: Any) -> ManagedGraphResult:
         """
         Run the agent graph with the given input.
 
-        Delegates to the underlying AgentGraphRunner, which handles
-        execution and all auto-tracking internally.
+        Delegates to the underlying AgentGraphRunner, builds a
+        :class:`GraphMetricSummary` from the result, and wraps everything in a
+        :class:`ManagedGraphResult`.
 
         :param input: The input prompt or structured input for the graph
-        :return: AgentGraphResult containing the output, raw response, and metrics
+        :return: ManagedGraphResult containing the content, metric summary, raw response,
+            and an optional evaluations task (currently always ``None`` for graphs —
+            per-graph evaluations will be added in a future PR).
         """
-        return await self._runner.run(input)
+        result: AgentGraphResult = await self._runner.run(input)
+
+        # Build a GraphMetricSummary from the runner result's LDAIMetrics.
+        # path and node_metrics will be populated once graph runners are migrated
+        # to return AgentGraphRunnerResult with GraphMetrics (PR 11).
+        metrics = result.metrics
+        summary = GraphMetricSummary(
+            success=metrics.success,
+            usage=metrics.usage,
+            duration_ms=getattr(metrics, 'duration_ms', None),
+        )
+
+        return ManagedGraphResult(
+            content=result.output,
+            metrics=summary,
+            raw=result.raw,
+            evaluations=None,
+        )
 
     def get_agent_graph_runner(self) -> AgentGraphRunner:
         """
