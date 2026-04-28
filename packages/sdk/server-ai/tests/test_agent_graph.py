@@ -11,6 +11,7 @@ from ldai import (
     AIAgentConfig,
     Edge,
 )
+from ldai.evaluator import Evaluator
 
 
 @pytest.fixture
@@ -270,16 +271,16 @@ def test_agent_graph_build_nodes(ldai_client: LDAIClient):
         ai_graph_config,
         {
             "customer-support-agent": AIAgentConfig(
-                key="customer-support-agent", enabled=True, create_tracker=MagicMock(),
+                key="customer-support-agent", enabled=True, create_tracker=MagicMock(), evaluator=Evaluator.noop(),
             ),
             "personalized-agent": AIAgentConfig(
-                key="personalized-agent", enabled=True, create_tracker=MagicMock(),
+                key="personalized-agent", enabled=True, create_tracker=MagicMock(), evaluator=Evaluator.noop(),
             ),
             "multi-context-agent": AIAgentConfig(
-                key="multi-context-agent", enabled=True, create_tracker=MagicMock(),
+                key="multi-context-agent", enabled=True, create_tracker=MagicMock(), evaluator=Evaluator.noop(),
             ),
             "minimal-agent": AIAgentConfig(
-                key="minimal-agent", enabled=True, create_tracker=MagicMock(),
+                key="minimal-agent", enabled=True, create_tracker=MagicMock(), evaluator=Evaluator.noop(),
             ),
         },
     )

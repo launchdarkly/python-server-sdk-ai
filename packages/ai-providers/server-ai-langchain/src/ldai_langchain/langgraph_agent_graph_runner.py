@@ -1,7 +1,9 @@
 """LangGraph agent graph runner for LaunchDarkly AI SDK."""
 
+import asyncio
 import time
-from typing import Annotated, Any, Dict, List, Optional, Set, Tuple
+from contextvars import ContextVar
+from typing import Annotated, Any, Dict, List, Set, Tuple
 
 from ldai import log
 from ldai.agent_graph import AgentGraphDefinition, AgentGraphNode
@@ -15,6 +17,9 @@ from ldai_langchain.langchain_helper import (
     sum_token_usage_from_messages,
 )
 from ldai_langchain.langgraph_callback_handler import LDMetricsCallbackHandler
+
+# Per-run eval task accumulator, isolated per concurrent run() call via ContextVar.
+_run_eval_tasks: ContextVar[Dict[str, List[asyncio.Task]]] = ContextVar('_run_eval_tasks')
 
 
 def _make_handoff_tool(child_key: str, description: str) -> Any:
@@ -67,7 +72,11 @@ class LangGraphAgentGraphRunner(AgentGraphRunner):
     Requires ``langgraph`` to be installed.
     """
 
-    def __init__(self, graph: AgentGraphDefinition, tools: ToolRegistry):
+    def __init__(
+        self,
+        graph: AgentGraphDefinition,
+        tools: ToolRegistry,
+    ):
         """
         Initialize the runner.
 
@@ -172,6 +181,26 @@ class LangGraphAgentGraphRunner(AgentGraphRunner):
                     if node_instructions:
                         msgs = [SystemMessage(content=node_instructions)] + msgs
                     response = await bound_model.ainvoke(msgs)
+
+                    node_obj = self._graph.get_node(nk)
+                    if node_obj is not None:
+                        input_text = '\r\n'.join(
+                            m.content if isinstance(m.content, str) else str(m.content)
+                            for m in msgs
+                        ) if msgs else ''
+                        output_text = (
+                            response.content if hasattr(response, 'content') else str(response)
+                        )
+                        task = node_obj.get_config().evaluator.evaluate(input_text, output_text)
+                        run_tasks = _run_eval_tasks.get(None)
+                        if run_tasks is not None:
+                            run_tasks.setdefault(nk, []).append(task)
+                        else:
+                            log.warning(
+                                f"LangGraphAgentGraphRunner: eval task for node '{nk}' "
+                                "has no run context; judge results will not be tracked"
+                            )
+
                     return {'messages': [response]}
 
                 invoke.__name__ = nk
@@ -280,7 +309,9 @@ class LangGraphAgentGraphRunner(AgentGraphRunner):
         :param input: The string prompt to send to the agent graph
         :return: AgentGraphResult with the final output and metrics
         """
-        tracker = self._graph.create_tracker() if self._graph.create_tracker is not None else None
+        pending_eval_tasks: Dict[str, List[asyncio.Task]] = {}
+        token = _run_eval_tasks.set(pending_eval_tasks)
+        tracker = self._graph.create_tracker()
         start_ns = time.perf_counter_ns()
 
         try:
@@ -299,19 +330,18 @@ class LangGraphAgentGraphRunner(AgentGraphRunner):
             output = extract_last_message_content(messages)
 
             # Flush per-node metrics to LD trackers
-            handler.flush(self._graph)
+            all_eval_results = await handler.flush(self._graph, pending_eval_tasks)
 
-            # Graph-level metrics
-            if tracker:
-                tracker.track_path(handler.path)
-                tracker.track_duration(duration)
-                tracker.track_invocation_success()
-                tracker.track_total_tokens(sum_token_usage_from_messages(messages))
+            tracker.track_path(handler.path)
+            tracker.track_duration(duration)
+            tracker.track_invocation_success()
+            tracker.track_total_tokens(sum_token_usage_from_messages(messages))
 
             return AgentGraphResult(
                 output=output,
                 raw=result,
                 metrics=LDAIMetrics(success=True),
+                evaluations=all_eval_results,
             )
 
         except Exception as exc:
@@ -323,11 +353,12 @@ class LangGraphAgentGraphRunner(AgentGraphRunner):
             else:
                 log.warning(f'LangGraphAgentGraphRunner run failed: {exc}')
             duration = (time.perf_counter_ns() - start_ns) // 1_000_000
-            if tracker:
-                tracker.track_duration(duration)
-                tracker.track_invocation_failure()
+            tracker.track_duration(duration)
+            tracker.track_invocation_failure()
             return AgentGraphResult(
                 output='',
                 raw=None,
                 metrics=LDAIMetrics(success=False),
             )
+        finally:
+            _run_eval_tasks.reset(token)

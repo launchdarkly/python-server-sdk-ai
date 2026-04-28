@@ -46,7 +46,11 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
     Requires ``openai-agents`` to be installed.
     """
 
-    def __init__(self, graph: AgentGraphDefinition, tools: ToolRegistry):
+    def __init__(
+        self,
+        graph: AgentGraphDefinition,
+        tools: ToolRegistry,
+    ):
         """
         Initialize the runner.
 
@@ -70,36 +74,36 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
         :param input: The string prompt to send to the agent graph
         :return: AgentGraphResult with the final output and metrics
         """
-        tracker = self._graph.create_tracker() if self._graph.create_tracker is not None else None
+        tracker = self._graph.create_tracker()
         path: List[str] = []
         root_node = self._graph.root()
         root_key = root_node.get_key() if root_node else ''
         if root_key:
             path.append(root_key)
 
+        input_str = str(input)
         start_ns = time.perf_counter_ns()
         state = _RunState(last_handoff_ns=start_ns, last_node_key=root_key)
         try:
             from agents import Runner
             root_agent = self._build_agents(path, state, tracker)
-            result = await Runner.run(root_agent, str(input))
+            result = await Runner.run(root_agent, input_str)
             self._flush_final_segment(state, result)
             self._track_tool_calls(result)
 
             duration = (time.perf_counter_ns() - start_ns) // 1_000_000
+            token_usage = get_ai_usage_from_response(result)
 
-            if tracker:
-                tracker.track_path(path)
-                tracker.track_duration(duration)
-                tracker.track_invocation_success()
-                token_usage = get_ai_usage_from_response(result)
-                if token_usage is not None:
-                    tracker.track_total_tokens(token_usage)
+            tracker.track_path(path)
+            tracker.track_duration(duration)
+            tracker.track_invocation_success()
+            if token_usage is not None:
+                tracker.track_total_tokens(token_usage)
 
             return AgentGraphResult(
                 output=str(result.final_output),
                 raw=result,
-                metrics=LDAIMetrics(success=True),
+                metrics=LDAIMetrics(success=True, usage=token_usage),
             )
         except Exception as exc:
             if isinstance(exc, ImportError):
@@ -110,9 +114,8 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
             else:
                 log.warning(f'OpenAIAgentGraphRunner run failed: {exc}')
             duration = (time.perf_counter_ns() - start_ns) // 1_000_000
-            if tracker:
-                tracker.track_duration(duration)
-                tracker.track_invocation_failure()
+            tracker.track_duration(duration)
+            tracker.track_invocation_failure()
             return AgentGraphResult(
                 output='',
                 raw=None,
@@ -222,9 +225,7 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
         state: _RunState,
     ):
         def on_handoff(run_ctx: Any) -> None:
-            self._handle_handoff(
-                run_ctx, src, tgt, path, tracker, config_tracker, state
-            )
+            self._handle_handoff(run_ctx, src, tgt, path, tracker, config_tracker, state)
         return on_handoff
 
     def _handle_handoff(
@@ -239,8 +240,7 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
     ) -> None:
         path.append(tgt)
         state.last_node_key = tgt
-        if tracker:
-            tracker.track_handoff_success(src, tgt)
+        tracker.track_handoff_success(src, tgt)
 
         now_ns = time.perf_counter_ns()
         duration_ms = (now_ns - state.last_handoff_ns) // 1_000_000
@@ -261,11 +261,7 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
                 config_tracker.track_duration(int(duration_ms))
             config_tracker.track_success()
 
-    def _flush_final_segment(
-        self,
-        state: _RunState,
-        result: Any,
-    ) -> None:
+    def _flush_final_segment(self, state: _RunState, result: Any) -> None:
         """Record duration/tokens for the last active agent (no handoff after it)."""
         if not state.last_node_key:
             return

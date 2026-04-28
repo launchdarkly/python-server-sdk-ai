@@ -176,7 +176,10 @@ class RunnerFactory:
         if graph_def.root() and graph_def.root().get_config() and graph_def.root().get_config().provider:
             provider_name = graph_def.root().get_config().provider.name.lower()
         providers = RunnerFactory._get_providers_to_try(default_ai_provider, provider_name)
-        return RunnerFactory._with_fallback(providers, lambda p: p.create_agent_graph(graph_def, tools))
+        return RunnerFactory._with_fallback(
+            providers,
+            lambda p: p.create_agent_graph(graph_def, tools),
+        )
 
     @staticmethod
     def _pkg_exists(package_name: str) -> None:

@@ -8,6 +8,7 @@ from ldclient.client import LDClient
 
 from ldai import log
 from ldai.agent_graph import AgentGraphDefinition
+from ldai.evaluator import Evaluator
 from ldai.judge import Judge
 from ldai.managed_agent import ManagedAgent
 from ldai.managed_agent_graph import ManagedAgentGraph
@@ -108,12 +109,14 @@ class LDAIClient:
         context: Context,
         default: AICompletionConfigDefault,
         variables: Optional[Dict[str, Any]] = None,
+        default_ai_provider: Optional[str] = None,
     ) -> AICompletionConfig:
         (model, provider, messages, instructions,
          tracker_factory, enabled, judge_configuration, variation) = self.__evaluate(
             key, context, default.to_dict(), variables
         )
 
+        evaluator = self._build_evaluator(judge_configuration, context, default_ai_provider, variables)
         tools = _parse_tools(variation.get('tools'))
 
         config = AICompletionConfig(
@@ -123,6 +126,7 @@ class LDAIClient:
             messages=messages,
             provider=provider,
             create_tracker=tracker_factory,
+            evaluator=evaluator,
             judge_configuration=judge_configuration,
             tools=tools,
         )
@@ -135,6 +139,7 @@ class LDAIClient:
         context: Context,
         default: Optional[AICompletionConfigDefault] = None,
         variables: Optional[Dict[str, Any]] = None,
+        default_ai_provider: Optional[str] = None,
     ) -> AICompletionConfig:
         """
         Get the value of a completion configuration.
@@ -144,12 +149,13 @@ class LDAIClient:
         :param default: The default value of the completion configuration. When not provided,
             a disabled config is used as the fallback.
         :param variables: Additional variables for the completion configuration.
+        :param default_ai_provider: Optional default AI provider to use for judge evaluation.
         :return: The completion configuration with a tracker used for gathering metrics.
         """
         self._client.track(_TRACK_USAGE_COMPLETION_CONFIG, context, key, 1)
 
         return self._completion_config(
-            key, context, default or _DISABLED_COMPLETION_DEFAULT, variables
+            key, context, default or _DISABLED_COMPLETION_DEFAULT, variables, default_ai_provider
         )
 
     def config(
@@ -237,7 +243,7 @@ class LDAIClient:
             key, context, default or _DISABLED_JUDGE_DEFAULT, variables
         )
 
-    async def create_judge(
+    def create_judge(
         self,
         key: str,
         context: Context,
@@ -306,7 +312,7 @@ class LDAIClient:
         except Exception as error:
             return None
 
-    async def _initialize_judges(
+    def _initialize_judges(
         self,
         judge_configs: List[JudgeConfiguration.Judge],
         context: Context,
@@ -324,32 +330,47 @@ class LDAIClient:
         """
         judges: Dict[str, Judge] = {}
 
-        async def create_judge_for_config(judge_key: str):
-            judge = await self.create_judge(
-                judge_key,
-                context,
-                AIJudgeConfigDefault.disabled(),
-                variables,
-                default_ai_provider,
-            )
-            return judge_key, judge
-
-        judge_promises = [
-            create_judge_for_config(judge_config.key)
-            for judge_config in judge_configs
-        ]
-
-        import asyncio
-        results = await asyncio.gather(*judge_promises, return_exceptions=True)
-
-        for result in results:
-            if isinstance(result, Exception):
+        for judge_config in judge_configs:
+            try:
+                judge = self.create_judge(
+                    judge_config.key,
+                    context,
+                    AIJudgeConfigDefault.disabled(),
+                    variables,
+                    default_ai_provider,
+                )
+                if judge:
+                    judges[judge_config.key] = judge
+            except Exception as e:
+                log.warning(f'Failed to initialize judge {judge_config.key!r}: {e}')
                 continue
-            judge_key, judge = result  # type: ignore[misc]
-            if judge:
-                judges[judge_key] = judge
 
         return judges
+
+    def _build_evaluator(
+        self,
+        judge_configuration: Optional[JudgeConfiguration],
+        context: Context,
+        default_ai_provider: Optional[str] = None,
+        variables: Optional[Dict[str, Any]] = None,
+    ) -> Evaluator:
+        """
+        Build an Evaluator for the given judge configuration.
+
+        :param judge_configuration: The judge configuration listing judges to initialize
+        :param context: Standard Context used when evaluating flags
+        :param default_ai_provider: Optional default AI provider to use
+        :param variables: Optional variables for judge instruction interpolation
+        :return: Evaluator wrapping the initialized judges, or a no-op Evaluator if
+            judge_configuration is None or has no judges
+        """
+        if not judge_configuration or not judge_configuration.judges:
+            return Evaluator.noop()
+        judges = self._initialize_judges(
+            judge_configuration.judges, context, default_ai_provider=default_ai_provider,
+            variables=variables,
+        )
+        return Evaluator(judges, judge_configuration)
 
     async def create_model(
         self,
@@ -390,7 +411,9 @@ class LDAIClient:
         """
         self._client.track(_TRACK_USAGE_CREATE_MODEL, context, key, 1)
         log.debug(f"Creating managed model for key: {key}")
-        config = self._completion_config(key, context, default or _DISABLED_COMPLETION_DEFAULT, variables)
+        config = self._completion_config(
+            key, context, default or _DISABLED_COMPLETION_DEFAULT, variables, default_ai_provider
+        )
 
         if not config.enabled:
             return None
@@ -399,16 +422,7 @@ class LDAIClient:
         if not runner:
             return None
 
-        judges = {}
-        if config.judge_configuration and config.judge_configuration.judges:
-            judges = await self._initialize_judges(
-                config.judge_configuration.judges,
-                context,
-                variables,
-                default_ai_provider,
-            )
-
-        return ManagedModel(config, runner, judges)
+        return ManagedModel(config, runner)
 
     async def create_chat(
         self,
@@ -470,7 +484,10 @@ class LDAIClient:
         """
         self._client.track(_TRACK_USAGE_CREATE_AGENT, context, key, 1)
         log.debug(f"Creating managed agent for key: {key}")
-        config = self.__evaluate_agent(key, context, default or _DISABLED_AGENT_DEFAULT, variables)
+        config = self.__evaluate_agent(
+            key, context, default or _DISABLED_AGENT_DEFAULT, variables,
+            default_ai_provider=default_ai_provider,
+        )
 
         if not config.enabled:
             return None
@@ -613,6 +630,7 @@ class LDAIClient:
         self,
         key: str,
         context: Context,
+        default_ai_provider: Optional[str] = None,
     ) -> AgentGraphDefinition:
         """`
         Retrieve an AI agent graph.
@@ -657,7 +675,8 @@ class LDAIClient:
         graph_key_value = key
         agent_configs = {
             agent_key: self.__evaluate_agent(
-                agent_key, context, AIAgentConfigDefault.disabled(), graph_key=graph_key_value
+                agent_key, context, AIAgentConfigDefault.disabled(), graph_key=graph_key_value,
+                default_ai_provider=default_ai_provider,
             )
             for agent_key in all_agent_keys
         }
@@ -765,12 +784,12 @@ class LDAIClient:
         self._client.track(_TRACK_USAGE_CREATE_AGENT_GRAPH, context, key, 1)
         log.debug(f"Creating managed agent graph for key: {key}")
 
-        graph = self.agent_graph(key, context)
+        graph = self.agent_graph(key, context, default_ai_provider)
         if not graph.enabled:
             return None
 
         runner = RunnerFactory.create_agent_graph(
-            graph, tools or {}, default_ai_provider
+            graph, tools or {}, default_ai_provider,
         )
         if not runner:
             return None
@@ -903,6 +922,7 @@ class LDAIClient:
         default: AIAgentConfigDefault,
         variables: Optional[Dict[str, Any]] = None,
         graph_key: Optional[str] = None,
+        default_ai_provider: Optional[str] = None,
     ) -> AIAgentConfig:
         """
         Internal method to evaluate an agent configuration.
@@ -912,6 +932,7 @@ class LDAIClient:
         :param default: Default agent values.
         :param variables: Variables for interpolation.
         :param graph_key: When set, passed to the tracker so all events include ``graphKey``.
+        :param default_ai_provider: Optional default AI provider for judge evaluation.
         :return: Configured AIAgentConfig instance.
         """
         (model, provider, messages, instructions,
@@ -922,6 +943,9 @@ class LDAIClient:
         # For agents, prioritize instructions over messages
         final_instructions = instructions if instructions is not None else default.instructions
 
+        effective_judge_configuration = judge_configuration or JudgeConfiguration(judges=[])
+
+        evaluator = self._build_evaluator(effective_judge_configuration, context, default_ai_provider, variables)
         tools = _parse_tools(variation.get('tools'))
 
         return AIAgentConfig(
@@ -931,7 +955,8 @@ class LDAIClient:
             provider=provider or default.provider,
             instructions=final_instructions,
             create_tracker=tracker_factory,
-            judge_configuration=judge_configuration or default.judge_configuration,
+            evaluator=evaluator,
+            judge_configuration=effective_judge_configuration,
             tools=tools,
         )
 
