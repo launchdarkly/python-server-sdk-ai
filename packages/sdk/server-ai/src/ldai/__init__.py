@@ -36,10 +36,13 @@ from ldai.providers import (
     AgentGraphRunner,
     AgentResult,
     AgentRunner,
+    ManagedResult,
+    Runner,
+    RunnerResult,
     ToolRegistry,
 )
 from ldai.providers.types import JudgeResult
-from ldai.tracker import AIGraphTracker
+from ldai.tracker import AIGraphTracker, LDAIMetricSummary
 
 __all__ = [
     'LDAIClient',
@@ -48,6 +51,10 @@ __all__ = [
     'AgentGraphRunner',
     'AgentResult',
     'AgentGraphResult',
+    'ManagedResult',
+    'Runner',
+    'RunnerResult',
+    'LDAIMetricSummary',
     'ToolRegistry',
     'AIAgentConfig',
     'AIAgentConfigDefault',
