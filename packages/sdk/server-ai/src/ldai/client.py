@@ -339,7 +339,7 @@ class LDAIClient:
             if not provider:
                 return None
 
-            return Judge(judge_config, provider, sample_rate=sample_rate)
+            return Judge(judge_config, provider, sample_rate=sample_rate)  # type: ignore[arg-type]
         except Exception as e:
             log.warning('Failed to initialize judge %r: %s', key, e)
             return None
@@ -427,7 +427,7 @@ class LDAIClient:
         if not runner:
             return None
 
-        return ManagedModel(config, runner)  # type: ignore[arg-type]
+        return ManagedModel(config, runner)
 
     async def create_chat(
         self,
@@ -501,7 +501,7 @@ class LDAIClient:
         if not runner:
             return None
 
-        return ManagedAgent(config, runner)  # type: ignore[arg-type]
+        return ManagedAgent(config, runner)
 
     def agent_config(
         self,

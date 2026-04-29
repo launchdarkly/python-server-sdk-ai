@@ -4,9 +4,8 @@ from typing import Any, Callable, List, Optional, TypeVar
 from ldai import log
 from ldai.models import AIConfigKind
 from ldai.providers.agent_graph_runner import AgentGraphRunner
-from ldai.providers.agent_runner import AgentRunner
 from ldai.providers.ai_provider import AIProvider
-from ldai.providers.model_runner import ModelRunner
+from ldai.providers.runner import Runner
 
 T = TypeVar('T')
 
@@ -118,13 +117,13 @@ class RunnerFactory:
     def create_model(
         config: AIConfigKind,
         default_ai_provider: Optional[str] = None,
-    ) -> Optional[ModelRunner]:
+    ) -> Optional[Runner]:
         """
         Create a model executor for the given AI completion config.
 
         :param config: LaunchDarkly AI config (completion or judge)
         :param default_ai_provider: Optional provider override ('openai', 'langchain', …)
-        :return: Configured ModelRunner ready to invoke the model, or None
+        :return: Configured Runner ready to invoke the model, or None
         """
         provider_name = config.provider.name.lower() if config.provider else None
         providers = RunnerFactory._get_providers_to_try(default_ai_provider, provider_name)
@@ -135,7 +134,7 @@ class RunnerFactory:
         config: Any,
         tools: Any,
         default_ai_provider: Optional[str] = None,
-    ) -> Optional[AgentRunner]:
+    ) -> Optional[Runner]:
         """
         CAUTION:
         This feature is experimental and should NOT be considered ready for production use.
@@ -147,7 +146,7 @@ class RunnerFactory:
         :param config: LaunchDarkly AI agent config
         :param tools: Tool registry mapping tool names to callables
         :param default_ai_provider: Optional provider override
-        :return: AgentRunner instance, or None
+        :return: Runner instance, or None
         """
         provider_name = config.provider.name.lower() if config.provider else None
         providers = RunnerFactory._get_providers_to_try(default_ai_provider, provider_name)
