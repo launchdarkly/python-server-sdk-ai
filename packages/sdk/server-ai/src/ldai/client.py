@@ -56,6 +56,8 @@ _DISABLED_JUDGE_DEFAULT = AIJudgeConfigDefault.disabled()
 def _parse_tools(tools_data: Optional[Dict[str, Any]]) -> Optional[Dict[str, LDTool]]:
     """Parse the root-level tools map from a flag variation dict."""
     if not isinstance(tools_data, dict):
+        if tools_data is not None:
+            log.warning('Skipping tools: expected a dict, got %s', type(tools_data).__name__)
         return None
     result: Dict[str, LDTool] = {}
     for tool_name, tool_dict in tools_data.items():
