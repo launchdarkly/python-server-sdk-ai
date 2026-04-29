@@ -53,14 +53,15 @@ _DISABLED_AGENT_DEFAULT = AIAgentConfigDefault.disabled()
 _DISABLED_JUDGE_DEFAULT = AIJudgeConfigDefault.disabled()
 
 
-def _parse_tools(tools_data: Optional[Dict[str, Any]]) -> Optional[Dict[str, LDTool]]:
+def _parse_tools(tools_data: Optional[Dict[str, Any]], *, warn: bool = True) -> Optional[Dict[str, LDTool]]:
     """Parse the root-level tools map from a flag variation dict."""
     if not isinstance(tools_data, dict):
         return None
-    result = {}
+    result: Dict[str, LDTool] = {}
     for tool_name, tool_dict in tools_data.items():
         if not isinstance(tool_dict, dict):
-            log.warning('Skipping tool "%s": expected a dict, got %s', tool_name, type(tool_dict).__name__)
+            if warn:
+                log.warning('Skipping tool "%s": expected a dict, got %s', tool_name, type(tool_dict).__name__)
             continue
         result[tool_name] = LDTool(
             name=tool_dict.get('name', tool_name),
@@ -86,18 +87,7 @@ def _resolve_tools(variation: Dict[str, Any]) -> Optional[Dict[str, LDTool]]:
     if not isinstance(tools_data, dict):
         return None
 
-    result = {}
-    for tool_name, tool_dict in tools_data.items():
-        if not isinstance(tool_dict, dict):
-            continue
-        result[tool_name] = LDTool(
-            name=tool_dict.get('name', tool_name),
-            description=tool_dict.get('description'),
-            type=tool_dict.get('type'),
-            parameters=tool_dict.get('parameters'),
-            custom_parameters=tool_dict.get('customParameters'),
-        )
-    return result or None
+    return _parse_tools(tools_data, warn=False)
 
 
 class LDAIClient:
