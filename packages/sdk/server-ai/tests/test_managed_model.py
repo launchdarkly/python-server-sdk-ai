@@ -9,7 +9,7 @@ import pytest
 from ldai.evaluator import Evaluator
 from ldai.managed_model import ManagedModel
 from ldai.models import AICompletionConfig, LDMessage, ModelConfig, ProviderConfig
-from ldai.providers.types import JudgeResult, LDAIMetrics, ManagedResult, ModelResponse, RunnerResult
+from ldai.providers.types import JudgeResult, LDAIMetrics, ManagedResult, RunnerResult
 from ldai.tracker import LDAIConfigTracker, LDAIMetricSummary
 
 
@@ -17,13 +17,6 @@ from ldai.tracker import LDAIConfigTracker, LDAIMetricSummary
 def _make_runner_result(content: str = 'response text') -> RunnerResult:
     return RunnerResult(
         content=content,
-        metrics=LDAIMetrics(success=True, usage=None),
-    )
-
-
-def _make_model_response(content: str = 'response text') -> ModelResponse:
-    return ModelResponse(
-        message=LDMessage(role='assistant', content=content),
         metrics=LDAIMetrics(success=True, usage=None),
     )
 
@@ -237,11 +230,9 @@ class TestManagedModelInvokeDeprecated:
         """invoke() should emit a DeprecationWarning."""
         evaluator = Evaluator.noop()
         mock_runner = MagicMock()
-        mock_runner.invoke_model = AsyncMock(return_value=_make_model_response())
+        mock_runner.run = AsyncMock(return_value=_make_runner_result())
 
-        config, mock_tracker = _make_config_with_tracker(evaluator)
-        # invoke() expects a ModelResponse from the tracker, not a RunnerResult.
-        mock_tracker.track_metrics_of_async = AsyncMock(return_value=_make_model_response())
+        config, _mock_tracker = _make_config_with_tracker(evaluator)
         model = ManagedModel(config, mock_runner)
 
         with pytest.warns(DeprecationWarning, match=r"ManagedModel\.invoke\(\) is deprecated"):

@@ -427,7 +427,7 @@ class LDAIClient:
         if not runner:
             return None
 
-        return ManagedModel(config, runner)
+        return ManagedModel(config, runner)  # type: ignore[arg-type]
 
     async def create_chat(
         self,
@@ -501,7 +501,7 @@ class LDAIClient:
         if not runner:
             return None
 
-        return ManagedAgent(config, runner)
+        return ManagedAgent(config, runner)  # type: ignore[arg-type]
 
     def agent_config(
         self,

@@ -1,12 +1,11 @@
 import asyncio
 import warnings
-from typing import List, Union
+from typing import List
 
 from ldai import log
 from ldai.models import AICompletionConfig, LDMessage
-from ldai.providers.model_runner import ModelRunner
 from ldai.providers.runner import Runner
-from ldai.providers.types import JudgeResult, ManagedResult, ModelResponse, RunnerResult
+from ldai.providers.types import JudgeResult, LDAIMetrics, ManagedResult, ModelResponse
 from ldai.tracker import LDAIConfigTracker
 
 
@@ -14,15 +13,15 @@ class ManagedModel:
     """
     LaunchDarkly managed wrapper for AI model invocations.
 
-    Holds a Runner (or legacy ModelRunner). Handles conversation management,
-    judge evaluation dispatch, and tracking automatically via ``create_tracker()``.
+    Holds a Runner. Handles conversation management, judge evaluation
+    dispatch, and tracking automatically via ``create_tracker()``.
     Obtain an instance via ``LDAIClient.create_model()``.
     """
 
     def __init__(
         self,
         ai_config: AICompletionConfig,
-        model_runner: Union[Runner, ModelRunner],
+        model_runner: Runner,
     ):
         self._ai_config = ai_config
         self._model_runner = model_runner
@@ -48,49 +47,26 @@ class ManagedModel:
         config_messages = self._ai_config.messages or []
         all_messages = config_messages + self._messages
 
-        result: Union[RunnerResult, ModelResponse] = await tracker.track_metrics_of_async(
+        result = await tracker.track_metrics_of_async(
             lambda r: r.metrics,
-            lambda: self._invoke_runner(all_messages),
+            lambda: self._model_runner.run(all_messages),
         )
 
-        # Support both new RunnerResult and legacy ModelResponse
-        if isinstance(result, RunnerResult):
-            content = result.content
-            raw = result.raw
-            parsed = result.parsed
-            assistant_message = LDMessage(role='assistant', content=content)
-        else:
-            content = result.message.content
-            raw = getattr(result, 'raw', None)
-            parsed = getattr(result, 'parsed', None)
-            assistant_message = result.message
+        assistant_message = LDMessage(role='assistant', content=result.content)
 
         input_text = '\r\n'.join(m.content for m in self._messages) if self._messages else ''
 
-        evaluations_task = self._track_judge_results(tracker, input_text, content)
+        evaluations_task = self._track_judge_results(tracker, input_text, result.content)
 
         self._messages.append(assistant_message)
 
         return ManagedResult(
-            content=content,
+            content=result.content,
             metrics=tracker.get_summary(),
-            raw=raw,
-            parsed=parsed,
+            raw=result.raw,
+            parsed=result.parsed,
             evaluations=evaluations_task,
         )
-
-    async def _invoke_runner(
-        self, all_messages: List[LDMessage]
-    ) -> Union[RunnerResult, ModelResponse]:
-        """
-        Delegate to the runner.  Supports both the new ``Runner`` protocol
-        (``run(messages) → RunnerResult``) and the legacy ``ModelRunner``
-        (``invoke_model(messages) → ModelResponse``).
-        """
-        if isinstance(self._model_runner, Runner):
-            return await self._model_runner.run(all_messages)
-        # Legacy ModelRunner path
-        return await self._model_runner.invoke_model(all_messages)  # type: ignore[union-attr]
 
     async def invoke(self, prompt: str) -> ModelResponse:
         """
@@ -108,25 +84,15 @@ class ManagedModel:
             DeprecationWarning,
             stacklevel=2,
         )
-        tracker = self._ai_config.create_tracker()
-
-        user_message = LDMessage(role='user', content=prompt)
-        self._messages.append(user_message)
-
-        config_messages = self._ai_config.messages or []
-        all_messages = config_messages + self._messages
-
-        response: ModelResponse = await tracker.track_metrics_of_async(
-            lambda result: result.metrics,
-            lambda: self._model_runner.invoke_model(all_messages),  # type: ignore[union-attr]
+        result = await self.run(prompt)
+        return ModelResponse(
+            message=LDMessage(role='assistant', content=result.content),
+            metrics=LDAIMetrics(
+                success=bool(result.metrics.success),
+                usage=result.metrics.usage,
+            ),
+            evaluations=result.evaluations,
         )
-
-        input_text = '\r\n'.join(m.content for m in self._messages) if self._messages else ''
-        output_text = response.message.content
-        response.evaluations = self._track_judge_results(tracker, input_text, output_text)
-
-        self._messages.append(response.message)
-        return response
 
     def _track_judge_results(
         self,
@@ -169,11 +135,11 @@ class ManagedModel:
         """
         self._messages.extend(messages)
 
-    def get_model_runner(self) -> Union[Runner, ModelRunner]:
+    def get_model_runner(self) -> Runner:
         """
         Return the underlying runner for advanced use.
 
-        :return: The Runner or legacy ModelRunner instance.
+        :return: The Runner instance.
         """
         return self._model_runner
 
