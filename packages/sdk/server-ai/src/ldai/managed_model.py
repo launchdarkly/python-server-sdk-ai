@@ -72,7 +72,7 @@ class ManagedModel:
                     try:
                         tracker.track_judge_result(r)
                     except Exception as exc:
-                        log.warning("Failed to track judge result: %s", exc)
+                        log.warning("Judge evaluation failed: %s", exc)
                 else:
                     log.warning("Judge evaluation failed: %s", r.error_message)
             return results
