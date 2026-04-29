@@ -1,6 +1,7 @@
 import asyncio
 from typing import List, Optional
 
+from ldai import log
 from ldai.models import AICompletionConfig, LDMessage
 from ldai.providers.model_runner import ModelRunner
 from ldai.providers.types import JudgeResult, ModelResponse
@@ -68,7 +69,12 @@ class ManagedModel:
             results = await eval_task
             for r in results:
                 if r.success:
-                    tracker.track_judge_result(r)
+                    try:
+                        tracker.track_judge_result(r)
+                    except Exception:
+                        pass
+                else:
+                    log.warning("Judge evaluation failed: %s", r.error_message)
             return results
 
         return asyncio.create_task(_run_and_track(evaluator_task))
