@@ -279,7 +279,22 @@ class LDAIConfigTracker:
 
         return result
 
-    def _track_from_metrics_extractor(self, metrics: Any, elapsed_ms: int) -> None:
+    def _track_from_metrics_extractor(
+        self,
+        result: Any,
+        metrics_extractor: Callable[[Any], Any],
+        elapsed_ms: int,
+    ) -> None:
+        metrics = None
+        try:
+            metrics = metrics_extractor(result)
+        except Exception as exc:
+            log.warning("Failed to extract metrics: %s", exc)
+
+        if metrics is None:
+            self.track_duration(elapsed_ms)
+            return
+
         reported_ms = getattr(metrics, 'duration_ms', None)
         self.track_duration(reported_ms if reported_ms is not None else elapsed_ms)
         if metrics.success:
@@ -288,7 +303,7 @@ class LDAIConfigTracker:
             self.track_error()
         if metrics.usage:
             self.track_tokens(metrics.usage)
-        if getattr(metrics, 'tool_calls', None) is not None:
+        if metrics.tool_calls is not None:
             self.track_tool_calls(metrics.tool_calls)
 
     def track_metrics_of(
@@ -326,8 +341,7 @@ class LDAIConfigTracker:
             raise err
 
         elapsed_ms = (time.perf_counter_ns() - start_ns) // 1_000_000
-        metrics = metrics_extractor(result)
-        self._track_from_metrics_extractor(metrics, elapsed_ms)
+        self._track_from_metrics_extractor(result, metrics_extractor, elapsed_ms)
         return result
 
     async def track_metrics_of_async(self, metrics_extractor, func):
@@ -355,8 +369,7 @@ class LDAIConfigTracker:
             raise err
 
         elapsed_ms = (time.perf_counter_ns() - start_ns) // 1_000_000
-        metrics = metrics_extractor(result)
-        self._track_from_metrics_extractor(metrics, elapsed_ms)
+        self._track_from_metrics_extractor(result, metrics_extractor, elapsed_ms)
         return result
 
     def track_judge_result(self, judge_result: Any) -> None:
