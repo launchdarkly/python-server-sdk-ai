@@ -1,6 +1,7 @@
 import asyncio
 from typing import List, Optional
 
+from ldai import log
 from ldai.models import AICompletionConfig, LDMessage
 from ldai.providers.model_runner import ModelRunner
 from ldai.providers.types import JudgeResult, ModelResponse
@@ -62,19 +63,21 @@ class ManagedModel:
         input_text: str,
         output_text: str,
     ) -> asyncio.Task[List[JudgeResult]]:
-        eval_task = self._ai_config.evaluator.evaluate(input_text, output_text)
+        evaluator_task = self._ai_config.evaluator.evaluate(input_text, output_text)
 
-        def _on_done(task: asyncio.Task) -> None:
-            if task.cancelled():
-                return
-            if task.exception() is not None:
-                return
-            for r in task.result():
+        async def _run_and_track(eval_task: asyncio.Task) -> List[JudgeResult]:
+            results = await eval_task
+            for r in results:
                 if r.success:
-                    tracker.track_judge_result(r)
+                    try:
+                        tracker.track_judge_result(r)
+                    except Exception as exc:
+                        log.warning("Judge evaluation failed: %s", exc)
+                else:
+                    log.warning("Judge evaluation failed: %s", r.error_message)
+            return results
 
-        eval_task.add_done_callback(_on_done)
-        return eval_task
+        return asyncio.create_task(_run_and_track(evaluator_task))
 
     def get_messages(self, include_config_messages: bool = False) -> List[LDMessage]:
         """
