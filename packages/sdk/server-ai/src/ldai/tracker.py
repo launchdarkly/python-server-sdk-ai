@@ -280,7 +280,7 @@ class LDAIConfigTracker:
         return result
 
     def _track_from_metrics_extractor(self, metrics: Any, elapsed_ms: int) -> None:
-        reported_ms = getattr(metrics, 'duration_ms', None) if metrics else None
+        reported_ms = getattr(metrics, 'duration_ms', None)
         self.track_duration(reported_ms if reported_ms is not None else elapsed_ms)
         if metrics.success:
             self.track_success()
@@ -288,7 +288,7 @@ class LDAIConfigTracker:
             self.track_error()
         if metrics.usage:
             self.track_tokens(metrics.usage)
-        if getattr(metrics, 'tool_calls', None):
+        if getattr(metrics, 'tool_calls', None) is not None:
             self.track_tool_calls(metrics.tool_calls)
 
     def track_metrics_of(
