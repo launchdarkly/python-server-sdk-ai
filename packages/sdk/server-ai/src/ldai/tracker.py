@@ -279,12 +279,9 @@ class LDAIConfigTracker:
 
         return result
 
-    def _track_from_metrics_extractor(
-        self,
-        result: Any,
-        metrics_extractor: Callable[[Any], Any],
-    ) -> Any:
-        metrics = metrics_extractor(result)
+    def _track_from_metrics_extractor(self, metrics: Any, elapsed_ms: int) -> None:
+        reported_ms = getattr(metrics, 'duration_ms', None) if metrics else None
+        self.track_duration(reported_ms if reported_ms is not None else elapsed_ms)
         if metrics.success:
             self.track_success()
         else:
@@ -293,7 +290,6 @@ class LDAIConfigTracker:
             self.track_tokens(metrics.usage)
         if getattr(metrics, 'tool_calls', None):
             self.track_tool_calls(metrics.tool_calls)
-        return result
 
     def track_metrics_of(
         self,
@@ -331,9 +327,8 @@ class LDAIConfigTracker:
 
         elapsed_ms = (time.perf_counter_ns() - start_ns) // 1_000_000
         metrics = metrics_extractor(result)
-        reported_ms = getattr(metrics, 'duration_ms', None) if metrics else None
-        self.track_duration(reported_ms if reported_ms is not None else elapsed_ms)
-        return self._track_from_metrics_extractor(result, metrics_extractor)
+        self._track_from_metrics_extractor(metrics, elapsed_ms)
+        return result
 
     async def track_metrics_of_async(self, metrics_extractor, func):
         """
@@ -361,9 +356,8 @@ class LDAIConfigTracker:
 
         elapsed_ms = (time.perf_counter_ns() - start_ns) // 1_000_000
         metrics = metrics_extractor(result)
-        reported_ms = getattr(metrics, 'duration_ms', None) if metrics else None
-        self.track_duration(reported_ms if reported_ms is not None else elapsed_ms)
-        return self._track_from_metrics_extractor(result, metrics_extractor)
+        self._track_from_metrics_extractor(metrics, elapsed_ms)
+        return result
 
     def track_judge_result(self, judge_result: Any) -> None:
         """
