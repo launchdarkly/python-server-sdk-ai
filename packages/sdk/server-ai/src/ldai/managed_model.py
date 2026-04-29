@@ -1,11 +1,10 @@
 import asyncio
-import warnings
 from typing import List
 
 from ldai import log
 from ldai.models import AICompletionConfig, LDMessage
 from ldai.providers.runner import Runner
-from ldai.providers.types import JudgeResult, LDAIMetrics, ManagedResult, ModelResponse
+from ldai.providers.types import JudgeResult, ManagedResult
 from ldai.tracker import LDAIConfigTracker
 
 
@@ -66,32 +65,6 @@ class ManagedModel:
             raw=result.raw,
             parsed=result.parsed,
             evaluations=evaluations_task,
-        )
-
-    async def invoke(self, prompt: str) -> ModelResponse:
-        """
-        Invoke the model with a prompt string.
-
-        .. deprecated::
-            Use :meth:`run` instead. This method will be removed in a future
-            release once the migration to :class:`ManagedResult` is complete.
-
-        :param prompt: The user prompt to send to the model
-        :return: ModelResponse containing the model's response and metrics
-        """
-        warnings.warn(
-            "ManagedModel.invoke() is deprecated. Use run() instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        result = await self.run(prompt)
-        return ModelResponse(
-            message=LDMessage(role='assistant', content=result.content),
-            metrics=LDAIMetrics(
-                success=bool(result.metrics.success),
-                usage=result.metrics.usage,
-            ),
-            evaluations=result.evaluations,
         )
 
     def _track_judge_results(

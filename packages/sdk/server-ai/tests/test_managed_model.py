@@ -222,27 +222,5 @@ class TestManagedModelRunReturnsImmediately:
         assert results == []
 
 
-class TestManagedModelInvokeDeprecated:
-    """The deprecated invoke() method continues to work and emits a DeprecationWarning."""
-
-    @pytest.mark.asyncio
-    async def test_invoke_emits_deprecation_warning(self):
-        """invoke() should emit a DeprecationWarning."""
-        evaluator = Evaluator.noop()
-        mock_runner = MagicMock()
-        mock_runner.run = AsyncMock(return_value=_make_runner_result())
-
-        config, _mock_tracker = _make_config_with_tracker(evaluator)
-        model = ManagedModel(config, mock_runner)
-
-        with pytest.warns(DeprecationWarning, match=r"ManagedModel\.invoke\(\) is deprecated"):
-            response = await model.invoke('Hello')
-
-        assert response is not None
-        # invoke() still wires the evaluations chain on the response.
-        if response.evaluations is not None:
-            await response.evaluations
-
-
 async def _empty_eval() -> List[JudgeResult]:
     return []
