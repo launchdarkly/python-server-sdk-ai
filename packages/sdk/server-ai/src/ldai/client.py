@@ -56,8 +56,10 @@ _DISABLED_JUDGE_DEFAULT = AIJudgeConfigDefault.disabled()
 def _parse_tools(tools_data: Optional[Dict[str, Any]]) -> Optional[Dict[str, LDTool]]:
     """Parse the root-level tools map from a flag variation dict."""
     if not isinstance(tools_data, dict):
+        if tools_data is not None:
+            log.warning('Skipping tools: expected a dict, got %s', type(tools_data).__name__)
         return None
-    result = {}
+    result: Dict[str, LDTool] = {}
     for tool_name, tool_dict in tools_data.items():
         if not isinstance(tool_dict, dict):
             log.warning('Skipping tool "%s": expected a dict, got %s', tool_name, type(tool_dict).__name__)
@@ -70,6 +72,25 @@ def _parse_tools(tools_data: Optional[Dict[str, Any]]) -> Optional[Dict[str, LDT
             custom_parameters=tool_dict.get('customParameters'),
         )
     return result or None
+
+
+def _resolve_tools(variation: Dict[str, Any]) -> Optional[Dict[str, LDTool]]:
+    if 'tools' in variation:
+        return _parse_tools(variation['tools'])
+
+    model = variation.get('model')
+    if not isinstance(model, dict):
+        return None
+    parameters = model.get('parameters')
+    if not isinstance(parameters, dict):
+        return None
+    tools_data = parameters.get('tools')
+    if not isinstance(tools_data, dict):
+        if tools_data is not None:
+            log.warning('Skipping model.parameters.tools: expected a dict, got %s', type(tools_data).__name__)
+        return None
+
+    return _parse_tools(tools_data)
 
 
 class LDAIClient:
@@ -117,7 +138,7 @@ class LDAIClient:
         )
 
         evaluator = self._build_evaluator(judge_configuration, context, default_ai_provider, variables)
-        tools = _parse_tools(variation.get('tools'))
+        tools = _resolve_tools(variation)
 
         config = AICompletionConfig(
             key=key,
@@ -946,7 +967,7 @@ class LDAIClient:
         effective_judge_configuration = judge_configuration or JudgeConfiguration(judges=[])
 
         evaluator = self._build_evaluator(effective_judge_configuration, context, default_ai_provider, variables)
-        tools = _parse_tools(variation.get('tools'))
+        tools = _resolve_tools(variation)
 
         return AIAgentConfig(
             key=key,

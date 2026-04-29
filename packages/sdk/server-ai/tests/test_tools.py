@@ -60,6 +60,101 @@ def td() -> TestData:
         .variation_for_all(0)
     )
 
+    td.update(
+        td.flag('completion-tools-in-model-params')
+        .variations(
+            {
+                'model': {
+                    'name': 'gpt-5',
+                    'parameters': {
+                        'temperature': 0.5,
+                        'tools': {
+                            'param-tool': {
+                                'name': 'param-tool',
+                                'type': 'function',
+                                'description': 'A tool from model params',
+                                'parameters': {'type': 'object'},
+                            }
+                        },
+                    },
+                },
+                'messages': [{'role': 'user', 'content': 'Hello'}],
+                '_ldMeta': {'enabled': True, 'variationKey': 'v1', 'version': 1},
+            },
+        )
+        .variation_for_all(0)
+    )
+
+    td.update(
+        td.flag('completion-root-and-model-params-tools')
+        .variations(
+            {
+                'model': {
+                    'name': 'gpt-5',
+                    'parameters': {
+                        'tools': {
+                            'model-param-tool': {
+                                'name': 'model-param-tool',
+                                'type': 'function',
+                            }
+                        },
+                    },
+                },
+                'messages': [{'role': 'user', 'content': 'Hello'}],
+                'tools': {
+                    'root-tool': {
+                        'name': 'root-tool',
+                        'type': 'function',
+                    }
+                },
+                '_ldMeta': {'enabled': True, 'variationKey': 'v1', 'version': 1},
+            },
+        )
+        .variation_for_all(0)
+    )
+
+    td.update(
+        td.flag('completion-model-params-tools-as-list')
+        .variations(
+            {
+                'model': {
+                    'name': 'gpt-5',
+                    'parameters': {
+                        'tools': [
+                            {'name': 'list-tool', 'type': 'function'},
+                        ],
+                    },
+                },
+                'messages': [{'role': 'user', 'content': 'Hello'}],
+                '_ldMeta': {'enabled': True, 'variationKey': 'v1', 'version': 1},
+            },
+        )
+        .variation_for_all(0)
+    )
+
+    td.update(
+        td.flag('completion-model-params-tools-missing-name')
+        .variations(
+            {
+                'model': {
+                    'name': 'gpt-5',
+                    'parameters': {
+                        'tools': {
+                            'valid-tool': {
+                                'name': 'valid-tool',
+                                'type': 'function',
+                            },
+                            'bad-entry': 'not-a-dict',
+                        },
+                    },
+                },
+                'messages': [{'role': 'user', 'content': 'Hello'}],
+                '_ldMeta': {'enabled': True, 'variationKey': 'v1', 'version': 1},
+            },
+        )
+        .variation_for_all(0)
+    )
+
     return td
 
 
@@ -133,3 +228,36 @@ def test_aitool_to_dict_omits_none_fields():
     d = tool.to_dict()
 
     assert d == {'name': 'bare-tool'}
+
+
+def test_completion_config_tools_from_model_params_when_no_root_tools(client, context):
+    result = client.completion_config('completion-tools-in-model-params', context, AICompletionConfigDefault())
+
+    assert result.tools is not None
+    assert 'param-tool' in result.tools
+    tool = result.tools['param-tool']
+    assert tool.name == 'param-tool'
+    assert tool.type == 'function'
+    assert tool.description == 'A tool from model params'
+
+
+def test_completion_config_root_tools_take_priority_over_model_params(client, context):
+    result = client.completion_config('completion-root-and-model-params-tools', context, AICompletionConfigDefault())
+
+    assert result.tools is not None
+    assert 'root-tool' in result.tools
+    assert 'model-param-tool' not in result.tools
+
+
+def test_completion_config_model_params_tools_as_list_returns_none(client, context):
+    result = client.completion_config('completion-model-params-tools-as-list', context, AICompletionConfigDefault())
+
+    assert result.tools is None
+
+
+def test_completion_config_model_params_tools_skips_bad_entries_silently(client, context):
+    result = client.completion_config('completion-model-params-tools-missing-name', context, AICompletionConfigDefault())
+
+    assert result.tools is not None
+    assert 'valid-tool' in result.tools
+    assert 'bad-entry' not in result.tools
