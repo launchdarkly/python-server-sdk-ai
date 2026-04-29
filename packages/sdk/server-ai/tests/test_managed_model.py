@@ -9,9 +9,16 @@ import pytest
 from ldai.evaluator import Evaluator
 from ldai.managed_model import ManagedModel
 from ldai.models import AICompletionConfig, LDMessage, ModelConfig, ProviderConfig
-from ldai.providers.types import JudgeResult, LDAIMetrics, ManagedResult, ModelResponse
+from ldai.providers.types import JudgeResult, LDAIMetrics, ManagedResult, ModelResponse, RunnerResult
 from ldai.tracker import LDAIConfigTracker, LDAIMetricSummary
 
+
+
+def _make_runner_result(content: str = 'response text') -> RunnerResult:
+    return RunnerResult(
+        content=content,
+        metrics=LDAIMetrics(success=True, usage=None),
+    )
 
 
 def _make_model_response(content: str = 'response text') -> ModelResponse:
@@ -30,7 +37,7 @@ def _make_summary() -> LDAIMetricSummary:
 def _make_config_with_tracker(evaluator: Evaluator) -> tuple[AICompletionConfig, MagicMock]:
     """Build an AICompletionConfig with a fully-mocked tracker."""
     mock_tracker = MagicMock(spec=LDAIConfigTracker)
-    mock_tracker.track_metrics_of_async = AsyncMock(return_value=_make_model_response())
+    mock_tracker.track_metrics_of_async = AsyncMock(return_value=_make_runner_result())
     mock_tracker.get_summary = MagicMock(return_value=_make_summary())
     config = AICompletionConfig(
         key='test-config',
@@ -56,10 +63,10 @@ class TestManagedModelRunReturnsImmediately:
         )
 
         mock_runner = MagicMock()
-        mock_runner.invoke_model = AsyncMock(return_value=_make_model_response('hi'))
+        mock_runner.invoke_model = AsyncMock(return_value=_make_runner_result('hi'))
 
         mock_tracker = MagicMock(spec=LDAIConfigTracker)
-        mock_tracker.track_metrics_of_async = AsyncMock(return_value=_make_model_response('hi'))
+        mock_tracker.track_metrics_of_async = AsyncMock(return_value=_make_runner_result('hi'))
         mock_tracker.get_summary = MagicMock(return_value=_make_summary())
         config = AICompletionConfig(
             key='test-config',
@@ -96,7 +103,7 @@ class TestManagedModelRunReturnsImmediately:
         )
 
         mock_runner = MagicMock()
-        mock_runner.invoke_model = AsyncMock(return_value=_make_model_response())
+        mock_runner.invoke_model = AsyncMock(return_value=_make_runner_result())
 
         config, _tracker = _make_config_with_tracker(evaluator)
         model = ManagedModel(config, mock_runner)
@@ -130,7 +137,7 @@ class TestManagedModelRunReturnsImmediately:
         )
 
         mock_runner = MagicMock()
-        mock_runner.invoke_model = AsyncMock(return_value=_make_model_response())
+        mock_runner.invoke_model = AsyncMock(return_value=_make_runner_result())
 
         config, _tracker = _make_config_with_tracker(evaluator)
         model = ManagedModel(config, mock_runner)
@@ -160,7 +167,7 @@ class TestManagedModelRunReturnsImmediately:
         )
 
         mock_runner = MagicMock()
-        mock_runner.invoke_model = AsyncMock(return_value=_make_model_response())
+        mock_runner.invoke_model = AsyncMock(return_value=_make_runner_result())
 
         config, mock_tracker = _make_config_with_tracker(evaluator)
         mock_tracker.track_judge_result = MagicMock()
@@ -195,7 +202,7 @@ class TestManagedModelRunReturnsImmediately:
         )
 
         mock_runner = MagicMock()
-        mock_runner.invoke_model = AsyncMock(return_value=_make_model_response())
+        mock_runner.invoke_model = AsyncMock(return_value=_make_runner_result())
 
         config, mock_tracker = _make_config_with_tracker(evaluator)
         mock_tracker.track_judge_result = MagicMock()
@@ -212,7 +219,7 @@ class TestManagedModelRunReturnsImmediately:
         evaluator = Evaluator.noop()
 
         mock_runner = MagicMock()
-        mock_runner.invoke_model = AsyncMock(return_value=_make_model_response())
+        mock_runner.invoke_model = AsyncMock(return_value=_make_runner_result())
 
         config, _tracker = _make_config_with_tracker(evaluator)
         model = ManagedModel(config, mock_runner)
@@ -232,7 +239,9 @@ class TestManagedModelInvokeDeprecated:
         mock_runner = MagicMock()
         mock_runner.invoke_model = AsyncMock(return_value=_make_model_response())
 
-        config, _tracker = _make_config_with_tracker(evaluator)
+        config, mock_tracker = _make_config_with_tracker(evaluator)
+        # invoke() expects a ModelResponse from the tracker, not a RunnerResult.
+        mock_tracker.track_metrics_of_async = AsyncMock(return_value=_make_model_response())
         model = ManagedModel(config, mock_runner)
 
         with pytest.warns(DeprecationWarning, match=r"ManagedModel\.invoke\(\) is deprecated"):
