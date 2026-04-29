@@ -339,9 +339,8 @@ class LDAIClient:
             if not provider:
                 return None
 
-            return Judge(judge_config, provider, sample_rate=sample_rate)
-        except Exception as e:
-            log.warning('Failed to initialize judge %r: %s', key, e)
+            return Judge(judge_config, provider, sample_rate=sample_rate)  # type: ignore[arg-type]
+        except Exception as error:
             return None
 
     def _build_evaluator(
