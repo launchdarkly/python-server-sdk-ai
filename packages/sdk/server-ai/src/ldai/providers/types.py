@@ -16,22 +16,19 @@ ToolRegistry = Dict[str, Callable]
 
 @dataclass
 class LDAIMetrics:
-    """
-    Metrics information for AI operations that includes success status, token
-    usage, and optional enrichment fields populated by runners.
+    """Contains metrics for a single AI invocation."""
 
-    ``tool_calls`` is a list of tool-call names observed during the invocation
-    (populated by agent runners that execute tool loops).
-
-    ``duration_ms`` is the wall-clock duration of the runner invocation in
-    milliseconds, when measured by the runner itself rather than externally.
-    When set, the tracker uses this value directly instead of measuring elapsed
-    time.
-    """
     success: bool
+    """Whether the invocation succeeded."""
+
     usage: Optional[TokenUsage] = None
+    """Optional token usage information."""
+
     tool_calls: Optional[List[str]] = None
+    """Ordered list of tool-call names observed during the invocation."""
+
     duration_ms: Optional[int] = None
+    """Wall-clock duration of the runner invocation in milliseconds."""
 
     def to_dict(self) -> Dict[str, Any]:
         """
@@ -55,36 +52,39 @@ class LDAIMetrics:
 
 @dataclass
 class RunnerResult:
-    """
-    Result returned by a :class:`~ldai.providers.runner.Runner` from a single
-    invocation.
+    """Contains the result of a single AI model invocation."""
 
-    This is the unified return type for all Runner implementations.
-    ``evaluations`` is intentionally absent — judge evaluations are dispatched
-    by the managed layer and live on :class:`ManagedResult`.
-    """
     content: str
+    """The text content returned by the model."""
+
     metrics: LDAIMetrics
+    """Metrics for this invocation."""
+
     raw: Optional[Any] = None
+    """Optional provider-native response object for advanced consumers."""
+
     parsed: Optional[Dict[str, Any]] = None
+    """Optional parsed structured output, populated when ``output_type`` was supplied."""
 
 
 @dataclass
 class ManagedResult:
-    """
-    Result returned by the managed layer (:class:`~ldai.ManagedModel` /
-    :class:`~ldai.ManagedAgent`) after a single invocation.
+    """Contains the result of a managed AI invocation, including metrics and optional judge evaluations."""
 
-    ``metrics`` is an :class:`~ldai.tracker.LDAIMetricSummary` (from
-    ``tracker.get_summary()``) rather than a raw :class:`LDAIMetrics`.
-    ``evaluations`` is an optional asyncio Task that resolves to a list of
-    :class:`JudgeResult` instances when awaited.
-    """
     content: str
+    """The text content returned by the model."""
+
     metrics: LDAIMetricSummary
+    """Aggregated metric summary from the tracker for this invocation."""
+
     raw: Optional[Any] = None
+    """Optional provider-native response object for advanced consumers."""
+
     parsed: Optional[Dict[str, Any]] = None
+    """Optional parsed structured output, populated when ``output_type`` was supplied."""
+
     evaluations: Optional[asyncio.Task[List[JudgeResult]]] = None
+    """Optional asyncio Task that resolves to the list of :class:`JudgeResult` instances when awaited."""
 
 
 @dataclass
@@ -116,16 +116,28 @@ class StructuredResponse:
 
 @dataclass
 class JudgeResult:
-    """
-    Result from a judge evaluation.
-    """
+    """Contains the result of a single judge evaluation."""
+
     judge_config_key: Optional[str] = None
+    """The configuration key of the judge that produced this result."""
+
     success: bool = False
+    """Whether the judge evaluation completed successfully."""
+
     error_message: Optional[str] = None
-    sampled: bool = False  # True when the evaluation was sampled and run
+    """Error message describing why the evaluation failed, if any."""
+
+    sampled: bool = False
+    """True when the evaluation was sampled and run."""
+
     metric_key: Optional[str] = None
+    """The metric key under which this judge's score is reported."""
+
     score: Optional[float] = None
+    """The numeric score (0-1) returned by the judge."""
+
     reasoning: Optional[str] = None
+    """The judge's reasoning text accompanying the score."""
 
     def to_dict(self) -> Dict[str, Any]:
         """
@@ -164,10 +176,16 @@ class AgentResult:
 
 @dataclass
 class AgentGraphResult:
-    """
-    Result from an agent graph run.
-    """
+    """Contains the result of an agent graph run."""
+
     output: str
+    """The agent graph's final output content."""
+
     raw: Any
+    """The provider-native response object from the graph run."""
+
     metrics: LDAIMetrics
+    """Metrics recorded during the graph run."""
+
     evaluations: Optional[List[JudgeResult]] = None
+    """Optional list of judge evaluation results produced for the graph run."""
