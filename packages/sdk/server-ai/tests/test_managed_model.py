@@ -13,18 +13,6 @@ from ldai.providers.types import JudgeResult, LDAIMetrics, ModelResponse
 from ldai.tracker import LDAIConfigTracker
 
 
-def _make_ai_completion_config(evaluator: Evaluator) -> AICompletionConfig:
-    """Build a minimal AICompletionConfig wired to the given evaluator."""
-    return AICompletionConfig(
-        key='test-config',
-        enabled=True,
-        create_tracker=MagicMock(return_value=MagicMock(spec=LDAIConfigTracker)),
-        model=ModelConfig('gpt-4'),
-        provider=ProviderConfig('openai'),
-        messages=[LDMessage(role='system', content='You are helpful.')],
-        evaluator=evaluator,
-    )
-
 
 def _make_model_response(content: str = 'response text') -> ModelResponse:
     return ModelResponse(
@@ -54,7 +42,6 @@ class TestManagedModelInvokeReturnsImmediately:
         mock_runner = MagicMock()
         mock_runner.invoke_model = AsyncMock(return_value=_make_model_response())
 
-        config = _make_ai_completion_config(evaluator)
         mock_tracker = MagicMock(spec=LDAIConfigTracker)
         mock_tracker.track_metrics_of_async = AsyncMock(return_value=_make_model_response())
         config = AICompletionConfig(
