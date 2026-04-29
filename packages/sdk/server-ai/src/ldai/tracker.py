@@ -410,16 +410,22 @@ class LDAIConfigTracker:
                 1,
             )
 
-    def track_tool_calls(self, tool_calls: List[str]) -> None:
+    def track_tool_calls(self, tool_calls: Iterable[str]) -> None:
         """
         Track the tool calls made during an AI operation.
 
-        :param tool_calls: List of tool call names.
+        Stores the tool call names on the summary (guarding against duplicate
+        tracking) and fires a ``$ld:ai:tool_call`` event for each tool.
+
+        :param tool_calls: Tool identifiers (e.g. from a model response).
         """
         if self._summary.tool_calls is not None:
             log.warning("Tool calls have already been tracked for this execution. %s", self.__get_track_data())
             return
-        self._summary._tool_calls = list(tool_calls)
+        tool_calls_list = list(tool_calls)
+        self._summary._tool_calls = tool_calls_list
+        for tool_key in tool_calls_list:
+            self.track_tool_call(tool_key)
 
     def track_success(self) -> None:
         """
@@ -555,15 +561,6 @@ class LDAIConfigTracker:
             track_data,
             1,
         )
-
-    def track_tool_calls(self, tool_keys: Iterable[str]) -> None:
-        """
-        Track multiple tool invocations for this configuration.
-
-        :param tool_keys: Tool identifiers (e.g. from a model response).
-        """
-        for tool_key in tool_keys:
-            self.track_tool_call(tool_key)
 
     def get_summary(self) -> LDAIMetricSummary:
         """
