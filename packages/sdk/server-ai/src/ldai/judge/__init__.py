@@ -24,31 +24,37 @@ class Judge:
         self,
         ai_config: AIJudgeConfig,
         model_runner: ModelRunner,
+        sample_rate: float = 1.0,
     ):
         """
         Initialize the Judge.
 
         :param ai_config: The judge AI configuration
         :param model_runner: The model runner to use for evaluation
+        :param sample_rate: Default sampling rate (0-1) used when ``evaluate``
+            is called without an explicit ``sampling_rate`` (defaults to 1).
         """
         self._ai_config = ai_config
         self._model_runner = model_runner
+        self.sample_rate = sample_rate
         self._evaluation_response_structure = EvaluationSchemaBuilder.build()
 
     async def evaluate(
         self,
         input_text: str,
         output_text: str,
-        sampling_rate: float = 1.0,
+        sampling_rate: Optional[float] = None,
     ) -> JudgeResult:
         """
         Evaluates an AI response using the judge's configuration.
 
         :param input_text: The input prompt or question that was provided to the AI
         :param output_text: The AI-generated response to be evaluated
-        :param sampling_rate: Sampling rate (0-1) to determine if evaluation should be processed (defaults to 1)
+        :param sampling_rate: Sampling rate (0-1) to determine if evaluation should be processed.
+            When ``None`` (the default), falls back to ``self.sample_rate``.
         :return: The result of the judge evaluation.
         """
+        effective_rate = sampling_rate if sampling_rate is not None else self.sample_rate
         judge_result = JudgeResult(judge_config_key=self._ai_config.key)
 
         try:
@@ -64,8 +70,8 @@ class Judge:
                 judge_result.error_message = 'Judge configuration must include messages'
                 return judge_result
 
-            if random.random() > sampling_rate:
-                log.debug(f'Judge evaluation skipped due to sampling rate: {sampling_rate}')
+            if random.random() > effective_rate:
+                log.debug(f'Judge evaluation skipped due to sampling rate: {effective_rate}')
                 return judge_result
 
             judge_result.sampled = True
@@ -100,20 +106,22 @@ class Judge:
         self,
         messages: list[LDMessage],
         response: ModelResponse,
-        sampling_ratio: float = 1.0,
+        sampling_ratio: Optional[float] = None,
     ) -> JudgeResult:
         """
         Evaluates an AI response from chat messages and response.
 
         :param messages: Array of messages representing the conversation history
         :param response: The AI response to be evaluated
-        :param sampling_ratio: Sampling ratio (0-1) to determine if evaluation should be processed (defaults to 1)
+        :param sampling_ratio: Sampling ratio (0-1) to determine if evaluation should be processed.
+            When ``None`` (the default), falls back to ``self.sample_rate``.
         :return: The result of the judge evaluation.
         """
+        effective_rate = sampling_ratio if sampling_ratio is not None else self.sample_rate
         input_text = '\r\n'.join([msg.content for msg in messages]) if messages else ''
         output_text = response.message.content
 
-        return await self.evaluate(input_text, output_text, sampling_ratio)
+        return await self.evaluate(input_text, output_text, effective_rate)
 
     def get_ai_config(self) -> AIJudgeConfig:
         """

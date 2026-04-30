@@ -121,6 +121,20 @@ class TestJudgeInitialization:
         assert 'score' in judge._evaluation_response_structure['properties']
         assert 'reasoning' in judge._evaluation_response_structure['properties']
 
+    def test_judge_sample_rate_defaults_to_one(
+        self, judge_config_with_key: AIJudgeConfig, mock_runner
+    ):
+        """sample_rate should default to 1.0 when not provided."""
+        judge = Judge(judge_config_with_key, mock_runner)
+        assert judge.sample_rate == 1.0
+
+    def test_judge_sample_rate_can_be_set(
+        self, judge_config_with_key: AIJudgeConfig, mock_runner
+    ):
+        """sample_rate should be settable via the constructor."""
+        judge = Judge(judge_config_with_key, mock_runner, sample_rate=0.25)
+        assert judge.sample_rate == 0.25
+
 
 class TestJudgeEvaluate:
     """Tests for Judge.evaluate() method."""
@@ -306,6 +320,32 @@ class TestJudgeEvaluate:
         assert isinstance(result, JudgeResult)
         assert result.sampled is False
         assert result.success is False
+        mock_runner.invoke_structured_model.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_evaluate_uses_instance_sample_rate_when_arg_omitted(
+        self, judge_config_with_key: AIJudgeConfig, mock_runner
+    ):
+        """When sampling_rate arg is omitted, the instance's sample_rate is used."""
+        judge = Judge(judge_config_with_key, mock_runner, sample_rate=0.0)
+
+        result = await judge.evaluate("input", "output")
+
+        assert isinstance(result, JudgeResult)
+        assert result.sampled is False
+        mock_runner.invoke_structured_model.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_evaluate_arg_overrides_instance_sample_rate(
+        self, judge_config_with_key: AIJudgeConfig, mock_runner
+    ):
+        """An explicit sampling_rate=0.0 must override an instance sample_rate of 1.0."""
+        judge = Judge(judge_config_with_key, mock_runner, sample_rate=1.0)
+
+        result = await judge.evaluate("input", "output", sampling_rate=0.0)
+
+        assert isinstance(result, JudgeResult)
+        assert result.sampled is False
         mock_runner.invoke_structured_model.assert_not_called()
 
 
