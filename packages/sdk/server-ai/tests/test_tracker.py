@@ -911,9 +911,6 @@ def test_client_create_tracker_fails_on_invalid_json():
     assert "Invalid resumption token" in result.error
 
 
-# --- PR 10: LDAIMetrics enrichment + tracker integration ---
-
-
 def test_ldai_metrics_to_dict_includes_tool_calls_and_duration_ms():
     metrics = LDAIMetrics(
         success=True,
