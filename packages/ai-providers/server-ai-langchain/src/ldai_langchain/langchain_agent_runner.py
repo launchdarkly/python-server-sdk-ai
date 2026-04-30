@@ -1,30 +1,31 @@
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from ldai import log
+from ldai.providers.runner import Runner
 from ldai.providers.types import LDAIMetrics, RunnerResult
 
 from ldai_langchain.langchain_helper import (
     extract_last_message_content,
-    get_tool_calls_from_response,
     sum_token_usage_from_messages,
 )
 
 
-class LangChainAgentRunner:
+class LangChainAgentRunner(Runner):
     """
     CAUTION:
     This feature is experimental and should NOT be considered ready for production use.
     It may change or be removed without notice and is not subject to backwards
     compatibility guarantees.
 
-    Runner implementation for a single LangChain agent.
+    Runner implementation for LangChain agents.
 
     Wraps a compiled LangChain agent graph (from ``langchain.agents.create_agent``)
     and delegates execution to it. Tool calling and loop management are handled
     internally by the graph.
-    Returned by ``LangChainRunnerFactory.create_agent(config, tools)``.
+    Returned by LangChainRunnerFactory.create_agent(config, tools).
 
-    Implements the unified :class:`~ldai.providers.runner.Runner` protocol.
+    Implements the unified :class:`~ldai.providers.runner.Runner` protocol via
+    :meth:`run`.
     """
 
     def __init__(self, agent: Any):
@@ -36,7 +37,7 @@ class LangChainAgentRunner:
         output_type: Optional[Dict[str, Any]] = None,
     ) -> RunnerResult:
         """
-        Run the agent with the given input.
+        Run the agent with the given input string.
 
         Delegates to the compiled LangChain agent, which handles
         the tool-calling loop internally.
@@ -45,21 +46,19 @@ class LangChainAgentRunner:
         :param output_type: Reserved for future structured output support;
             currently ignored.
         :return: :class:`RunnerResult` with ``content``, ``raw`` response, and
-            metrics including aggregated token usage and observed ``tool_calls``.
+            aggregated metrics.
         """
         try:
             result = await self._agent.ainvoke({
                 "messages": [{"role": "user", "content": str(input)}]
             })
-            messages: List[Any] = result.get("messages", [])
-            content = extract_last_message_content(messages)
-            tool_calls = self._extract_tool_calls(messages)
+            messages = result.get("messages", [])
+            output = extract_last_message_content(messages)
             return RunnerResult(
-                content=content,
+                content=output,
                 metrics=LDAIMetrics(
                     success=True,
                     usage=sum_token_usage_from_messages(messages),
-                    tool_calls=tool_calls if tool_calls else None,
                 ),
                 raw=result,
             )
@@ -69,14 +68,6 @@ class LangChainAgentRunner:
                 content="",
                 metrics=LDAIMetrics(success=False, usage=None),
             )
-
-    @staticmethod
-    def _extract_tool_calls(messages: List[Any]) -> List[str]:
-        """Collect tool call names from all messages in the agent output."""
-        names: List[str] = []
-        for msg in messages:
-            names.extend(get_tool_calls_from_response(msg))
-        return names
 
     def get_agent(self) -> Any:
         """Return the underlying compiled LangChain agent."""

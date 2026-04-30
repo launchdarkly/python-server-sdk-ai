@@ -220,7 +220,7 @@ class TestMapProvider:
 
 
 class TestRunCompletion:
-    """Tests for the unified run() method (chat-completion path)."""
+    """Tests for run() without structured output."""
 
     @pytest.fixture
     def mock_llm(self):
@@ -268,7 +268,7 @@ class TestRunCompletion:
 
 
 class TestRunStructured:
-    """Tests for the unified run() method (structured-output path)."""
+    """Tests for run() with structured output."""
 
     @pytest.fixture
     def mock_llm(self):
@@ -307,7 +307,7 @@ class TestRunStructured:
 
         assert result.metrics.success is False
         assert result.parsed is None
-        assert result.content == ''
+        assert result.raw is None
         assert result.metrics.usage is None
 
 

@@ -3,6 +3,7 @@ from typing import Any, Dict, List, Optional
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import BaseMessage
 from ldai import LDMessage, log
+from ldai.providers.runner import Runner
 from ldai.providers.types import LDAIMetrics, RunnerResult
 
 from ldai_langchain.langchain_helper import (
@@ -12,12 +13,12 @@ from ldai_langchain.langchain_helper import (
 )
 
 
-class LangChainModelRunner:
+class LangChainModelRunner(Runner):
     """
     Runner implementation for LangChain chat models.
 
     Holds a fully-configured BaseChatModel.
-    Returned by ``LangChainRunnerFactory.create_model(config)``.
+    Returned by LangChainRunnerFactory.create_model(config).
 
     Implements the unified :class:`~ldai.providers.runner.Runner` protocol via
     :meth:`run`.
@@ -45,11 +46,12 @@ class LangChainModelRunner:
         :param input: A string prompt or a list of :class:`LDMessage` objects
         :param output_type: Optional JSON schema dict requesting structured output.
             When provided, ``parsed`` on the returned :class:`RunnerResult` is
-            populated with the structured data.
+            populated with the parsed JSON document.
         :return: :class:`RunnerResult` containing ``content``, ``metrics``,
             ``raw`` and (when ``output_type`` is set) ``parsed``.
         """
         messages = self._coerce_input(input)
+
         if output_type is not None:
             return await self._run_structured(messages, output_type)
         return await self._run_completion(messages)
@@ -93,11 +95,13 @@ class LangChainModelRunner:
             )
 
     async def _run_structured(
-        self, messages: List[LDMessage], response_structure: Dict[str, Any]
+        self,
+        messages: List[LDMessage],
+        output_type: Dict[str, Any],
     ) -> RunnerResult:
         try:
             langchain_messages = convert_messages_to_langchain(messages)
-            structured_llm = self._llm.with_structured_output(response_structure, include_raw=True)
+            structured_llm = self._llm.with_structured_output(output_type, include_raw=True)
             response = await structured_llm.ainvoke(langchain_messages)
 
             if not isinstance(response, dict):
@@ -108,8 +112,12 @@ class LangChainModelRunner:
                 )
 
             raw_response = response.get('raw')
-            usage = get_ai_usage_from_response(raw_response) if raw_response is not None else None
-            raw_content = raw_response.content if raw_response is not None and hasattr(raw_response, 'content') else ''
+            usage = None
+            raw_content = ''
+            if raw_response is not None:
+                if hasattr(raw_response, 'content'):
+                    raw_content = raw_response.content or ''
+                usage = get_ai_usage_from_response(raw_response)
 
             if response.get('parsing_error'):
                 log.warning('LangChain structured model invocation had a parsing error')
@@ -132,4 +140,3 @@ class LangChainModelRunner:
                 content='',
                 metrics=LDAIMetrics(success=False, usage=None),
             )
-
