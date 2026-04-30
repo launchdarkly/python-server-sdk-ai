@@ -8,8 +8,8 @@ import chevron
 from ldai import log
 from ldai.judge.evaluation_schema_builder import EvaluationSchemaBuilder
 from ldai.models import AIJudgeConfig, LDMessage
-from ldai.providers.model_runner import ModelRunner
-from ldai.providers.types import JudgeResult, ModelResponse
+from ldai.providers.runner import Runner
+from ldai.providers.types import JudgeResult, RunnerResult
 
 
 class Judge:
@@ -23,7 +23,7 @@ class Judge:
     def __init__(
         self,
         ai_config: AIJudgeConfig,
-        model_runner: ModelRunner,
+        model_runner: Runner,
         sample_rate: float = 1.0,
     ):
         """
@@ -82,10 +82,14 @@ class Judge:
 
             response = await tracker.track_metrics_of_async(
                 lambda result: result.metrics,
-                lambda: self._model_runner.invoke_structured_model(messages, self._evaluation_response_structure),
+                lambda: self._model_runner.run(messages, output_type=self._evaluation_response_structure),
             )
 
-            parsed = self._parse_evaluation_response(response.data)
+            if response.parsed is None:
+                log.warning('Judge evaluation did not return structured output')
+                return judge_result
+
+            parsed = self._parse_evaluation_response(response.parsed)
 
             if parsed is None:
                 log.warning('Judge evaluation did not return the expected evaluation')
@@ -105,20 +109,20 @@ class Judge:
     async def evaluate_messages(
         self,
         messages: list[LDMessage],
-        response: ModelResponse,
+        response: RunnerResult,
         sampling_ratio: Optional[float] = None,
     ) -> JudgeResult:
         """
         Evaluates an AI response from chat messages and response.
 
         :param messages: Array of messages representing the conversation history
-        :param response: The AI response to be evaluated
+        :param response: The runner result to be evaluated
         :param sampling_ratio: Sampling ratio (0-1) to determine if evaluation should be processed.
             When ``None`` (the default), falls back to ``self.sample_rate``.
         :return: The result of the judge evaluation.
         """
         input_text = '\r\n'.join([msg.content for msg in messages]) if messages else ''
-        output_text = response.message.content
+        output_text = response.content
 
         return await self.evaluate(input_text, output_text, sampling_ratio)
 
@@ -130,7 +134,7 @@ class Judge:
         """
         return self._ai_config
 
-    def get_model_runner(self) -> ModelRunner:
+    def get_model_runner(self) -> Runner:
         """
         Returns the model runner used by this judge.
 
