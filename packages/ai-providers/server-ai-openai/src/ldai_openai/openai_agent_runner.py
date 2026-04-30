@@ -2,6 +2,7 @@ from typing import Any, Dict, List, Optional
 
 from ldai import log
 from ldai.providers import RunnerResult, ToolRegistry
+from ldai.providers.runner import Runner
 from ldai.providers.types import LDAIMetrics
 
 from ldai_openai.openai_helper import (
@@ -11,7 +12,7 @@ from ldai_openai.openai_helper import (
 )
 
 
-class OpenAIAgentRunner:
+class OpenAIAgentRunner(Runner):
     """
     CAUTION:
     This feature is experimental and should NOT be considered ready for production use.

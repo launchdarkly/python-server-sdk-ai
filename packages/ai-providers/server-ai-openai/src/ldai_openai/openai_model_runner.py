@@ -2,6 +2,7 @@ import json
 from typing import Any, Dict, List, Optional
 
 from ldai import LDMessage, log
+from ldai.providers.runner import Runner
 from ldai.providers.types import LDAIMetrics, RunnerResult
 from openai import AsyncOpenAI
 
@@ -11,7 +12,7 @@ from ldai_openai.openai_helper import (
 )
 
 
-class OpenAIModelRunner:
+class OpenAIModelRunner(Runner):
     """
     Runner implementation for OpenAI chat completions.
 
