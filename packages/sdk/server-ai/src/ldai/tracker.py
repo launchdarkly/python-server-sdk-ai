@@ -1,14 +1,19 @@
+from __future__ import annotations
+
 import base64
 import json
 import time
 import warnings
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Callable, Dict, Iterable, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Optional
 
 from ldclient import Context, LDClient, Result
 
 from ldai import log
+
+if TYPE_CHECKING:
+    from ldai.providers.types import LDAIMetrics
 
 
 class FeedbackKind(Enum):
@@ -282,7 +287,7 @@ class LDAIConfigTracker:
     def _track_from_metrics_extractor(
         self,
         result: Any,
-        metrics_extractor: Callable[[Any], Any],
+        metrics_extractor: Callable[[Any], Optional[LDAIMetrics]],
         elapsed_ms: int,
     ) -> None:
         metrics = None
@@ -295,8 +300,7 @@ class LDAIConfigTracker:
             self.track_duration(elapsed_ms)
             return
 
-        reported_ms = getattr(metrics, 'duration_ms', None)
-        self.track_duration(reported_ms if reported_ms is not None else elapsed_ms)
+        self.track_duration(metrics.duration_ms if metrics.duration_ms is not None else elapsed_ms)
         if metrics.success:
             self.track_success()
         else:
@@ -308,7 +312,7 @@ class LDAIConfigTracker:
 
     def track_metrics_of(
         self,
-        metrics_extractor: Callable[[Any], Any],
+        metrics_extractor: Callable[[Any], Optional[LDAIMetrics]],
         func: Callable[[], Any],
     ) -> Any:
         """
@@ -344,7 +348,11 @@ class LDAIConfigTracker:
         self._track_from_metrics_extractor(result, metrics_extractor, elapsed_ms)
         return result
 
-    async def track_metrics_of_async(self, metrics_extractor, func):
+    async def track_metrics_of_async(
+        self,
+        metrics_extractor: Callable[[Any], Optional[LDAIMetrics]],
+        func: Callable[[], Any],
+    ) -> Any:
         """
         Track metrics for an async AI operation (``func`` is awaited).
 
