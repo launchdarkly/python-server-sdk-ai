@@ -48,7 +48,11 @@ class OpenAIModelRunner(Runner):
         :return: :class:`RunnerResult` containing ``content``, ``metrics``,
             ``raw`` and (when ``output_type`` is set) ``parsed``.
         """
-        messages = self._coerce_input(input)
+        try:
+            messages = self._coerce_input(input)
+        except TypeError as error:
+            log.warning(f'OpenAI model runner received unsupported input type: {error}')
+            return RunnerResult(content='', metrics=LDAIMetrics(success=False, usage=None))
 
         if output_type is not None:
             return await self._run_structured(messages, output_type)
