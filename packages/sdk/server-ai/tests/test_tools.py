@@ -68,14 +68,14 @@ def td() -> TestData:
                     'name': 'gpt-5',
                     'parameters': {
                         'temperature': 0.5,
-                        'tools': {
-                            'param-tool': {
+                        'tools': [
+                            {
                                 'name': 'param-tool',
                                 'type': 'function',
                                 'description': 'A tool from model params',
                                 'parameters': {'type': 'object'},
                             }
-                        },
+                        ],
                     },
                 },
                 'messages': [{'role': 'user', 'content': 'Hello'}],
@@ -92,12 +92,12 @@ def td() -> TestData:
                 'model': {
                     'name': 'gpt-5',
                     'parameters': {
-                        'tools': {
-                            'model-param-tool': {
+                        'tools': [
+                            {
                                 'name': 'model-param-tool',
                                 'type': 'function',
                             }
-                        },
+                        ],
                     },
                 },
                 'messages': [{'role': 'user', 'content': 'Hello'}],
@@ -114,7 +114,7 @@ def td() -> TestData:
     )
 
     td.update(
-        td.flag('completion-model-params-tools-as-list')
+        td.flag('completion-model-params-tools-list-format')
         .variations(
             {
                 'model': {
@@ -133,19 +133,41 @@ def td() -> TestData:
     )
 
     td.update(
-        td.flag('completion-model-params-tools-missing-name')
+        td.flag('completion-model-params-tools-as-dict')
         .variations(
             {
                 'model': {
                     'name': 'gpt-5',
                     'parameters': {
                         'tools': {
-                            'valid-tool': {
+                            'dict-tool': {
+                                'name': 'dict-tool',
+                                'type': 'function',
+                            },
+                        },
+                    },
+                },
+                'messages': [{'role': 'user', 'content': 'Hello'}],
+                '_ldMeta': {'enabled': True, 'variationKey': 'v1', 'version': 1},
+            },
+        )
+        .variation_for_all(0)
+    )
+
+    td.update(
+        td.flag('completion-model-params-tools-bad-entries')
+        .variations(
+            {
+                'model': {
+                    'name': 'gpt-5',
+                    'parameters': {
+                        'tools': [
+                            {
                                 'name': 'valid-tool',
                                 'type': 'function',
                             },
-                            'bad-entry': 'not-a-dict',
-                        },
+                            'not-a-dict',
+                        ],
                     },
                 },
                 'messages': [{'role': 'user', 'content': 'Hello'}],
@@ -249,15 +271,23 @@ def test_completion_config_root_tools_take_priority_over_model_params(client, co
     assert 'model-param-tool' not in result.tools
 
 
-def test_completion_config_model_params_tools_as_list_returns_none(client, context):
-    result = client.completion_config('completion-model-params-tools-as-list', context, AICompletionConfigDefault())
+def test_completion_config_model_params_tools_list_format_is_parsed(client, context):
+    result = client.completion_config('completion-model-params-tools-list-format', context, AICompletionConfigDefault())
+
+    assert result.tools is not None
+    assert 'list-tool' in result.tools
+    assert result.tools['list-tool'].type == 'function'
+
+
+def test_completion_config_model_params_tools_dict_format_returns_none(client, context):
+    result = client.completion_config('completion-model-params-tools-as-dict', context, AICompletionConfigDefault())
 
     assert result.tools is None
 
 
-def test_completion_config_model_params_tools_skips_bad_entries_silently(client, context):
-    result = client.completion_config('completion-model-params-tools-missing-name', context, AICompletionConfigDefault())
+def test_completion_config_model_params_tools_skips_bad_entries(client, context):
+    result = client.completion_config('completion-model-params-tools-bad-entries', context, AICompletionConfigDefault())
 
     assert result.tools is not None
     assert 'valid-tool' in result.tools
-    assert 'bad-entry' not in result.tools
+    assert len(result.tools) == 1

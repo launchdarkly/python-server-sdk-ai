@@ -53,30 +53,22 @@ _DISABLED_AGENT_DEFAULT = AIAgentConfigDefault.disabled()
 _DISABLED_JUDGE_DEFAULT = AIJudgeConfigDefault.disabled()
 
 
-def _parse_tools(tools_data: Optional[Dict[str, Any]]) -> Optional[Dict[str, LDTool]]:
-    """Parse the root-level tools map from a flag variation dict."""
-    if not isinstance(tools_data, dict):
-        if tools_data is not None:
-            log.warning('Skipping tools: expected a dict, got %s', type(tools_data).__name__)
-        return None
-    result: Dict[str, LDTool] = {}
-    for tool_name, tool_dict in tools_data.items():
-        if not isinstance(tool_dict, dict):
-            log.warning('Skipping tool "%s": expected a dict, got %s', tool_name, type(tool_dict).__name__)
-            continue
-        result[tool_name] = LDTool(
-            name=tool_dict.get('name', tool_name),
-            description=tool_dict.get('description'),
-            type=tool_dict.get('type'),
-            parameters=tool_dict.get('parameters'),
-            custom_parameters=tool_dict.get('customParameters'),
-        )
-    return result or None
-
-
 def _resolve_tools(variation: Dict[str, Any]) -> Optional[Dict[str, LDTool]]:
     if 'tools' in variation:
-        return _parse_tools(variation['tools'])
+        tools_data = variation['tools']
+        if not isinstance(tools_data, dict):
+            return None
+        tools: Dict[str, LDTool] = {}
+        for tool_name, tool_dict in tools_data.items():
+            if isinstance(tool_dict, dict):
+                tools[tool_name] = LDTool(
+                    name=str(tool_dict.get('name', tool_name)),
+                    description=tool_dict.get('description'),
+                    type=tool_dict.get('type'),
+                    parameters=tool_dict.get('parameters'),
+                    custom_parameters=tool_dict.get('customParameters'),
+                )
+        return tools or None
 
     model = variation.get('model')
     if not isinstance(model, dict):
@@ -84,13 +76,22 @@ def _resolve_tools(variation: Dict[str, Any]) -> Optional[Dict[str, LDTool]]:
     parameters = model.get('parameters')
     if not isinstance(parameters, dict):
         return None
-    tools_data = parameters.get('tools')
-    if not isinstance(tools_data, dict):
-        if tools_data is not None:
-            log.warning('Skipping model.parameters.tools: expected a dict, got %s', type(tools_data).__name__)
+    tools_list = parameters.get('tools')
+    if not isinstance(tools_list, list):
         return None
 
-    return _parse_tools(tools_data)
+    tools = {}
+    for item in tools_list:
+        if isinstance(item, dict) and item.get('name'):
+            tool_name = str(item['name'])
+            tools[tool_name] = LDTool(
+                name=tool_name,
+                description=item.get('description'),
+                type=item.get('type'),
+                parameters=item.get('parameters'),
+                custom_parameters=item.get('customParameters'),
+            )
+    return tools or None
 
 
 class LDAIClient:
