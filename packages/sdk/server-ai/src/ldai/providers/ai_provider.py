@@ -1,9 +1,8 @@
 from abc import ABC
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 
 from ldai import log
-from ldai.models import LDMessage
-from ldai.providers.types import ModelResponse, StructuredResponse, ToolRegistry
+from ldai.providers.types import ToolRegistry
 
 
 class AIProvider(ABC):
@@ -15,51 +14,6 @@ class AIProvider(ABC):
     responsible for constructing focused runtime capability objects via
     create_model(), create_agent(), and create_agent_graph().
     """
-
-    async def invoke_model(self, messages: List[LDMessage]) -> ModelResponse:
-        """
-        Invoke the chat model with an array of messages.
-
-        Default implementation takes no action and returns a placeholder response.
-        Provider implementations should override this method.
-
-        :param messages: Array of LDMessage objects representing the conversation
-        :return: ModelResponse containing the model's response
-        """
-        log.warning('invoke_model not implemented by this provider')
-
-        from ldai.models import LDMessage
-        from ldai.providers.types import LDAIMetrics
-
-        return ModelResponse(
-            message=LDMessage(role='assistant', content=''),
-            metrics=LDAIMetrics(success=False, usage=None),
-        )
-
-    async def invoke_structured_model(
-        self,
-        messages: List[LDMessage],
-        response_structure: Dict[str, Any],
-    ) -> StructuredResponse:
-        """
-        Invoke the chat model with structured output support.
-
-        Default implementation takes no action and returns a placeholder response.
-        Provider implementations should override this method.
-
-        :param messages: Array of LDMessage objects representing the conversation
-        :param response_structure: Dictionary of output configurations keyed by output name
-        :return: StructuredResponse containing the structured data
-        """
-        log.warning('invoke_structured_model not implemented by this provider')
-
-        from ldai.providers.types import LDAIMetrics
-
-        return StructuredResponse(
-            data={},
-            raw_response='',
-            metrics=LDAIMetrics(success=False, usage=None),
-        )
 
     def create_model(self, config: Any) -> Optional[Any]:
         """

@@ -1,6 +1,6 @@
 from typing import Any, Protocol, runtime_checkable
 
-from ldai.providers.types import AgentResult
+from ldai.providers.types import RunnerResult
 
 
 @runtime_checkable
@@ -18,11 +18,11 @@ class AgentRunner(Protocol):
     the caller just passes input.
     """
 
-    async def run(self, input: Any) -> AgentResult:
+    async def run(self, input: Any) -> RunnerResult:
         """
         Run the agent with the given input.
 
         :param input: The input to the agent (string prompt or structured input)
-        :return: AgentResult containing the output, raw response, and metrics
+        :return: RunnerResult containing the agent's content, metrics, and optional raw/parsed fields
         """
         ...
