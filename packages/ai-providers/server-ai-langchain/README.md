@@ -167,38 +167,6 @@ from ldai_langchain.langchain_helper import map_provider_name
 langchain_provider = map_provider_name("gemini")  # Returns "google-genai"
 ```
 
-## API Reference
-
-### LangChainModelRunner
-
-`LangChainModelRunner` implements the `Runner` protocol for LangChain chat models.
-
-#### Constructor
-
-```python
-LangChainModelRunner(llm: BaseChatModel)
-```
-
-#### Methods
-
-- `run(input, output_type=None) -> RunnerResult` — Run the model with a string prompt or list of `LDMessage` objects. Pass `output_type` (JSON schema dict) for structured output.
-- `get_llm() -> BaseChatModel` — Return the underlying LangChain model.
-
-### LangChainAgentRunner
-
-`LangChainAgentRunner` implements the `Runner` protocol for compiled LangChain agent graphs.
-
-#### Constructor
-
-```python
-LangChainAgentRunner(agent: Any)
-```
-
-#### Methods
-
-- `run(input, output_type=None) -> RunnerResult` — Run the agent with the given input. Returns `RunnerResult` with `content`, `metrics` (including `tool_calls`), and `raw`.
-- `get_agent() -> Any` — Return the underlying compiled agent graph.
-
 ## Documentation
 
 For full documentation, please refer to the [LaunchDarkly AI SDK documentation](https://docs.launchdarkly.com/sdk/ai/python).
