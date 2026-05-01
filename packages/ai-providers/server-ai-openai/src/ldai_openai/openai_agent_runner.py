@@ -63,7 +63,8 @@ class OpenAIAgentRunner(Runner):
             metrics including aggregated token usage and observed ``tool_calls``.
         """
         try:
-            from agents import Agent, Runner as _Runner
+            from agents import Agent
+            from agents import Runner as _Runner
         except ImportError:
             log.warning(
                 "openai-agents is required for OpenAIAgentRunner. "
