@@ -38,79 +38,68 @@ pip install langchain-google-genai
 import asyncio
 from ldclient import LDClient, Config, Context
 from ldai import init
-from ldai_langchain import LangChainProvider
+from ldai.models import AICompletionConfigDefault, ModelConfig, ProviderConfig
 
 # Initialize LaunchDarkly client
 ld_client = LDClient(Config("your-sdk-key"))
 ai_client = init(ld_client)
 
-# Get AI configuration. Pass a default for improved resiliency when the flag is unavailable or
-# LaunchDarkly is unreachable; omit for a disabled default. Example:
-#   from ldai.models import AICompletionConfigDefault, LDMessage, ModelConfig, ProviderConfig
-#   default = AICompletionConfigDefault(
-#       enabled=True,
-#       model=ModelConfig("gpt-4"),
-#       provider=ProviderConfig("openai"),
-#       messages=[LDMessage(role="system", content="You are a helpful assistant.")]
-#   )
-#   config = ai_client.config("ai-config-key", context, default)
 context = Context.builder("user-123").build()
-config = ai_client.config("ai-config-key", context)
 
 async def main():
-    # Create a LangChain provider from the AI configuration
-    provider = await LangChainProvider.create(config)
+    # Create a ManagedModel backed by the LangChain provider
+    model = await ai_client.create_model(
+        "ai-config-key",
+        context,
+        AICompletionConfigDefault(
+            enabled=True,
+            model=ModelConfig("gpt-4"),
+            provider=ProviderConfig("langchain"),
+        ),
+    )
 
-    # Use the provider to invoke the model
-    from ldai.models import LDMessage
-    messages = [
-        LDMessage(role="system", content="You are a helpful assistant."),
-        LDMessage(role="user", content="Hello, how are you?"),
-    ]
-    
-    response = await provider.invoke_model(messages)
-    print(response.message.content)
+    if model:
+        result = await model.run("Hello, how are you?")
+        print(result.content)
 
 asyncio.run(main())
 ```
 
 ## Usage
 
-### Using LangChainProvider with the Create Factory
+### Using `create_model` (recommended)
 
-The simplest way to use the LangChain provider is with the static `create` factory method, which automatically creates the appropriate LangChain model based on your LaunchDarkly AI configuration:
+The recommended entry point is `LDAIClient.create_model`, which evaluates a
+LaunchDarkly AI config flag, selects the LangChain runner automatically, and
+returns a `ManagedModel` that wraps the runner:
 
 ```python
-from ldai_langchain import LangChainProvider
+model = await ai_client.create_model("ai-config-key", context)
 
-# Create provider from AI configuration
-provider = await LangChainProvider.create(ai_config)
-
-# Invoke the model
-response = await provider.invoke_model(messages)
+if model:
+    result = await model.run("What is feature flagging?")
+    print(result.content)
 ```
 
-### Using an Existing LangChain Model
+### Using the runner directly
 
-If you already have a LangChain model configured, you can use it directly:
+If you need to construct a runner manually (e.g. for testing), you can use
+`LangChainRunnerFactory` from the `ldai_langchain` package:
 
 ```python
 from langchain_openai import ChatOpenAI
-from ldai_langchain import LangChainProvider
+from ldai_langchain import LangChainRunnerFactory
 
-# Create your own LangChain model
 llm = ChatOpenAI(model="gpt-4", temperature=0.7)
+runner = LangChainModelRunner(llm)
 
-# Wrap it with LangChainProvider
-provider = LangChainProvider(llm)
-
-# Use with LaunchDarkly tracking
-response = await provider.invoke_model(messages)
+result = await runner.run("Hello!")
+print(result.content)
 ```
 
 ### Structured Output
 
-The provider supports structured output using LangChain's `with_structured_output`:
+Pass a JSON schema dict as `output_type` to request structured output:
 
 ```python
 response_structure = {
@@ -122,57 +111,49 @@ response_structure = {
     "required": ["sentiment", "confidence"],
 }
 
-result = await provider.invoke_structured_model(messages, response_structure)
-print(result.data)  # {"sentiment": "positive", "confidence": 0.95}
+result = await runner.run(messages, output_type=response_structure)
+print(result.parsed)  # {"sentiment": "positive", "confidence": 0.95}
 ```
 
 ### Tracking Metrics
 
-Use the provider with LaunchDarkly's tracking capabilities:
+`ManagedModel.run()` automatically tracks metrics via the associated
+`LDAIConfigTracker`. For manual tracking, use the tracker directly:
 
 ```python
-# Get the AI config with tracker
-config = ai_client.config("ai-config-key", context)
+model = await ai_client.create_model("ai-config-key", context)
 
-# Create provider
-provider = await LangChainProvider.create(config)
-
-# Track metrics automatically
-async def invoke():
-    return await provider.invoke_model(messages)
-
-response = await config.tracker.track_metrics_of_async(
-    invoke,
-    lambda r: r.metrics
-)
+if model:
+    result = await model.run("Explain feature flags.")
+    # Metrics are tracked automatically; access them via result.metrics
+    print(result.metrics.usage)
 ```
 
 ### Static Utility Methods
 
-The `LangChainProvider` class provides several utility methods:
+The `ldai_langchain` helper module provides several utility functions:
 
 #### Converting Messages
 
 ```python
 from ldai.models import LDMessage
-from ldai_langchain import LangChainProvider
+from ldai_langchain.langchain_helper import convert_messages_to_langchain
 
 messages = [
     LDMessage(role="system", content="You are helpful."),
     LDMessage(role="user", content="Hello!"),
 ]
 
-# Convert to LangChain messages
-langchain_messages = LangChainProvider.convert_messages_to_langchain(messages)
+langchain_messages = convert_messages_to_langchain(messages)
 ```
 
 #### Extracting Metrics
 
 ```python
-from ldai_langchain import LangChainProvider
+from ldai_langchain.langchain_helper import get_ai_metrics_from_response
 
 # After getting a response from LangChain
-metrics = LangChainProvider.get_ai_metrics_from_response(ai_message)
+metrics = get_ai_metrics_from_response(ai_message)
 print(f"Success: {metrics.success}")
 print(f"Tokens used: {metrics.usage.total if metrics.usage else 'N/A'}")
 ```
@@ -180,33 +161,43 @@ print(f"Tokens used: {metrics.usage.total if metrics.usage else 'N/A'}")
 #### Provider Name Mapping
 
 ```python
+from ldai_langchain.langchain_helper import map_provider_name
+
 # Map LaunchDarkly provider names to LangChain provider names
-langchain_provider = LangChainProvider.map_provider("gemini")  # Returns "google-genai"
+langchain_provider = map_provider_name("gemini")  # Returns "google-genai"
 ```
 
 ## API Reference
 
-### LangChainProvider
+### LangChainModelRunner
+
+`LangChainModelRunner` implements the `Runner` protocol for LangChain chat models.
 
 #### Constructor
 
 ```python
-LangChainProvider(llm: BaseChatModel, logger: Optional[Any] = None)
+LangChainModelRunner(llm: BaseChatModel)
 ```
 
-#### Static Methods
+#### Methods
 
-- `create(ai_config: AIConfigKind, logger: Optional[Any] = None) -> LangChainProvider` - Factory method to create a provider from AI configuration
-- `convert_messages_to_langchain(messages: List[LDMessage]) -> List[BaseMessage]` - Convert LaunchDarkly messages to LangChain messages
-- `get_ai_metrics_from_response(response: AIMessage) -> LDAIMetrics` - Extract metrics from a LangChain response
-- `map_provider(ld_provider_name: str) -> str` - Map LaunchDarkly provider names to LangChain names
-- `create_langchain_model(ai_config: AIConfigKind) -> BaseChatModel` - Create a LangChain model from AI configuration
+- `run(input, output_type=None) -> RunnerResult` — Run the model with a string prompt or list of `LDMessage` objects. Pass `output_type` (JSON schema dict) for structured output.
+- `get_llm() -> BaseChatModel` — Return the underlying LangChain model.
 
-#### Instance Methods
+### LangChainAgentRunner
 
-- `invoke_model(messages: List[LDMessage]) -> ChatResponse` - Invoke the model with messages
-- `invoke_structured_model(messages: List[LDMessage], response_structure: Dict[str, Any]) -> StructuredResponse` - Invoke with structured output
-- `get_chat_model() -> BaseChatModel` - Get the underlying LangChain model
+`LangChainAgentRunner` implements the `Runner` protocol for compiled LangChain agent graphs.
+
+#### Constructor
+
+```python
+LangChainAgentRunner(agent: Any)
+```
+
+#### Methods
+
+- `run(input, output_type=None) -> RunnerResult` — Run the agent with the given input. Returns `RunnerResult` with `content`, `metrics` (including `tool_calls`), and `raw`.
+- `get_agent() -> Any` — Return the underlying compiled agent graph.
 
 ## Documentation
 
