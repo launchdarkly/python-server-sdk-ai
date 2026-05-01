@@ -144,53 +144,6 @@ print(f"Success: {metrics.success}")
 print(f"Tokens used: {metrics.usage.total if metrics.usage else 'N/A'}")
 ```
 
-## API Reference
-
-### OpenAIRunnerFactory
-
-`OpenAIRunnerFactory` is an `AIProvider` that creates runners from LaunchDarkly AI configs.
-
-#### Constructor
-
-```python
-OpenAIRunnerFactory(client: Optional[AsyncOpenAI] = None)
-```
-
-If `client` is omitted, an `AsyncOpenAI` client is created using `OPENAI_API_KEY` from the environment.
-
-#### Methods
-
-- `create_model(config) -> OpenAIModelRunner` — Create a runner for chat completions from an AI config.
-- `create_agent(config, tools=None) -> OpenAIAgentRunner` — Create a runner for an OpenAI agent (experimental).
-- `get_client() -> AsyncOpenAI` — Return the underlying `AsyncOpenAI` client.
-
-### OpenAIModelRunner
-
-`OpenAIModelRunner` implements the `Runner` protocol for OpenAI chat completions.
-
-#### Constructor
-
-```python
-OpenAIModelRunner(client: AsyncOpenAI, model_name: str, parameters: Dict[str, Any])
-```
-
-#### Methods
-
-- `run(input, output_type=None) -> RunnerResult` — Run the model with a string prompt or list of `LDMessage` objects. Pass `output_type` (JSON schema dict) for structured output.
-
-### OpenAIAgentRunner
-
-> [!CAUTION]
-> This feature is experimental and should NOT be considered ready for production use.
-> It may change or be removed without notice.
-
-`OpenAIAgentRunner` implements the `Runner` protocol using the OpenAI Agents SDK
-(`openai-agents`). Requires `pip install openai-agents`.
-
-#### Methods
-
-- `run(input, output_type=None) -> RunnerResult` — Run the agent with the given input. The tool-calling loop is handled internally. Returns `RunnerResult` with `content`, `metrics` (including `tool_calls`), and `raw`.
-
 ## Documentation
 
 For full documentation, please refer to the [LaunchDarkly AI SDK documentation](https://docs.launchdarkly.com/sdk/ai/python).
