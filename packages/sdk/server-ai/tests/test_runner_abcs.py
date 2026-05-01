@@ -1,17 +1,17 @@
 import pytest
 
-from ldai.providers import AgentGraphResult, AgentGraphRunner, AgentResult, AgentRunner, ToolRegistry
-from ldai.providers.types import LDAIMetrics
+from ldai.providers import AgentGraphResult, AgentGraphRunner, AgentRunner, ToolRegistry
+from ldai.providers.types import LDAIMetrics, RunnerResult
 
 
 # --- Concrete test doubles ---
 
 class ConcreteAgentRunner:
     async def run(self, input):
-        return AgentResult(
-            output=f"agent response to: {input}",
-            raw={"raw": input},
+        return RunnerResult(
+            content=f"agent response to: {input}",
             metrics=LDAIMetrics(success=True),
+            raw={"raw": input},
         )
 
 
@@ -39,20 +39,20 @@ def test_agent_runner_structural_check_fails_when_run_missing():
 
 
 @pytest.mark.asyncio
-async def test_agent_runner_run_returns_agent_result():
+async def test_agent_runner_run_returns_runner_result():
     runner = ConcreteAgentRunner()
     result = await runner.run("hello")
-    assert isinstance(result, AgentResult)
-    assert result.output == "agent response to: hello"
+    assert isinstance(result, RunnerResult)
+    assert result.content == "agent response to: hello"
     assert result.raw == {"raw": "hello"}
     assert result.metrics.success is True
 
 
 @pytest.mark.asyncio
-async def test_agent_result_fields():
+async def test_runner_result_fields():
     metrics = LDAIMetrics(success=True)
-    result = AgentResult(output="done", raw={"key": "val"}, metrics=metrics)
-    assert result.output == "done"
+    result = RunnerResult(content="done", metrics=metrics, raw={"key": "val"})
+    assert result.content == "done"
     assert result.raw == {"key": "val"}
     assert result.metrics is metrics
 
@@ -103,6 +103,6 @@ def test_top_level_exports():
     import ldai
     assert hasattr(ldai, 'AgentRunner')
     assert hasattr(ldai, 'AgentGraphRunner')
-    assert hasattr(ldai, 'AgentResult')
     assert hasattr(ldai, 'AgentGraphResult')
+    assert hasattr(ldai, 'RunnerResult')
     assert hasattr(ldai, 'ToolRegistry')

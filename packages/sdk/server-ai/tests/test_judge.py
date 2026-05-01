@@ -9,7 +9,7 @@ from ldclient.integrations.test_data import TestData
 from ldai.judge import Judge
 from ldai.judge.evaluation_schema_builder import EvaluationSchemaBuilder
 from ldai.models import AIJudgeConfig, AIJudgeConfigDefault, LDMessage, ModelConfig, ProviderConfig
-from ldai.providers.types import JudgeResult, LDAIMetrics, StructuredResponse
+from ldai.providers.types import JudgeResult, LDAIMetrics, RunnerResult
 from ldai.tracker import LDAIConfigTracker
 
 
@@ -40,9 +40,9 @@ def client(td: TestData) -> LDClient:
 
 @pytest.fixture
 def mock_runner():
-    """Create a mock AI provider."""
+    """Create a mock AI runner."""
     provider = MagicMock()
-    provider.invoke_structured_model = AsyncMock()
+    provider.run = AsyncMock()
     return provider
 
 
@@ -151,7 +151,7 @@ class TestJudgeEvaluate:
         assert isinstance(result, JudgeResult)
         assert result.success is False
         assert result.sampled is False
-        mock_runner.invoke_structured_model.assert_not_called()
+        mock_runner.run.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_evaluate_returns_failure_when_messages_missing(
@@ -165,23 +165,23 @@ class TestJudgeEvaluate:
         assert isinstance(result, JudgeResult)
         assert result.success is False
         assert result.sampled is False
-        mock_runner.invoke_structured_model.assert_not_called()
+        mock_runner.run.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_evaluate_success_with_valid_response(
         self, judge_config_with_key: AIJudgeConfig, tracker: LDAIConfigTracker, mock_runner
     ):
         """Evaluate should return JudgeResponse with valid evaluation."""
-        mock_response = StructuredResponse(
-            data={
+        mock_response = RunnerResult(
+            content='',
+            metrics=LDAIMetrics(success=True),
+            parsed={
                 'score': 0.85,
                 'reasoning': 'The response is highly relevant to the input.'
             },
-            raw_response='{"score": 0.85, "reasoning": "..."}',
-            metrics=LDAIMetrics(success=True)
         )
 
-        mock_runner.invoke_structured_model.return_value = mock_response
+        mock_runner.run.return_value = mock_response
         tracker.track_metrics_of_async = AsyncMock(return_value=mock_response)
 
         judge = Judge(judge_config_with_key, mock_runner)
@@ -201,15 +201,15 @@ class TestJudgeEvaluate:
         self, judge_config_with_key: AIJudgeConfig, tracker: LDAIConfigTracker, mock_runner
     ):
         """Evaluate should accept shape { score, reasoning } and key by metric."""
-        mock_response = StructuredResponse(
-            data={
+        mock_response = RunnerResult(
+            content='',
+            metrics=LDAIMetrics(success=True),
+            parsed={
                 'score': 0.9,
                 'reasoning': 'The response is accurate and complete.',
             },
-            raw_response='{"score": 0.9, "reasoning": "..."}',
-            metrics=LDAIMetrics(success=True),
         )
-        mock_runner.invoke_structured_model.return_value = mock_response
+        mock_runner.run.return_value = mock_response
         tracker.track_metrics_of_async = AsyncMock(return_value=mock_response)
 
         judge = Judge(judge_config_with_key, mock_runner)
@@ -228,13 +228,13 @@ class TestJudgeEvaluate:
         self, judge_config_with_key: AIJudgeConfig, tracker: LDAIConfigTracker, mock_runner
     ):
         """Evaluate should handle missing score/reasoning in response."""
-        mock_response = StructuredResponse(
-            data={},
-            raw_response='{}',
-            metrics=LDAIMetrics(success=True)
+        mock_response = RunnerResult(
+            content='',
+            metrics=LDAIMetrics(success=True),
+            parsed={},
         )
 
-        mock_runner.invoke_structured_model.return_value = mock_response
+        mock_runner.run.return_value = mock_response
         tracker.track_metrics_of_async = AsyncMock(return_value=mock_response)
 
         judge = Judge(judge_config_with_key, mock_runner)
@@ -250,16 +250,16 @@ class TestJudgeEvaluate:
         self, judge_config_with_key: AIJudgeConfig, tracker: LDAIConfigTracker, mock_runner
     ):
         """Evaluate should handle invalid score values."""
-        mock_response = StructuredResponse(
-            data={
+        mock_response = RunnerResult(
+            content='',
+            metrics=LDAIMetrics(success=True),
+            parsed={
                 'score': 1.5,
-                'reasoning': 'Some reasoning'
+                'reasoning': 'Some reasoning',
             },
-            raw_response='{"score": 1.5, "reasoning": "..."}',
-            metrics=LDAIMetrics(success=True)
         )
 
-        mock_runner.invoke_structured_model.return_value = mock_response
+        mock_runner.run.return_value = mock_response
         tracker.track_metrics_of_async = AsyncMock(return_value=mock_response)
 
         judge = Judge(judge_config_with_key, mock_runner)
@@ -275,13 +275,13 @@ class TestJudgeEvaluate:
         self, judge_config_with_key: AIJudgeConfig, tracker: LDAIConfigTracker, mock_runner
     ):
         """Evaluate should handle missing reasoning."""
-        mock_response = StructuredResponse(
-            data={'score': 0.8},
-            raw_response='{"score": 0.8}',
-            metrics=LDAIMetrics(success=True)
+        mock_response = RunnerResult(
+            content='',
+            metrics=LDAIMetrics(success=True),
+            parsed={'score': 0.8},
         )
 
-        mock_runner.invoke_structured_model.return_value = mock_response
+        mock_runner.run.return_value = mock_response
         tracker.track_metrics_of_async = AsyncMock(return_value=mock_response)
 
         judge = Judge(judge_config_with_key, mock_runner)
@@ -297,7 +297,7 @@ class TestJudgeEvaluate:
         self, judge_config_with_key: AIJudgeConfig, tracker: LDAIConfigTracker, mock_runner
     ):
         """Evaluate should handle exceptions gracefully."""
-        mock_runner.invoke_structured_model.side_effect = Exception("Provider error")
+        mock_runner.run.side_effect = Exception("Provider error")
         tracker.track_metrics_of_async = AsyncMock(side_effect=Exception("Provider error"))
 
         judge = Judge(judge_config_with_key, mock_runner)
@@ -320,7 +320,7 @@ class TestJudgeEvaluate:
         assert isinstance(result, JudgeResult)
         assert result.sampled is False
         assert result.success is False
-        mock_runner.invoke_structured_model.assert_not_called()
+        mock_runner.run.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_evaluate_uses_instance_sample_rate_when_arg_omitted(
@@ -357,15 +357,13 @@ class TestJudgeEvaluateMessages:
         self, judge_config_with_key: AIJudgeConfig, tracker: LDAIConfigTracker, mock_runner
     ):
         """evaluate_messages should call evaluate with constructed input/output."""
-        from ldai.providers.types import ModelResponse
-
-        mock_response = StructuredResponse(
-            data={'score': 0.9, 'reasoning': 'Very relevant'},
-            raw_response='{"score": 0.9, "reasoning": "..."}',
-            metrics=LDAIMetrics(success=True)
+        mock_response = RunnerResult(
+            content='',
+            metrics=LDAIMetrics(success=True),
+            parsed={'score': 0.9, 'reasoning': 'Very relevant'},
         )
 
-        mock_runner.invoke_structured_model.return_value = mock_response
+        mock_runner.run.return_value = mock_response
         tracker.track_metrics_of_async = AsyncMock(return_value=mock_response)
 
         judge = Judge(judge_config_with_key, mock_runner)
@@ -374,9 +372,9 @@ class TestJudgeEvaluateMessages:
             LDMessage(role='user', content='Question 1'),
             LDMessage(role='assistant', content='Answer 1'),
         ]
-        chat_response = ModelResponse(
-            message=LDMessage(role='assistant', content='Answer 2'),
-            metrics=LDAIMetrics(success=True)
+        chat_response = RunnerResult(
+            content='Answer 2',
+            metrics=LDAIMetrics(success=True),
         )
 
         result = await judge.evaluate_messages(messages, chat_response)

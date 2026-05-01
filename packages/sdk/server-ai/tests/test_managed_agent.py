@@ -6,11 +6,17 @@ from unittest.mock import AsyncMock, MagicMock
 from ldai import LDAIClient, ManagedAgent
 from ldai.managed_agent import ManagedAgent
 from ldai.models import AIAgentConfig, AIAgentConfigDefault, ModelConfig, ProviderConfig
-from ldai.providers import AgentResult
-from ldai.providers.types import LDAIMetrics
+from ldai.providers.types import LDAIMetrics, ManagedResult, RunnerResult
+from ldai.tracker import LDAIMetricSummary
 
 from ldclient import Config, Context, LDClient
 from ldclient.integrations.test_data import TestData
+
+
+def _make_summary(success: bool = True) -> LDAIMetricSummary:
+    summary = LDAIMetricSummary()
+    summary._success = success
+    return summary
 
 
 @pytest.fixture
@@ -53,30 +59,32 @@ class TestManagedAgentRun:
 
     @pytest.mark.asyncio
     async def test_run_delegates_to_agent_runner(self):
-        """Should delegate run() to the underlying AgentRunner."""
+        """Should delegate run() to the underlying AgentRunner and return ManagedResult."""
         mock_config = MagicMock(spec=AIAgentConfig)
         mock_tracker = MagicMock()
         mock_tracker.track_metrics_of_async = AsyncMock(
-            return_value=AgentResult(
-                output="Test response",
-                raw=None,
+            return_value=RunnerResult(
+                content="Test response",
                 metrics=LDAIMetrics(success=True, usage=None),
+                raw=None,
             )
         )
+        mock_tracker.get_summary = MagicMock(return_value=_make_summary(True))
         mock_config.create_tracker = MagicMock(return_value=mock_tracker)
         mock_runner = MagicMock()
         mock_runner.run = AsyncMock(
-            return_value=AgentResult(
-                output="Test response",
-                raw=None,
+            return_value=RunnerResult(
+                content="Test response",
                 metrics=LDAIMetrics(success=True, usage=None),
+                raw=None,
             )
         )
 
         agent = ManagedAgent(mock_config, mock_runner)
         result = await agent.run("Hello")
 
-        assert result.output == "Test response"
+        assert isinstance(result, ManagedResult)
+        assert result.content == "Test response"
         assert result.metrics.success is True
         mock_config.create_tracker.assert_called_once()
         mock_tracker.track_metrics_of_async.assert_called_once()
@@ -87,12 +95,13 @@ class TestManagedAgentRun:
         mock_config = MagicMock(spec=AIAgentConfig)
         fresh_tracker = MagicMock()
         fresh_tracker.track_metrics_of_async = AsyncMock(
-            return_value=AgentResult(
-                output="Fresh tracker response",
-                raw=None,
+            return_value=RunnerResult(
+                content="Fresh tracker response",
                 metrics=LDAIMetrics(success=True, usage=None),
+                raw=None,
             )
         )
+        fresh_tracker.get_summary = MagicMock(return_value=_make_summary(True))
         mock_config.create_tracker = MagicMock(return_value=fresh_tracker)
 
         mock_runner = MagicMock()
@@ -100,7 +109,8 @@ class TestManagedAgentRun:
         agent = ManagedAgent(mock_config, mock_runner)
         result = await agent.run("Hello")
 
-        assert result.output == "Fresh tracker response"
+        assert isinstance(result, ManagedResult)
+        assert result.content == "Fresh tracker response"
         mock_config.create_tracker.assert_called_once()
         fresh_tracker.track_metrics_of_async.assert_called_once()
 
@@ -152,7 +162,7 @@ class TestLDAIClientCreateAgent:
 
         mock_runner = MagicMock()
         mock_runner.run = AsyncMock(
-            return_value=AgentResult(output="Hello!", raw=None, metrics=LDAIMetrics(success=True, usage=None))
+            return_value=RunnerResult(content="Hello!", metrics=LDAIMetrics(success=True, usage=None), raw=None)
         )
 
         original = rf.RunnerFactory.create_agent

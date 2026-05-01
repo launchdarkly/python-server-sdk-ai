@@ -1,14 +1,19 @@
+from __future__ import annotations
+
 import base64
 import json
 import time
 import warnings
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Callable, Dict, Iterable, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Optional
 
 from ldclient import Context, LDClient, Result
 
 from ldai import log
+
+if TYPE_CHECKING:
+    from ldai.providers.types import LDAIMetrics
 
 
 class FeedbackKind(Enum):
@@ -41,15 +46,31 @@ class LDAIMetricSummary:
     """
 
     def __init__(self):
-        self._duration = None
-        self._success = None
-        self._feedback = None
-        self._usage = None
-        self._time_to_first_token = None
+        self._duration_ms: Optional[int] = None
+        self._success: Optional[bool] = None
+        self._feedback: Optional[Dict[str, FeedbackKind]] = None
+        self._usage: Optional[TokenUsage] = None
+        self._time_to_first_token: Optional[int] = None
+        self._tool_calls: Optional[List[str]] = None
+        self._resumption_token: Optional[str] = None
+
+    @property
+    def duration_ms(self) -> Optional[int]:
+        """Duration of the AI operation in milliseconds."""
+        return self._duration_ms
 
     @property
     def duration(self) -> Optional[int]:
-        return self._duration
+        """
+        .. deprecated::
+            Use :attr:`duration_ms` instead.
+        """
+        warnings.warn(
+            "LDAIMetricSummary.duration is deprecated. Use duration_ms instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self._duration_ms
 
     @property
     def success(self) -> Optional[bool]:
@@ -66,6 +87,20 @@ class LDAIMetricSummary:
     @property
     def time_to_first_token(self) -> Optional[int]:
         return self._time_to_first_token
+
+    @property
+    def tool_calls(self) -> Optional[List[str]]:
+        """List of tool keys that were invoked during this operation."""
+        return self._tool_calls
+
+    @property
+    def resumption_token(self) -> Optional[str]:
+        """
+        URL-safe Base64-encoded resumption token captured at tracker
+        instantiation. Useful for deferred feedback flows where a downstream
+        process needs to associate events with the original execution.
+        """
+        return self._resumption_token
 
 
 class LDAIConfigTracker:
@@ -107,8 +142,10 @@ class LDAIConfigTracker:
         self._provider_name = provider_name
         self._context = context
         self._graph_key = graph_key
-        self._summary = LDAIMetricSummary()
         self._run_id = run_id
+        self._summary = LDAIMetricSummary()
+        # Capture resumption_token immediately so it's available on the summary at instantiation.
+        self._summary._resumption_token = self.resumption_token
 
     @property
     def resumption_token(self) -> str:
@@ -200,10 +237,10 @@ class LDAIConfigTracker:
 
         :param duration: Duration in milliseconds.
         """
-        if self._summary.duration is not None:
+        if self._summary.duration_ms is not None:
             log.warning("Duration has already been tracked for this execution. %s", self.__get_track_data())
             return
-        self._summary._duration = duration
+        self._summary._duration_ms = duration
         self._ld_client.track(
             "$ld:ai:duration:total", self._context, self.__get_track_data(), duration
         )
@@ -250,20 +287,32 @@ class LDAIConfigTracker:
     def _track_from_metrics_extractor(
         self,
         result: Any,
-        metrics_extractor: Callable[[Any], Any],
-    ) -> Any:
-        metrics = metrics_extractor(result)
+        metrics_extractor: Callable[[Any], Optional[LDAIMetrics]],
+        elapsed_ms: int,
+    ) -> None:
+        metrics = None
+        try:
+            metrics = metrics_extractor(result)
+        except Exception as exc:
+            log.warning("Failed to extract metrics: %s", exc)
+
+        if metrics is None:
+            self.track_duration(elapsed_ms)
+            return
+
+        self.track_duration(metrics.duration_ms if metrics.duration_ms is not None else elapsed_ms)
         if metrics.success:
             self.track_success()
         else:
             self.track_error()
         if metrics.usage:
             self.track_tokens(metrics.usage)
-        return result
+        if metrics.tool_calls is not None:
+            self.track_tool_calls(metrics.tool_calls)
 
     def track_metrics_of(
         self,
-        metrics_extractor: Callable[[Any], Any],
+        metrics_extractor: Callable[[Any], Optional[LDAIMetrics]],
         func: Callable[[], Any],
     ) -> Any:
         """
@@ -278,6 +327,10 @@ class LDAIConfigTracker:
 
         For async operations, use :meth:`track_metrics_of_async`.
 
+        When the extracted :class:`~ldai.providers.types.LDAIMetrics` object has a
+        non-``None`` ``duration_ms`` field, that value is used as the measured duration
+        instead of the wall-clock elapsed time.
+
         :param metrics_extractor: Function that extracts LDAIMetrics from the operation result
         :param func: Synchronous callable that runs the operation
         :return: The result of the operation
@@ -291,15 +344,23 @@ class LDAIConfigTracker:
             self.track_error()
             raise err
 
-        duration = (time.perf_counter_ns() - start_ns) // 1_000_000
-        self.track_duration(duration)
-        return self._track_from_metrics_extractor(result, metrics_extractor)
+        elapsed_ms = (time.perf_counter_ns() - start_ns) // 1_000_000
+        self._track_from_metrics_extractor(result, metrics_extractor, elapsed_ms)
+        return result
 
-    async def track_metrics_of_async(self, metrics_extractor, func):
+    async def track_metrics_of_async(
+        self,
+        metrics_extractor: Callable[[Any], Optional[LDAIMetrics]],
+        func: Callable[[], Any],
+    ) -> Any:
         """
         Track metrics for an async AI operation (``func`` is awaited).
 
         Same event semantics as :meth:`track_metrics_of`.
+
+        When the extracted :class:`~ldai.providers.types.LDAIMetrics` object has a
+        non-``None`` ``duration_ms`` field, that value is used as the measured duration
+        instead of the wall-clock elapsed time.
 
         :param metrics_extractor: Function that extracts LDAIMetrics from the operation result
         :param func: Async callable or zero-arg callable that returns an awaitable when called
@@ -315,9 +376,9 @@ class LDAIConfigTracker:
             self.track_error()
             raise err
 
-        duration = (time.perf_counter_ns() - start_ns) // 1_000_000
-        self.track_duration(duration)
-        return self._track_from_metrics_extractor(result, metrics_extractor)
+        elapsed_ms = (time.perf_counter_ns() - start_ns) // 1_000_000
+        self._track_from_metrics_extractor(result, metrics_extractor, elapsed_ms)
+        return result
 
     def track_judge_result(self, judge_result: Any) -> None:
         """
@@ -363,6 +424,23 @@ class LDAIConfigTracker:
                 self.__get_track_data(),
                 1,
             )
+
+    def track_tool_calls(self, tool_calls: Iterable[str]) -> None:
+        """
+        Track the tool calls made during an AI operation.
+
+        Stores the tool call names on the summary (guarding against duplicate
+        tracking) and fires a ``$ld:ai:tool_call`` event for each tool.
+
+        :param tool_calls: Tool identifiers (e.g. from a model response).
+        """
+        if self._summary.tool_calls is not None:
+            log.warning("Tool calls have already been tracked for this execution. %s", self.__get_track_data())
+            return
+        tool_calls_list = list(tool_calls)
+        self._summary._tool_calls = tool_calls_list
+        for tool_key in tool_calls_list:
+            self.track_tool_call(tool_key)
 
     def track_success(self) -> None:
         """
@@ -498,15 +576,6 @@ class LDAIConfigTracker:
             track_data,
             1,
         )
-
-    def track_tool_calls(self, tool_keys: Iterable[str]) -> None:
-        """
-        Track multiple tool invocations for this configuration.
-
-        :param tool_keys: Tool identifiers (e.g. from a model response).
-        """
-        for tool_key in tool_keys:
-            self.track_tool_call(tool_key)
 
     def get_summary(self) -> LDAIMetricSummary:
         """

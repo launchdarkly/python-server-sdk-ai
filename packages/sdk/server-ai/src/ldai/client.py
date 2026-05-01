@@ -411,8 +411,8 @@ class LDAIClient:
             )
 
             if model:
-                response = await model.invoke("I need help with my order")
-                print(response.message.content)
+                response = await model.run("I need help with my order")
+                print(response.content)
         """
         self._client.track(_TRACK_USAGE_CREATE_MODEL, context, key, 1)
         log.debug(f"Creating managed model for key: {key}")

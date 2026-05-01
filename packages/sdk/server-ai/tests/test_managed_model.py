@@ -2,32 +2,88 @@
 
 import asyncio
 from typing import List
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from ldai.evaluator import Evaluator
 from ldai.managed_model import ManagedModel
 from ldai.models import AICompletionConfig, LDMessage, ModelConfig, ProviderConfig
-from ldai.providers.types import JudgeResult, LDAIMetrics, ModelResponse
-from ldai.tracker import LDAIConfigTracker
+from ldai.providers.types import JudgeResult, LDAIMetrics, ManagedResult, RunnerResult
+from ldai.tracker import LDAIConfigTracker, LDAIMetricSummary
 
 
 
-def _make_model_response(content: str = 'response text') -> ModelResponse:
-    return ModelResponse(
-        message=LDMessage(role='assistant', content=content),
+def _make_runner_result(content: str = 'response text') -> RunnerResult:
+    return RunnerResult(
+        content=content,
         metrics=LDAIMetrics(success=True, usage=None),
     )
 
 
-class TestManagedModelInvokeReturnsImmediately:
-    """invoke() must return before the evaluations task resolves."""
+def _make_summary() -> LDAIMetricSummary:
+    summary = LDAIMetricSummary()
+    summary._success = True
+    return summary
+
+
+def _make_config_with_tracker(evaluator: Evaluator) -> tuple[AICompletionConfig, MagicMock]:
+    """Build an AICompletionConfig with a fully-mocked tracker."""
+    mock_tracker = MagicMock(spec=LDAIConfigTracker)
+    mock_tracker.track_metrics_of_async = AsyncMock(return_value=_make_runner_result())
+    mock_tracker.get_summary = MagicMock(return_value=_make_summary())
+    config = AICompletionConfig(
+        key='test-config',
+        enabled=True,
+        create_tracker=MagicMock(return_value=mock_tracker),
+        model=ModelConfig('gpt-4'),
+        provider=ProviderConfig('openai'),
+        messages=[],
+        evaluator=evaluator,
+    )
+    return config, mock_tracker
+
+
+class TestManagedModelRunReturnsImmediately:
+    """run() must return before the evaluations task resolves."""
 
     @pytest.mark.asyncio
-    async def test_invoke_returns_before_evaluations_resolve(self):
-        """invoke() should return a ModelResponse before evaluations complete."""
-        # Set up a barrier so the evaluation coroutine doesn't complete until we release it
+    async def test_run_returns_managed_result(self):
+        """run() should return a ManagedResult with content from the runner."""
+        evaluator = MagicMock(spec=Evaluator)
+        evaluator.evaluate = MagicMock(
+            side_effect=lambda i, o: asyncio.create_task(_empty_eval())
+        )
+
+        mock_runner = MagicMock()
+        mock_runner.run = AsyncMock(return_value=_make_runner_result('hi'))
+
+        mock_tracker = MagicMock(spec=LDAIConfigTracker)
+        mock_tracker.track_metrics_of_async = AsyncMock(return_value=_make_runner_result('hi'))
+        mock_tracker.get_summary = MagicMock(return_value=_make_summary())
+        config = AICompletionConfig(
+            key='test-config',
+            enabled=True,
+            create_tracker=MagicMock(return_value=mock_tracker),
+            model=ModelConfig('gpt-4'),
+            provider=ProviderConfig('openai'),
+            messages=[],
+            evaluator=evaluator,
+        )
+
+        model = ManagedModel(config, mock_runner)
+        result = await model.run('Hello')
+
+        assert isinstance(result, ManagedResult)
+        assert result.content == 'hi'
+        assert isinstance(result.metrics, LDAIMetricSummary)
+        # Cleanup the still-pending evaluations task.
+        if result.evaluations is not None:
+            await result.evaluations
+
+    @pytest.mark.asyncio
+    async def test_run_returns_before_evaluations_resolve(self):
+        """run() should return a ManagedResult before evaluations complete."""
         barrier = asyncio.Event()
 
         async def _slow_evaluate(input_text: str, output_text: str) -> List[JudgeResult]:
@@ -40,35 +96,22 @@ class TestManagedModelInvokeReturnsImmediately:
         )
 
         mock_runner = MagicMock()
-        mock_runner.invoke_model = AsyncMock(return_value=_make_model_response())
+        mock_runner.run = AsyncMock(return_value=_make_runner_result())
 
-        mock_tracker = MagicMock(spec=LDAIConfigTracker)
-        mock_tracker.track_metrics_of_async = AsyncMock(return_value=_make_model_response())
-        config = AICompletionConfig(
-            key='test-config',
-            enabled=True,
-            create_tracker=MagicMock(return_value=mock_tracker),
-            model=ModelConfig('gpt-4'),
-            provider=ProviderConfig('openai'),
-            messages=[],
-            evaluator=evaluator,
-        )
-
+        config, _tracker = _make_config_with_tracker(evaluator)
         model = ManagedModel(config, mock_runner)
-        response = await model.invoke('Hello')
+        result = await model.run('Hello')
 
-        # invoke() returned — evaluations task should still be pending
-        assert response is not None
-        assert response.evaluations is not None
-        assert not response.evaluations.done(), "evaluations task should still be pending"
+        assert result is not None
+        assert result.evaluations is not None
+        assert not result.evaluations.done(), "evaluations task should still be pending"
 
-        # Release the barrier and let it finish cleanly
         barrier.set()
-        await response.evaluations
+        await result.evaluations
 
     @pytest.mark.asyncio
     async def test_await_evaluations_collects_results(self):
-        """await response.evaluations should return the list of JudgeResult instances."""
+        """await result.evaluations should return the list of JudgeResult instances."""
         judge_result = JudgeResult(
             judge_config_key='judge-key',
             success=True,
@@ -87,24 +130,13 @@ class TestManagedModelInvokeReturnsImmediately:
         )
 
         mock_runner = MagicMock()
-        mock_runner.invoke_model = AsyncMock(return_value=_make_model_response())
+        mock_runner.run = AsyncMock(return_value=_make_runner_result())
 
-        mock_tracker = MagicMock(spec=LDAIConfigTracker)
-        mock_tracker.track_metrics_of_async = AsyncMock(return_value=_make_model_response())
-        config = AICompletionConfig(
-            key='test-config',
-            enabled=True,
-            create_tracker=MagicMock(return_value=mock_tracker),
-            model=ModelConfig('gpt-4'),
-            provider=ProviderConfig('openai'),
-            messages=[],
-            evaluator=evaluator,
-        )
-
+        config, _tracker = _make_config_with_tracker(evaluator)
         model = ManagedModel(config, mock_runner)
-        response = await model.invoke('Hello')
+        result = await model.run('Hello')
 
-        results = await response.evaluations  # type: ignore[misc]
+        results = await result.evaluations  # type: ignore[misc]
         assert results == [judge_result]
 
     @pytest.mark.asyncio
@@ -128,30 +160,19 @@ class TestManagedModelInvokeReturnsImmediately:
         )
 
         mock_runner = MagicMock()
-        mock_runner.invoke_model = AsyncMock(return_value=_make_model_response())
+        mock_runner.run = AsyncMock(return_value=_make_runner_result())
 
-        mock_tracker = MagicMock(spec=LDAIConfigTracker)
-        mock_tracker.track_metrics_of_async = AsyncMock(return_value=_make_model_response())
+        config, mock_tracker = _make_config_with_tracker(evaluator)
         mock_tracker.track_judge_result = MagicMock()
 
-        config = AICompletionConfig(
-            key='test-config',
-            enabled=True,
-            create_tracker=MagicMock(return_value=mock_tracker),
-            model=ModelConfig('gpt-4'),
-            provider=ProviderConfig('openai'),
-            messages=[],
-            evaluator=evaluator,
-        )
-
         model = ManagedModel(config, mock_runner)
-        response = await model.invoke('Hello')
+        result = await model.run('Hello')
 
         # Tracking should NOT have fired yet (before we await evaluations)
         mock_tracker.track_judge_result.assert_not_called()
 
         # Now await the evaluations task — tracking fires inside the chain
-        await response.evaluations  # type: ignore[misc]
+        await result.evaluations  # type: ignore[misc]
 
         mock_tracker.track_judge_result.assert_called_once_with(judge_result)
 
@@ -174,25 +195,14 @@ class TestManagedModelInvokeReturnsImmediately:
         )
 
         mock_runner = MagicMock()
-        mock_runner.invoke_model = AsyncMock(return_value=_make_model_response())
+        mock_runner.run = AsyncMock(return_value=_make_runner_result())
 
-        mock_tracker = MagicMock(spec=LDAIConfigTracker)
-        mock_tracker.track_metrics_of_async = AsyncMock(return_value=_make_model_response())
+        config, mock_tracker = _make_config_with_tracker(evaluator)
         mock_tracker.track_judge_result = MagicMock()
 
-        config = AICompletionConfig(
-            key='test-config',
-            enabled=True,
-            create_tracker=MagicMock(return_value=mock_tracker),
-            model=ModelConfig('gpt-4'),
-            provider=ProviderConfig('openai'),
-            messages=[],
-            evaluator=evaluator,
-        )
-
         model = ManagedModel(config, mock_runner)
-        response = await model.invoke('Hello')
-        await response.evaluations  # type: ignore[misc]
+        result = await model.run('Hello')
+        await result.evaluations  # type: ignore[misc]
 
         mock_tracker.track_judge_result.assert_not_called()
 
@@ -202,23 +212,15 @@ class TestManagedModelInvokeReturnsImmediately:
         evaluator = Evaluator.noop()
 
         mock_runner = MagicMock()
-        mock_runner.invoke_model = AsyncMock(return_value=_make_model_response())
+        mock_runner.run = AsyncMock(return_value=_make_runner_result())
 
-        mock_tracker = MagicMock(spec=LDAIConfigTracker)
-        mock_tracker.track_metrics_of_async = AsyncMock(return_value=_make_model_response())
-
-        config = AICompletionConfig(
-            key='test-config',
-            enabled=True,
-            create_tracker=MagicMock(return_value=mock_tracker),
-            model=ModelConfig('gpt-4'),
-            provider=ProviderConfig('openai'),
-            messages=[],
-            evaluator=evaluator,
-        )
-
+        config, _tracker = _make_config_with_tracker(evaluator)
         model = ManagedModel(config, mock_runner)
-        response = await model.invoke('Hello')
-        results = await response.evaluations  # type: ignore[misc]
+        result = await model.run('Hello')
+        results = await result.evaluations  # type: ignore[misc]
 
         assert results == []
+
+
+async def _empty_eval() -> List[JudgeResult]:
+    return []
