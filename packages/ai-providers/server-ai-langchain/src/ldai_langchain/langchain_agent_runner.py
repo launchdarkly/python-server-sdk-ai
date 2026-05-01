@@ -54,11 +54,13 @@ class LangChainAgentRunner(Runner):
             })
             messages = result.get("messages", [])
             output = extract_last_message_content(messages)
+            tool_calls = _extract_tool_calls(messages)
             return RunnerResult(
                 content=output,
                 metrics=LDAIMetrics(
                     success=True,
                     usage=sum_token_usage_from_messages(messages),
+                    tool_calls=tool_calls if tool_calls else None,
                 ),
                 raw=result,
             )
@@ -72,3 +74,27 @@ class LangChainAgentRunner(Runner):
     def get_agent(self) -> Any:
         """Return the underlying compiled LangChain agent."""
         return self._agent
+
+
+def _extract_tool_calls(messages: Any) -> list:
+    """
+    Extract tool-call names from a LangChain agent's message list.
+
+    LangChain's ``AIMessage`` exposes ``.tool_calls`` as a list of dicts
+    (``{'name': ..., 'args': ..., 'id': ...}``). Some providers emit
+    OpenAI-style objects with ``.function.name`` instead; handle both shapes.
+    """
+    tool_calls: list = []
+    for msg in messages or []:
+        msg_tool_calls = getattr(msg, 'tool_calls', None)
+        if not msg_tool_calls:
+            continue
+        for tc in msg_tool_calls:
+            if isinstance(tc, dict) and 'name' in tc:
+                tool_calls.append(tc['name'])
+            else:
+                fn = getattr(tc, 'function', None)
+                name = getattr(fn, 'name', None) if fn is not None else None
+                if name:
+                    tool_calls.append(name)
+    return tool_calls

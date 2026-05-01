@@ -56,6 +56,8 @@ class LangChainModelRunner(Runner):
             return await self._run_structured(messages, output_type)
         return await self._run_completion(messages)
 
+    # convert_messages_to_langchain only accepts List[LDMessage]; _coerce_input
+    # normalizes a bare string to [LDMessage(role='user', ...)] before that step.
     @staticmethod
     def _coerce_input(input: Any) -> List[LDMessage]:
         if isinstance(input, str):
@@ -116,7 +118,13 @@ class LangChainModelRunner(Runner):
             raw_content = ''
             if raw_response is not None:
                 if hasattr(raw_response, 'content'):
-                    raw_content = raw_response.content or ''
+                    if isinstance(raw_response.content, str):
+                        raw_content = raw_response.content
+                    else:
+                        log.warning(
+                            f'Multimodal response not supported in structured mode. '
+                            f'Content type: {type(raw_response.content)}, Content: {raw_response.content}'
+                        )
                 usage = get_ai_usage_from_response(raw_response)
 
             if response.get('parsing_error'):
