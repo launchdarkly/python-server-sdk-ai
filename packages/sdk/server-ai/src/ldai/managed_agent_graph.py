@@ -33,10 +33,6 @@ class ManagedAgentGraph:
         """
         Run the agent graph with the given input.
 
-        Delegates to the underlying AgentGraphRunner, builds a
-        :class:`GraphMetricSummary` from the result, and wraps everything in a
-        :class:`ManagedGraphResult`.
-
         :param input: The input prompt or structured input for the graph
         :return: ManagedGraphResult containing the content, metric summary, raw response,
             and an optional evaluations task (currently always ``None`` for graphs —
