@@ -117,11 +117,10 @@ class Judge:
             When ``None`` (the default), falls back to ``self.sample_rate``.
         :return: The result of the judge evaluation.
         """
-        effective_rate = sampling_ratio if sampling_ratio is not None else self.sample_rate
         input_text = '\r\n'.join([msg.content for msg in messages]) if messages else ''
         output_text = response.message.content
 
-        return await self.evaluate(input_text, output_text, effective_rate)
+        return await self.evaluate(input_text, output_text, sampling_ratio)
 
     def get_ai_config(self) -> AIJudgeConfig:
         """
