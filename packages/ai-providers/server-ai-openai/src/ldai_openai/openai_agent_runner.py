@@ -134,7 +134,9 @@ class OpenAIAgentRunner(Runner):
                 if is_agent_tool_instance(tool_fn):
                     self._tool_name_map[tool_fn.name] = name
                 else:
-                    self._tool_name_map[tool_fn.__name__] = name
+                    fn_name = getattr(tool_fn, '__name__', None)
+                    if fn_name:
+                        self._tool_name_map[fn_name] = name
                 tools.append(registry_value_to_agent_tool(tool_fn))
                 continue
 
