@@ -86,8 +86,6 @@ def _resolve_tools(variation: Dict[str, Any]) -> Optional[Dict[str, LDTool]]:
         return None
     tools_data = parameters.get('tools')
     if not isinstance(tools_data, dict):
-        if tools_data is not None:
-            log.warning('Skipping model.parameters.tools: expected a dict, got %s', type(tools_data).__name__)
         return None
 
     return _parse_tools(tools_data)
