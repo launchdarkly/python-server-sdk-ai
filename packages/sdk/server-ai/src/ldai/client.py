@@ -340,7 +340,8 @@ class LDAIClient:
                 return None
 
             return Judge(judge_config, provider, sample_rate=sample_rate)
-        except Exception:
+        except Exception as e:
+            log.warning('Failed to initialize judge %r: %s', key, e)
             return None
 
     def _build_evaluator(
@@ -364,20 +365,16 @@ class LDAIClient:
             return Evaluator.noop()
         judge_instances: List[Judge] = []
         for jc in judge_configuration.judges:
-            try:
-                judge = self._create_judge_instance(
-                    jc.key,
-                    context,
-                    AIJudgeConfigDefault.disabled(),
-                    variables,
-                    default_ai_provider,
-                    sample_rate=jc.sampling_rate,
-                )
-                if judge is not None:
-                    judge_instances.append(judge)
-            except Exception as e:
-                log.warning(f'Failed to initialize judge {jc.key!r}: {e}')
-                continue
+            judge = self._create_judge_instance(
+                jc.key,
+                context,
+                AIJudgeConfigDefault.disabled(),
+                variables,
+                default_ai_provider,
+                sample_rate=jc.sampling_rate,
+            )
+            if judge is not None:
+                judge_instances.append(judge)
         return Evaluator(judge_instances)
 
     async def create_model(
