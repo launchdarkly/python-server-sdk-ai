@@ -56,7 +56,7 @@ class TestManagedModelRunReturnsImmediately:
         )
 
         mock_runner = MagicMock()
-        mock_runner.invoke_model = AsyncMock(return_value=_make_runner_result('hi'))
+        mock_runner.run = AsyncMock(return_value=_make_runner_result('hi'))
 
         mock_tracker = MagicMock(spec=LDAIConfigTracker)
         mock_tracker.track_metrics_of_async = AsyncMock(return_value=_make_runner_result('hi'))
@@ -96,7 +96,7 @@ class TestManagedModelRunReturnsImmediately:
         )
 
         mock_runner = MagicMock()
-        mock_runner.invoke_model = AsyncMock(return_value=_make_runner_result())
+        mock_runner.run = AsyncMock(return_value=_make_runner_result())
 
         config, _tracker = _make_config_with_tracker(evaluator)
         model = ManagedModel(config, mock_runner)
@@ -130,7 +130,7 @@ class TestManagedModelRunReturnsImmediately:
         )
 
         mock_runner = MagicMock()
-        mock_runner.invoke_model = AsyncMock(return_value=_make_runner_result())
+        mock_runner.run = AsyncMock(return_value=_make_runner_result())
 
         config, _tracker = _make_config_with_tracker(evaluator)
         model = ManagedModel(config, mock_runner)
@@ -160,7 +160,7 @@ class TestManagedModelRunReturnsImmediately:
         )
 
         mock_runner = MagicMock()
-        mock_runner.invoke_model = AsyncMock(return_value=_make_runner_result())
+        mock_runner.run = AsyncMock(return_value=_make_runner_result())
 
         config, mock_tracker = _make_config_with_tracker(evaluator)
         mock_tracker.track_judge_result = MagicMock()
@@ -195,7 +195,7 @@ class TestManagedModelRunReturnsImmediately:
         )
 
         mock_runner = MagicMock()
-        mock_runner.invoke_model = AsyncMock(return_value=_make_runner_result())
+        mock_runner.run = AsyncMock(return_value=_make_runner_result())
 
         config, mock_tracker = _make_config_with_tracker(evaluator)
         mock_tracker.track_judge_result = MagicMock()
@@ -212,7 +212,7 @@ class TestManagedModelRunReturnsImmediately:
         evaluator = Evaluator.noop()
 
         mock_runner = MagicMock()
-        mock_runner.invoke_model = AsyncMock(return_value=_make_runner_result())
+        mock_runner.run = AsyncMock(return_value=_make_runner_result())
 
         config, _tracker = _make_config_with_tracker(evaluator)
         model = ManagedModel(config, mock_runner)
