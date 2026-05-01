@@ -333,7 +333,7 @@ class TestJudgeEvaluate:
 
         assert isinstance(result, JudgeResult)
         assert result.sampled is False
-        mock_runner.invoke_structured_model.assert_not_called()
+        mock_runner.run.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_evaluate_arg_overrides_instance_sample_rate(
@@ -346,7 +346,7 @@ class TestJudgeEvaluate:
 
         assert isinstance(result, JudgeResult)
         assert result.sampled is False
-        mock_runner.invoke_structured_model.assert_not_called()
+        mock_runner.run.assert_not_called()
 
 
 class TestJudgeEvaluateMessages:
