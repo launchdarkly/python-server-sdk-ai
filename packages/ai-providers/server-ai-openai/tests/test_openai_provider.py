@@ -120,8 +120,8 @@ class TestGetAIMetricsFromResponse:
         assert result.usage.output == 0
 
 
-class TestInvokeModel:
-    """Tests for invoke_model instance method."""
+class TestRunCompletion:
+    """Tests for the unified run() method (chat-completion path)."""
 
     @pytest.fixture
     def mock_client(self):
@@ -144,15 +144,14 @@ class TestInvokeModel:
 
         provider = OpenAIModelRunner(mock_client, 'gpt-3.5-turbo', {})
         messages = [LDMessage(role='user', content='Hello!')]
-        result = await provider.invoke_model(messages)
+        result = await provider.run(messages)
 
         mock_client.chat.completions.create.assert_called_once_with(
             model='gpt-3.5-turbo',
             messages=[{'role': 'user', 'content': 'Hello!'}],
         )
 
-        assert result.message.role == 'assistant'
-        assert result.message.content == 'Hello! How can I help you today?'
+        assert result.content == 'Hello! How can I help you today?'
         assert result.metrics.success is True
         assert result.metrics.usage is not None
         assert result.metrics.usage.total == 25
@@ -174,10 +173,9 @@ class TestInvokeModel:
 
         provider = OpenAIModelRunner(mock_client, 'gpt-3.5-turbo', {})
         messages = [LDMessage(role='user', content='Hello!')]
-        result = await provider.invoke_model(messages)
+        result = await provider.run(messages)
 
-        assert result.message.role == 'assistant'
-        assert result.message.content == ''
+        assert result.content == ''
         assert result.metrics.success is False
 
     @pytest.mark.asyncio
@@ -193,10 +191,9 @@ class TestInvokeModel:
 
         provider = OpenAIModelRunner(mock_client, 'gpt-3.5-turbo', {})
         messages = [LDMessage(role='user', content='Hello!')]
-        result = await provider.invoke_model(messages)
+        result = await provider.run(messages)
 
-        assert result.message.role == 'assistant'
-        assert result.message.content == ''
+        assert result.content == ''
         assert result.metrics.success is False
 
     @pytest.mark.asyncio
@@ -208,15 +205,14 @@ class TestInvokeModel:
 
         provider = OpenAIModelRunner(mock_client, 'gpt-3.5-turbo', {})
         messages = [LDMessage(role='user', content='Hello!')]
-        result = await provider.invoke_model(messages)
+        result = await provider.run(messages)
 
-        assert result.message.role == 'assistant'
-        assert result.message.content == ''
+        assert result.content == ''
         assert result.metrics.success is False
 
 
-class TestInvokeStructuredModel:
-    """Tests for invoke_structured_model instance method."""
+class TestRunStructured:
+    """Tests for the unified run() method (structured-output path)."""
 
     @pytest.fixture
     def mock_client(self):
@@ -249,10 +245,10 @@ class TestInvokeStructuredModel:
             'required': ['name', 'age', 'city'],
         }
 
-        result = await provider.invoke_structured_model(messages, response_structure)
+        result = await provider.run(messages, output_type=response_structure)
 
-        assert result.data == {'name': 'John', 'age': 30, 'city': 'New York'}
-        assert result.raw_response == '{"name": "John", "age": 30, "city": "New York"}'
+        assert result.parsed == {'name': 'John', 'age': 30, 'city': 'New York'}
+        assert result.content == '{"name": "John", "age": 30, "city": "New York"}'
         assert result.metrics.success is True
         assert result.metrics.usage is not None
         assert result.metrics.usage.total == 30
@@ -276,10 +272,10 @@ class TestInvokeStructuredModel:
         messages = [LDMessage(role='user', content='Tell me about a person')]
         response_structure = {'type': 'object'}
 
-        result = await provider.invoke_structured_model(messages, response_structure)
+        result = await provider.run(messages, output_type=response_structure)
 
-        assert result.data == {}
-        assert result.raw_response == ''
+        assert result.parsed is None
+        assert result.content == ''
         assert result.metrics.success is False
 
     @pytest.mark.asyncio
@@ -300,10 +296,10 @@ class TestInvokeStructuredModel:
         messages = [LDMessage(role='user', content='Tell me about a person')]
         response_structure = {'type': 'object'}
 
-        result = await provider.invoke_structured_model(messages, response_structure)
+        result = await provider.run(messages, output_type=response_structure)
 
-        assert result.data == {}
-        assert result.raw_response == 'invalid json content'
+        assert result.parsed is None
+        assert result.content == 'invalid json content'
         assert result.metrics.success is False
         assert result.metrics.usage is not None
         assert result.metrics.usage.total == 15
@@ -319,10 +315,10 @@ class TestInvokeStructuredModel:
         messages = [LDMessage(role='user', content='Tell me about a person')]
         response_structure = {'type': 'object'}
 
-        result = await provider.invoke_structured_model(messages, response_structure)
+        result = await provider.run(messages, output_type=response_structure)
 
-        assert result.data == {}
-        assert result.raw_response == ''
+        assert result.parsed is None
+        assert result.content == ''
         assert result.metrics.success is False
 
 
@@ -465,19 +461,20 @@ class TestOpenAIAgentRunner:
 
     @pytest.mark.asyncio
     async def test_runs_agent_and_returns_result_with_no_tool_calls(self):
-        """Should return AgentResult when Runner.run returns a final output."""
+        """Should return RunnerResult when Runner.run returns a final output."""
         import sys
 
         from ldai_openai import OpenAIAgentRunner
 
         mock_run_result = self._make_run_result("The answer is 42.", total=15, input_tokens=10, output_tokens=5)
+        mock_run_result.new_items = []
         agents_mock, tc_mock = _make_agents_mock(AsyncMock(return_value=mock_run_result))
 
         runner = OpenAIAgentRunner('gpt-4', {}, 'You are helpful.', [], {})
         with patch.dict(sys.modules, {'agents': agents_mock, 'agents.tool_context': tc_mock}):
             result = await runner.run("What is the answer?")
 
-        assert result.output == "The answer is 42."
+        assert result.content == "The answer is 42."
         assert result.metrics.success is True
         assert result.metrics.usage is not None
         assert result.metrics.usage.total == 15
@@ -490,6 +487,7 @@ class TestOpenAIAgentRunner:
         from ldai_openai import OpenAIAgentRunner
 
         mock_run_result = self._make_run_result("It is sunny in Paris.", total=43, input_tokens=30, output_tokens=13)
+        mock_run_result.new_items = []
         agents_mock, tc_mock = _make_agents_mock(AsyncMock(return_value=mock_run_result))
 
         weather_fn = MagicMock(return_value="Sunny, 25°C")
@@ -501,13 +499,13 @@ class TestOpenAIAgentRunner:
         with patch.dict(sys.modules, {'agents': agents_mock, 'agents.tool_context': tc_mock}):
             result = await runner.run("What is the weather in Paris?")
 
-        assert result.output == "It is sunny in Paris."
+        assert result.content == "It is sunny in Paris."
         assert result.metrics.success is True
         assert result.metrics.usage.total == 43
 
     @pytest.mark.asyncio
     async def test_returns_failure_when_exception_thrown(self):
-        """Should return unsuccessful AgentResult when Runner.run raises."""
+        """Should return unsuccessful RunnerResult when Runner.run raises."""
         import sys
 
         from ldai_openai import OpenAIAgentRunner
@@ -518,12 +516,12 @@ class TestOpenAIAgentRunner:
         with patch.dict(sys.modules, {'agents': agents_mock, 'agents.tool_context': tc_mock}):
             result = await runner.run("Hello")
 
-        assert result.output == ""
+        assert result.content == ""
         assert result.metrics.success is False
 
     @pytest.mark.asyncio
     async def test_returns_failure_when_openai_agents_not_installed(self):
-        """Should return unsuccessful AgentResult when openai-agents is not installed."""
+        """Should return unsuccessful RunnerResult when openai-agents is not installed."""
         import sys
 
         from ldai_openai import OpenAIAgentRunner
@@ -532,5 +530,5 @@ class TestOpenAIAgentRunner:
         with patch.dict(sys.modules, {'agents': None}):
             result = await runner.run("Hello")
 
-        assert result.output == ""
+        assert result.content == ""
         assert result.metrics.success is False

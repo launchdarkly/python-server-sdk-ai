@@ -1,9 +1,9 @@
 import json
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from ldai import LDMessage, log
-from ldai.providers.model_runner import ModelRunner
-from ldai.providers.types import LDAIMetrics, ModelResponse, StructuredResponse
+from ldai.providers.runner import Runner
+from ldai.providers.types import LDAIMetrics, RunnerResult
 from openai import AsyncOpenAI
 
 from ldai_openai.openai_helper import (
@@ -12,12 +12,15 @@ from ldai_openai.openai_helper import (
 )
 
 
-class OpenAIModelRunner(ModelRunner):
+class OpenAIModelRunner(Runner):
     """
-    ModelRunner implementation for OpenAI.
+    Runner implementation for OpenAI chat completions.
 
     Holds a fully-configured AsyncOpenAI client, model name, and parameters.
-    Returned by OpenAIConnector.create_model(config).
+    Returned by ``OpenAIRunnerFactory.create_model(config)``.
+
+    Implements the unified :class:`~ldai.providers.runner.Runner` protocol via
+    :meth:`run`.
     """
 
     def __init__(
@@ -30,13 +33,42 @@ class OpenAIModelRunner(ModelRunner):
         self._model_name = model_name
         self._parameters = parameters
 
-    async def invoke_model(self, messages: List[LDMessage]) -> ModelResponse:
+    async def run(
+        self,
+        input: Any,
+        output_type: Optional[Dict[str, Any]] = None,
+    ) -> RunnerResult:
         """
-        Invoke the OpenAI model with an array of messages.
+        Run the OpenAI model with the given input.
 
-        :param messages: Array of LDMessage objects representing the conversation
-        :return: ModelResponse containing the model's response and metrics
+        :param input: A string prompt or a list of :class:`LDMessage` objects
+        :param output_type: Optional JSON schema dict requesting structured output.
+            When provided, ``parsed`` on the returned :class:`RunnerResult` is
+            populated with the parsed JSON document.
+        :return: :class:`RunnerResult` containing ``content``, ``metrics``,
+            ``raw`` and (when ``output_type`` is set) ``parsed``.
         """
+        try:
+            messages = self._coerce_input(input)
+        except TypeError as error:
+            log.warning(f'OpenAI model runner received unsupported input type: {error}')
+            return RunnerResult(content='', metrics=LDAIMetrics(success=False, usage=None))
+
+        if output_type is not None:
+            return await self._run_structured(messages, output_type)
+        return await self._run_completion(messages)
+
+    @staticmethod
+    def _coerce_input(input: Any) -> List[LDMessage]:
+        if isinstance(input, str):
+            return [LDMessage(role='user', content=input)]
+        if isinstance(input, list):
+            return input
+        raise TypeError(
+            f"Unsupported input type for OpenAIModelRunner.run: {type(input).__name__}"
+        )
+
+    async def _run_completion(self, messages: List[LDMessage]) -> RunnerResult:
         try:
             response = await self._client.chat.completions.create(
                 model=self._model_name,
@@ -45,40 +77,29 @@ class OpenAIModelRunner(ModelRunner):
             )
 
             metrics = get_ai_metrics_from_response(response)
-
-            content = ''
-            if response.choices and len(response.choices) > 0:
-                message = response.choices[0].message
-                if message and message.content:
-                    content = message.content
+            content = self._extract_content(response)
 
             if not content:
                 log.warning('OpenAI response has no content available')
-                metrics = LDAIMetrics(success=False, usage=metrics.usage)
+                return RunnerResult(
+                    content='',
+                    metrics=LDAIMetrics(success=False, usage=metrics.usage),
+                    raw=response,
+                )
 
-            return ModelResponse(
-                message=LDMessage(role='assistant', content=content),
-                metrics=metrics,
-            )
+            return RunnerResult(content=content, metrics=metrics, raw=response)
         except Exception as error:
             log.warning(f'OpenAI model invocation failed: {error}')
-            return ModelResponse(
-                message=LDMessage(role='assistant', content=''),
+            return RunnerResult(
+                content='',
                 metrics=LDAIMetrics(success=False, usage=None),
             )
 
-    async def invoke_structured_model(
+    async def _run_structured(
         self,
         messages: List[LDMessage],
-        response_structure: Dict[str, Any],
-    ) -> StructuredResponse:
-        """
-        Invoke the OpenAI model with structured output support.
-
-        :param messages: Array of LDMessage objects representing the conversation
-        :param response_structure: Dictionary defining the JSON schema for output structure
-        :return: StructuredResponse containing the structured data
-        """
+        output_type: Dict[str, Any],
+    ) -> RunnerResult:
         try:
             response = await self._client.chat.completions.create(
                 model=self._model_name,
@@ -87,7 +108,7 @@ class OpenAIModelRunner(ModelRunner):
                     'type': 'json_schema',
                     'json_schema': {
                         'name': 'structured_output',
-                        'schema': response_structure,
+                        'schema': output_type,
                         'strict': True,
                     },
                 },
@@ -95,35 +116,42 @@ class OpenAIModelRunner(ModelRunner):
             )
 
             metrics = get_ai_metrics_from_response(response)
-
-            content = ''
-            if response.choices and len(response.choices) > 0:
-                message = response.choices[0].message
-                if message and message.content:
-                    content = message.content
+            content = self._extract_content(response)
 
             if not content:
                 log.warning('OpenAI structured response has no content available')
-                return StructuredResponse(
-                    data={},
-                    raw_response='',
+                return RunnerResult(
+                    content='',
                     metrics=LDAIMetrics(success=False, usage=metrics.usage),
+                    raw=response,
                 )
 
             try:
-                data = json.loads(content)
-                return StructuredResponse(data=data, raw_response=content, metrics=metrics)
+                parsed = json.loads(content)
+                return RunnerResult(
+                    content=content,
+                    metrics=metrics,
+                    raw=response,
+                    parsed=parsed,
+                )
             except json.JSONDecodeError as parse_error:
                 log.warning(f'OpenAI structured response contains invalid JSON: {parse_error}')
-                return StructuredResponse(
-                    data={},
-                    raw_response=content,
+                return RunnerResult(
+                    content=content,
                     metrics=LDAIMetrics(success=False, usage=metrics.usage),
+                    raw=response,
                 )
         except Exception as error:
             log.warning(f'OpenAI structured model invocation failed: {error}')
-            return StructuredResponse(
-                data={},
-                raw_response='',
+            return RunnerResult(
+                content='',
                 metrics=LDAIMetrics(success=False, usage=None),
             )
+
+    @staticmethod
+    def _extract_content(response: Any) -> str:
+        if response.choices and len(response.choices) > 0:
+            message = response.choices[0].message
+            if message and message.content:
+                return message.content
+        return ''
