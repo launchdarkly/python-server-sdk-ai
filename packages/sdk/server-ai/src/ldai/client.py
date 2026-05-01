@@ -306,14 +306,24 @@ class LDAIClient:
                         print('Relevance score:', relevance_eval.score)
         """
         self._client.track(_TRACK_USAGE_CREATE_JUDGE, context, key, 1)
+        return self._create_judge_instance(key, context, default, variables, default_ai_provider)
 
+    def _create_judge_instance(
+        self,
+        key: str,
+        context: Context,
+        default: Optional[AIJudgeConfigDefault] = None,
+        variables: Optional[Dict[str, Any]] = None,
+        default_ai_provider: Optional[str] = None,
+        sample_rate: float = 1.0,
+    ) -> Optional[Judge]:
+        """
+        Construct a Judge for ``key`` without emitting the public create-judge usage event.
+
+        Used both by the public :meth:`create_judge` and by :meth:`_build_evaluator`
+        when materializing judges referenced by an AI config's judge configuration.
+        """
         try:
-            if variables:
-                if 'message_history' in variables:
-                    pass
-                if 'response_to_evaluate' in variables:
-                    pass
-
             extended_variables = dict(variables) if variables else {}
             extended_variables['message_history'] = '{{message_history}}'
             extended_variables['response_to_evaluate'] = '{{response_to_evaluate}}'
@@ -329,44 +339,10 @@ class LDAIClient:
             if not provider:
                 return None
 
-            return Judge(judge_config, provider)
-        except Exception as error:
+            return Judge(judge_config, provider, sample_rate=sample_rate)
+        except Exception as e:
+            log.warning('Failed to initialize judge %r: %s', key, e)
             return None
-
-    def _initialize_judges(
-        self,
-        judge_configs: List[JudgeConfiguration.Judge],
-        context: Context,
-        variables: Optional[Dict[str, Any]] = None,
-        default_ai_provider: Optional[str] = None,
-    ) -> Dict[str, Judge]:
-        """
-        Initialize judges from judge configurations.
-
-        :param judge_configs: List of judge configurations
-        :param context: Standard Context used when evaluating flags
-        :param variables: Dictionary of values for instruction interpolation
-        :param default_ai_provider: Optional default AI provider to use
-        :return: Dictionary of judge instances keyed by their configuration keys
-        """
-        judges: Dict[str, Judge] = {}
-
-        for judge_config in judge_configs:
-            try:
-                judge = self.create_judge(
-                    judge_config.key,
-                    context,
-                    AIJudgeConfigDefault.disabled(),
-                    variables,
-                    default_ai_provider,
-                )
-                if judge:
-                    judges[judge_config.key] = judge
-            except Exception as e:
-                log.warning(f'Failed to initialize judge {judge_config.key!r}: {e}')
-                continue
-
-        return judges
 
     def _build_evaluator(
         self,
@@ -387,11 +363,19 @@ class LDAIClient:
         """
         if not judge_configuration or not judge_configuration.judges:
             return Evaluator.noop()
-        judges = self._initialize_judges(
-            judge_configuration.judges, context, default_ai_provider=default_ai_provider,
-            variables=variables,
-        )
-        return Evaluator(judges, judge_configuration)
+        judge_instances: List[Judge] = []
+        for jc in judge_configuration.judges:
+            judge = self._create_judge_instance(
+                jc.key,
+                context,
+                AIJudgeConfigDefault.disabled(),
+                variables,
+                default_ai_provider,
+                sample_rate=jc.sampling_rate,
+            )
+            if judge is not None:
+                judge_instances.append(judge)
+        return Evaluator(judge_instances)
 
     async def create_model(
         self,
