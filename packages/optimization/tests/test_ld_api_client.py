@@ -65,10 +65,16 @@ class TestParseAgentOptimization:
 
     def test_optional_fields_not_required(self):
         config = _make_config()
-        # groundTruthResponses and metricKey are optional — should not raise
+        # groundTruthResponses, metricKey, and variationKey are optional — should not raise
         assert "groundTruthResponses" not in config
         assert "metricKey" not in config
+        assert "variationKey" not in config
         _parse_agent_optimization(config)  # must not raise
+
+    def test_variation_key_passes_through_when_present(self):
+        config = _make_config(variationKey="my-base-variation")
+        result = _parse_agent_optimization(config)
+        assert result.get("variationKey") == "my-base-variation"
 
     def test_raises_on_non_dict_input(self):
         with pytest.raises(ValueError, match="Expected a JSON object"):
@@ -369,3 +375,70 @@ class TestLDApiClientRetry:
                 result = client._request("GET", "/path")
         assert result == {"result": "ok"}
         assert mock_open.call_count == 2
+
+
+# ---------------------------------------------------------------------------
+# LDApiClient.get_ai_config_variation
+# ---------------------------------------------------------------------------
+
+
+class TestGetAiConfigVariation:
+    _VARIATION = {
+        "key": "my-variation",
+        "name": "My Variation",
+        "instructions": "You are a helpful assistant.",
+        "modelConfigKey": "OpenAI.gpt-4o",
+        "tools": [{"key": "search-tool", "version": 1}],
+    }
+
+    def test_requests_correct_path(self):
+        client = LDApiClient("test-key")
+        response = {"items": [self._VARIATION], "totalCount": 1}
+        with patch("urllib.request.urlopen", return_value=_mock_urlopen(response)) as mock_open:
+            client.get_ai_config_variation("my-project", "my-agent", "my-variation")
+            req: urllib.request.Request = mock_open.call_args[0][0]
+            assert (
+                "/api/v2/projects/my-project/ai-configs/my-agent/variations/my-variation"
+                in req.full_url
+            )
+
+    def test_sends_ld_api_version_header(self):
+        client = LDApiClient("test-key")
+        response = {"items": [self._VARIATION], "totalCount": 1}
+        with patch("urllib.request.urlopen", return_value=_mock_urlopen(response)) as mock_open:
+            client.get_ai_config_variation("my-project", "my-agent", "my-variation")
+            req: urllib.request.Request = mock_open.call_args[0][0]
+            assert req.get_header("Ld-api-version") == "beta"
+
+    def test_returns_first_item_from_response(self):
+        client = LDApiClient("test-key")
+        second_variation = {**self._VARIATION, "name": "Older version"}
+        response = {"items": [self._VARIATION, second_variation], "totalCount": 2}
+        with patch("urllib.request.urlopen", return_value=_mock_urlopen(response)):
+            result = client.get_ai_config_variation("my-project", "my-agent", "my-variation")
+        assert result["name"] == "My Variation"
+        assert result["instructions"] == "You are a helpful assistant."
+        assert result["modelConfigKey"] == "OpenAI.gpt-4o"
+
+    def test_raises_ld_api_error_when_items_is_empty(self):
+        client = LDApiClient("test-key")
+        response = {"items": [], "totalCount": 0}
+        with patch("urllib.request.urlopen", return_value=_mock_urlopen(response)):
+            with pytest.raises(LDApiError, match="not found"):
+                client.get_ai_config_variation("my-project", "my-agent", "missing-variation")
+
+    def test_raises_ld_api_error_when_response_has_no_items_key(self):
+        client = LDApiClient("test-key")
+        with patch("urllib.request.urlopen", return_value=_mock_urlopen({})):
+            with pytest.raises(LDApiError, match="not found"):
+                client.get_ai_config_variation("my-project", "my-agent", "missing-variation")
+
+    def test_raises_ld_api_error_on_http_404(self):
+        client = LDApiClient("test-key")
+        http_error = urllib.error.HTTPError(
+            url="http://x", code=404, msg="Not Found", hdrs=MagicMock(), fp=BytesIO(b"not found")
+        )
+        with patch("urllib.request.urlopen", side_effect=http_error):
+            with pytest.raises(LDApiError) as exc_info:
+                client.get_ai_config_variation("my-project", "my-agent", "bad-key")
+        assert exc_info.value.status_code == 404
