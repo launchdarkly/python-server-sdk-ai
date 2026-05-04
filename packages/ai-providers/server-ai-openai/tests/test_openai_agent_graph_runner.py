@@ -5,7 +5,8 @@ from unittest.mock import MagicMock, AsyncMock, patch
 
 from ldai.agent_graph import AgentGraphDefinition
 from ldai.models import AIAgentGraphConfig, AIAgentConfig, Edge, ModelConfig, ProviderConfig
-from ldai.providers import AgentGraphResult, ToolRegistry
+from ldai.providers import ToolRegistry
+from ldai.providers.types import AgentGraphRunnerResult, GraphMetrics
 from ldai_openai.openai_agent_graph_runner import OpenAIAgentGraphRunner
 from ldai_openai.openai_runner_factory import OpenAIRunnerFactory
 from ldai.evaluator import Evaluator
@@ -13,10 +14,8 @@ from ldai.evaluator import Evaluator
 
 def _make_graph(enabled: bool = True) -> AgentGraphDefinition:
     """Build a minimal single-node AgentGraphDefinition for testing."""
-    node_tracker = MagicMock()
-    graph_tracker = MagicMock()
-    node_factory = MagicMock(return_value=node_tracker)
-    graph_factory = MagicMock(return_value=graph_tracker)
+    node_factory = MagicMock()
+    graph_factory = MagicMock()
     root_config = AIAgentConfig(
         key='root-agent',
         enabled=enabled,
@@ -73,41 +72,44 @@ def test_openai_agent_graph_runner_stores_graph_and_tools():
 
 @pytest.mark.asyncio
 async def test_openai_agent_graph_runner_run_raises_when_agents_not_installed():
+    """Import failure returns AgentGraphRunnerResult with success=False."""
     graph = _make_graph()
     runner = OpenAIAgentGraphRunner(graph, {})
 
     with patch.dict('sys.modules', {'agents': None}):
-        # The import inside run() will fail — runner should return failure result
-        # rather than propagate the ImportError, since it's caught by the except block
         result = await runner.run("test input")
-        assert isinstance(result, AgentGraphResult)
+        assert isinstance(result, AgentGraphRunnerResult)
         assert result.metrics.success is False
 
 
 @pytest.mark.asyncio
-async def test_openai_agent_graph_runner_run_tracks_invocation_failure_on_exception():
+async def test_openai_agent_graph_runner_run_failure_returns_metrics():
+    """On import failure, returned GraphMetrics has success=False (no tracker needed)."""
     graph = _make_graph()
-    tracker = graph.create_tracker.return_value
     runner = OpenAIAgentGraphRunner(graph, {})
 
     with patch.dict('sys.modules', {'agents': None}):
         result = await runner.run("fail")
 
+    assert isinstance(result, AgentGraphRunnerResult)
     assert result.metrics.success is False
-    tracker.track_invocation_failure.assert_called_once()
-    tracker.track_duration.assert_called_once()
+    assert result.metrics.duration_ms is not None
+    # Runner no longer calls graph tracker — graph.create_tracker should NOT be called
+    graph.create_tracker.assert_not_called()
 
 
 @pytest.mark.asyncio
 async def test_openai_agent_graph_runner_run_success():
+    """Successful run returns AgentGraphRunnerResult with populated GraphMetrics."""
     graph = _make_graph()
-    tracker = graph.create_tracker.return_value
 
     mock_result = MagicMock()
     mock_result.final_output = "agent answer"
-    mock_result.context_wrapper.usage.total_tokens = 0
-    mock_result.context_wrapper.usage.input_tokens = 0
-    mock_result.context_wrapper.usage.output_tokens = 0
+    mock_result.new_items = []
+    mock_result.context_wrapper.usage.total_tokens = 10
+    mock_result.context_wrapper.usage.input_tokens = 5
+    mock_result.context_wrapper.usage.output_tokens = 5
+    mock_result.context_wrapper.usage.request_usage_entries = []
 
     mock_runner_module = MagicMock()
     mock_runner_module.run = AsyncMock(return_value=mock_result)
@@ -135,28 +137,19 @@ async def test_openai_agent_graph_runner_run_success():
         runner = OpenAIAgentGraphRunner(graph, {})
         result = await runner.run("find restaurants")
 
-    assert isinstance(result, AgentGraphResult)
-    assert result.output == "agent answer"
+    assert isinstance(result, AgentGraphRunnerResult)
+    assert result.content == "agent answer"
+    assert isinstance(result.metrics, GraphMetrics)
     assert result.metrics.success is True
-    tracker.track_invocation_success.assert_called_once()
-    tracker.track_path.assert_called_once()
-    tracker.track_duration.assert_called_once()
+    assert result.metrics.duration_ms is not None
+    assert 'root-agent' in result.metrics.path
 
-    # The runner caches one tracker per node — verify it is the same instance
-    # returned by create_tracker() and that all tracking calls hit it.
+    # Runner no longer creates or calls the graph tracker
+    graph.create_tracker.assert_not_called()
+
+    # Runner no longer creates per-node LDAIConfigTracker instances
     node_factory = graph.get_node('root-agent').get_config().create_tracker
+    node_factory.assert_not_called()
 
-    # The runner caches one tracker per node — verify it is the same instance
-    # returned by create_tracker and that all tracking calls hit it.
-    cached = runner._node_trackers['root-agent']
-    assert cached is node_factory.return_value
-    cached.track_duration.assert_called_once()
-    cached.track_tokens.assert_called_once()
-    cached.track_success.assert_called_once()
-
-    # Graph-level create_tracker is called exactly once per run (not twice)
-    # so that handoff callbacks and run() share the same tracker instance.
-    graph.create_tracker.assert_called_once()
-
-    # Node-level create_tracker is called exactly once per node.
-    node_factory.assert_called_once()
+    # Runner accumulates per-node metrics in _node_accumulators
+    assert 'root-agent' in runner._node_accumulators

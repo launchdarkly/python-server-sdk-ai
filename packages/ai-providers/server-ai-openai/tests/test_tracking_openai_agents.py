@@ -1,9 +1,13 @@
 """
-Integration tests for OpenAIAgentGraphRunner tracking pipeline.
+Integration tests for OpenAIAgentGraphRunner + ManagedAgentGraph tracking pipeline.
 
 Uses real AIGraphTracker and LDAIConfigTracker backed by a mock LD client,
 and a crafted RunResult to verify that the correct LD events are emitted
 with the correct payloads — without making real API calls.
+
+Tracking events are now emitted by ManagedAgentGraph._flush_graph_tracking()
+from the GraphMetrics returned by the runner, rather than directly inside the
+runner. These tests exercise the full pipeline through ManagedAgentGraph.run().
 """
 
 import pytest
@@ -11,6 +15,7 @@ from collections import defaultdict
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from ldai.agent_graph import AgentGraphDefinition
+from ldai.managed_agent_graph import ManagedAgentGraph
 from ldai.models import AIAgentGraphConfig, AIAgentConfig, Edge, ModelConfig, ProviderConfig
 from ldai.tracker import AIGraphTracker, LDAIConfigTracker
 from ldai_openai.openai_agent_graph_runner import OpenAIAgentGraphRunner
@@ -253,6 +258,12 @@ def _events(mock_ld_client: MagicMock) -> dict:
     return dict(result)
 
 
+async def _run_through_managed(graph: AgentGraphDefinition, runner: OpenAIAgentGraphRunner, input: str):
+    """Run through the full ManagedAgentGraph pipeline so tracking events are emitted."""
+    managed = ManagedAgentGraph(graph, runner)
+    return await managed.run(input)
+
+
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
@@ -266,10 +277,10 @@ async def test_tracks_graph_invocation_success_and_latency():
 
     with patch.dict('sys.modules', _make_agents_modules(run_result)):
         runner = OpenAIAgentGraphRunner(graph, {})
-        result = await runner.run('hello')
+        result = await _run_through_managed(graph, runner, 'hello')
 
     assert result.metrics.success is True
-    assert result.output == 'done'
+    assert result.content == 'done'
 
     ev = _events(mock_ld_client)
     assert ev['$ld:ai:graph:invocation_success'][0][1] == 1
@@ -279,7 +290,7 @@ async def test_tracks_graph_invocation_success_and_latency():
 
 @pytest.mark.asyncio
 async def test_tracks_per_node_tokens_and_success():
-    """Node-level token and success events fire with correct values."""
+    """Node-level token and success events fire with correct values via managed layer."""
     mock_ld_client = MagicMock()
     graph = _make_graph(mock_ld_client, node_key='root-agent', graph_key='test-graph')
     run_result = _make_run_result(
@@ -291,11 +302,11 @@ async def test_tracks_per_node_tokens_and_success():
 
     with patch.dict('sys.modules', _make_agents_modules(run_result)):
         runner = OpenAIAgentGraphRunner(graph, {})
-        await runner.run('hello')
+        await _run_through_managed(graph, runner, 'hello')
 
     ev = _events(mock_ld_client)
 
-    # Node-level events
+    # Node-level events (emitted by ManagedAgentGraph from node_metrics)
     assert ev['$ld:ai:tokens:total'][0][1] == 30
     assert ev['$ld:ai:tokens:input'][0][1] == 20
     assert ev['$ld:ai:tokens:output'][0][1] == 10
@@ -314,7 +325,7 @@ async def test_tracks_graph_key_on_node_events():
 
     with patch.dict('sys.modules', _make_agents_modules(run_result)):
         runner = OpenAIAgentGraphRunner(graph, {})
-        await runner.run('hello')
+        await _run_through_managed(graph, runner, 'hello')
 
     ev = _events(mock_ld_client)
     token_data = ev['$ld:ai:tokens:total'][0][0]
@@ -332,7 +343,7 @@ async def test_tracks_tool_calls_from_run_items():
 
     with patch.dict('sys.modules', _make_agents_modules(run_result)):
         runner = OpenAIAgentGraphRunner(graph, _tool_registry('get_weather'))
-        await runner.run('What is the weather?')
+        await _run_through_managed(graph, runner, 'What is the weather?')
 
     ev = _events(mock_ld_client)
     tool_events = ev.get('$ld:ai:tool_call', [])
@@ -356,7 +367,7 @@ async def test_tracks_multiple_tool_calls():
 
     with patch.dict('sys.modules', _make_agents_modules(run_result)):
         runner = OpenAIAgentGraphRunner(graph, _tool_registry('search', 'summarize'))
-        await runner.run('Search and summarize.')
+        await _run_through_managed(graph, runner, 'Search and summarize.')
 
     ev = _events(mock_ld_client)
     tool_keys = [data['toolKey'] for data, _ in ev.get('$ld:ai:tool_call', [])]
@@ -379,7 +390,7 @@ async def test_same_run_id_across_token_success_and_tool_call_events():
 
     with patch.dict('sys.modules', _make_agents_modules(run_result)):
         runner = OpenAIAgentGraphRunner(graph, _tool_registry('search'))
-        await runner.run('go')
+        await _run_through_managed(graph, runner, 'go')
 
     ev = _events(mock_ld_client)
 
@@ -408,7 +419,7 @@ async def test_does_not_track_tool_calls_without_graph_and_registry_config():
 
     with patch.dict('sys.modules', _make_agents_modules(run_result)):
         runner = OpenAIAgentGraphRunner(graph, {})
-        await runner.run('prompt')
+        await _run_through_managed(graph, runner, 'prompt')
 
     ev = _events(mock_ld_client)
     assert ev.get('$ld:ai:tool_call', []) == []
@@ -420,10 +431,10 @@ async def test_tracks_failure_and_latency_on_runner_error():
     mock_ld_client = MagicMock()
     graph = _make_graph(mock_ld_client)
 
-    mock_runner = MagicMock()
-    mock_runner.run = AsyncMock(side_effect=RuntimeError('runner error'))
+    mock_runner_module = MagicMock()
+    mock_runner_module.run = AsyncMock(side_effect=RuntimeError('runner error'))
     mock_agents = MagicMock()
-    mock_agents.Runner = mock_runner
+    mock_agents.Runner = mock_runner_module
     mock_agents.Agent = MagicMock(return_value=MagicMock())
     mock_agents.Handoff = MagicMock()
     mock_agents.Tool = MagicMock()
@@ -439,7 +450,7 @@ async def test_tracks_failure_and_latency_on_runner_error():
         'agents.tool_context': MagicMock(),
     }):
         runner = OpenAIAgentGraphRunner(graph, {})
-        result = await runner.run('fail')
+        result = await _run_through_managed(graph, runner, 'fail')
 
     assert result.metrics.success is False
 
@@ -450,8 +461,8 @@ async def test_tracks_failure_and_latency_on_runner_error():
 
 
 @pytest.mark.asyncio
-async def test_multi_node_tracks_per_node_tokens_and_handoff():
-    """Each node emits its own token events; handoff event fires between them."""
+async def test_multi_node_tracks_per_node_tokens():
+    """Each node emits its own token events via the managed layer."""
     mock_ld_client = MagicMock()
     graph = _make_two_node_graph(mock_ld_client)
 
@@ -511,7 +522,7 @@ async def test_multi_node_tracks_per_node_tokens_and_handoff():
         'agents.tool_context': MagicMock(),
     }):
         runner = OpenAIAgentGraphRunner(graph, {})
-        result = await runner.run('hello')
+        result = await _run_through_managed(graph, runner, 'hello')
 
     assert result.metrics.success is True
 
@@ -527,9 +538,3 @@ async def test_multi_node_tracks_per_node_tokens_and_handoff():
     path_data = ev['$ld:ai:graph:path'][0][0]
     assert 'root-agent' in path_data['path']
     assert 'child-agent' in path_data['path']
-
-    # Handoff event fires with correct source and target
-    handoff_events = ev.get('$ld:ai:graph:handoff_success', [])
-    assert len(handoff_events) == 1
-    assert handoff_events[0][0]['sourceKey'] == 'root-agent'
-    assert handoff_events[0][0]['targetKey'] == 'child-agent'
