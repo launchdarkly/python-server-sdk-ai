@@ -6,7 +6,6 @@ import asyncio
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional
 
-from ldai.models import LDMessage
 from ldai.tracker import LDAIMetricSummary, TokenUsage
 
 # Type alias for a registry of tools available to an agent.
@@ -85,33 +84,6 @@ class ManagedResult:
 
     evaluations: Optional[asyncio.Task[List[JudgeResult]]] = None
     """Optional asyncio Task that resolves to the list of :class:`JudgeResult` instances when awaited."""
-
-
-@dataclass
-class ModelResponse:
-    """
-    Response from a model invocation.
-
-    .. deprecated::
-        Use :class:`RunnerResult` (from a runner) and :class:`ManagedResult`
-        (from the managed layer) instead.
-    """
-    message: LDMessage
-    metrics: LDAIMetrics
-    evaluations: Optional[asyncio.Task[List[JudgeResult]]] = None
-
-
-@dataclass
-class StructuredResponse:
-    """
-    Structured response from AI models.
-
-    .. deprecated::
-        Structured output is now represented by :attr:`RunnerResult.parsed`.
-    """
-    data: Dict[str, Any]
-    raw_response: str
-    metrics: LDAIMetrics
 
 
 @dataclass
@@ -232,20 +204,6 @@ class JudgeResult:
         if self.error_message is not None:
             result['errorMessage'] = self.error_message
         return result
-
-
-@dataclass
-class AgentResult:
-    """
-    Result from a single-agent run.
-
-    .. deprecated::
-        Use :class:`ManagedResult` (managed layer) or :class:`RunnerResult`
-        (runner layer) instead.
-    """
-    output: str
-    raw: Any
-    metrics: LDAIMetrics
 
 
 @dataclass

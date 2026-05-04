@@ -4,7 +4,7 @@ from typing import List
 from ldai import log
 from ldai.models import AICompletionConfig, LDMessage
 from ldai.providers.runner import Runner
-from ldai.providers.types import JudgeResult, ManagedResult
+from ldai.providers.types import JudgeResult, ManagedResult, RunnerResult
 from ldai.tracker import LDAIConfigTracker
 
 
@@ -46,7 +46,7 @@ class ManagedModel:
         config_messages = self._ai_config.messages or []
         all_messages = config_messages + self._messages
 
-        result = await tracker.track_metrics_of_async(
+        result: RunnerResult = await tracker.track_metrics_of_async(
             lambda r: r.metrics,
             lambda: self._model_runner.run(all_messages),
         )
