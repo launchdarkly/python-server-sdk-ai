@@ -1,12 +1,11 @@
 import re
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from ldai import log
 from ldai.agent_graph import AgentGraphDefinition, AgentGraphNode
 from ldai.providers import AgentGraphRunner, ToolRegistry
 from ldai.providers.types import AgentGraphRunnerResult, GraphMetrics, LDAIMetrics
-from ldai.tracker import TokenUsage
 
 from ldai_openai.openai_helper import (
     extract_usage_from_request_entry,
@@ -20,34 +19,6 @@ from ldai_openai.openai_helper import (
 def _sanitize_agent_name(key: str) -> str:
     """Replace characters invalid for OpenAI function names with underscores."""
     return re.sub(r'[^a-zA-Z0-9_]', '_', key)
-
-
-class _NodeMetricsAccumulator:
-    """Mutable per-node metrics collected during a run (replaces LDAIConfigTracker)."""
-
-    def __init__(self) -> None:
-        self.usage: Optional[TokenUsage] = None
-        self.duration_ms: Optional[int] = None
-        self.tool_calls: List[str] = []
-        self.success: bool = True
-
-    def set_usage(self, usage: Optional[TokenUsage]) -> None:
-        if usage is not None:
-            self.usage = usage
-
-    def set_duration_ms(self, duration_ms: int) -> None:
-        self.duration_ms = duration_ms
-
-    def add_tool_call(self, tool_name: str) -> None:
-        self.tool_calls.append(tool_name)
-
-    def to_ldai_metrics(self) -> LDAIMetrics:
-        return LDAIMetrics(
-            success=self.success,
-            usage=self.usage,
-            duration_ms=self.duration_ms,
-            tool_calls=self.tool_calls if self.tool_calls else None,
-        )
 
 
 class _RunState:
@@ -90,7 +61,7 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
         self._tools = tools
         self._agent_name_map: Dict[str, str] = {}
         self._tool_name_map: Dict[str, str] = {}
-        self._node_accumulators: Dict[str, _NodeMetricsAccumulator] = {}
+        self._node_metrics: Dict[str, LDAIMetrics] = {}
 
     async def run(self, input: Any) -> AgentGraphRunnerResult:
         """
@@ -122,11 +93,6 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
             duration_ms = (time.perf_counter_ns() - start_ns) // 1_000_000
             token_usage = get_ai_usage_from_response(result)
 
-            node_metrics = {
-                key: acc.to_ldai_metrics()
-                for key, acc in self._node_accumulators.items()
-            }
-
             return AgentGraphRunnerResult(
                 content=str(result.final_output),
                 raw=result,
@@ -135,7 +101,7 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
                     path=path,
                     duration_ms=duration_ms,
                     usage=token_usage,
-                    node_metrics=node_metrics,
+                    node_metrics=self._node_metrics,
                 ),
             )
         except Exception as exc:
@@ -185,12 +151,12 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
 
         name_map: Dict[str, str] = {}
         tool_name_map: Dict[str, str] = {}
-        node_accumulators: Dict[str, _NodeMetricsAccumulator] = {}
+        node_metrics: Dict[str, LDAIMetrics] = {}
 
         def build_node(node: AgentGraphNode, ctx: dict) -> Any:
             node_config = node.get_config()
-            acc = _NodeMetricsAccumulator()
-            node_accumulators[node_config.key] = acc
+            metrics = LDAIMetrics(success=True)
+            node_metrics[node_config.key] = metrics
             model = node_config.model
 
             if not model:
@@ -211,7 +177,7 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
                             node_config.key,
                             target_key,
                             path,
-                            acc,
+                            metrics,
                             state,
                         ),
                     )
@@ -245,7 +211,7 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
         root = self._graph.reverse_traverse(fn=build_node)
         self._agent_name_map = name_map
         self._tool_name_map = tool_name_map
-        self._node_accumulators = node_accumulators
+        self._node_metrics = node_metrics
         return root
 
     def _make_on_handoff(
@@ -253,11 +219,11 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
         src: str,
         tgt: str,
         path: List[str],
-        acc: _NodeMetricsAccumulator,
+        metrics: LDAIMetrics,
         state: _RunState,
     ):
         def on_handoff(run_ctx: Any) -> None:
-            self._handle_handoff(run_ctx, src, tgt, path, acc, state)
+            self._handle_handoff(run_ctx, src, tgt, path, metrics, state)
         return on_handoff
 
     def _handle_handoff(
@@ -266,7 +232,7 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
         src: str,
         tgt: str,
         path: List[str],
-        acc: _NodeMetricsAccumulator,
+        metrics: LDAIMetrics,
         state: _RunState,
     ) -> None:
         path.append(tgt)
@@ -276,38 +242,32 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
         duration_ms = (now_ns - state.last_handoff_ns) // 1_000_000
         state.last_handoff_ns = now_ns
 
-        usage: Optional[TokenUsage] = None
         try:
-            usage = extract_usage_from_request_entry(
+            metrics.usage = extract_usage_from_request_entry(
                 run_ctx.usage.request_usage_entries[-1]
             )
         except Exception:
             pass
 
-        acc.set_usage(usage)
-        acc.set_duration_ms(int(duration_ms))
+        metrics.duration_ms = int(duration_ms)
 
     def _flush_final_segment(self, state: _RunState, result: Any) -> None:
         """Record duration/tokens for the last active agent (no handoff after it)."""
         if not state.last_node_key:
             return
-        acc = self._node_accumulators.get(state.last_node_key)
-        if acc is None:
+        metrics = self._node_metrics.get(state.last_node_key)
+        if metrics is None:
             return
 
         now_ns = time.perf_counter_ns()
-        duration_ms = (now_ns - state.last_handoff_ns) // 1_000_000
+        metrics.duration_ms = int((now_ns - state.last_handoff_ns) // 1_000_000)
 
-        usage: Optional[TokenUsage] = None
         try:
-            usage = extract_usage_from_request_entry(
+            metrics.usage = extract_usage_from_request_entry(
                 result.context_wrapper.usage.request_usage_entries[-1]
             )
         except Exception:
             pass
-
-        acc.set_usage(usage)
-        acc.set_duration_ms(int(duration_ms))
 
     def _collect_tool_calls(self, result: Any) -> None:
         """Collect all tool calls from the run result, attributed to the node that called them."""
@@ -316,6 +276,9 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
             tool_name = self._tool_name_map.get(tool_fn_name)
             if tool_name is None:
                 continue
-            acc = self._node_accumulators.get(agent_key)
-            if acc is not None:
-                acc.add_tool_call(tool_name)
+            metrics = self._node_metrics.get(agent_key)
+            if metrics is not None:
+                if metrics.tool_calls is None:
+                    metrics.tool_calls = [tool_name]
+                else:
+                    metrics.tool_calls.append(tool_name)

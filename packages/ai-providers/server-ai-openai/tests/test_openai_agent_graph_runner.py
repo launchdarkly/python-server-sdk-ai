@@ -151,5 +151,5 @@ async def test_openai_agent_graph_runner_run_success():
     node_factory = graph.get_node('root-agent').get_config().create_tracker
     node_factory.assert_not_called()
 
-    # Runner accumulates per-node metrics in _node_accumulators
-    assert 'root-agent' in runner._node_accumulators
+    # Runner accumulates per-node metrics in _node_metrics
+    assert 'root-agent' in runner._node_metrics
