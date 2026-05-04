@@ -2,6 +2,15 @@
 
 All notable changes to the LaunchDarkly Python AI LangChain provider package will be documented in this file. This project adheres to [Semantic Versioning](http://semver.org).
 
+## [0.6.0](https://github.com/launchdarkly/python-server-sdk-ai/compare/launchdarkly-server-sdk-ai-langchain-0.5.0...launchdarkly-server-sdk-ai-langchain-0.6.0) (2026-05-04)
+
+
+### Features
+
+* Add judge evaluation support to agent graphs ([#142](https://github.com/launchdarkly/python-server-sdk-ai/issues/142)) ([3d5a6a9](https://github.com/launchdarkly/python-server-sdk-ai/commit/3d5a6a91a87c7475a83a7e440cd4b71337cfd56f))
+* Migrate LangGraph runner to AgentGraphRunnerResult; clean up legacy shape detection ([#156](https://github.com/launchdarkly/python-server-sdk-ai/issues/156)) ([efa8e00](https://github.com/launchdarkly/python-server-sdk-ai/commit/efa8e00103d3870d379167769ae38f438b019ec4))
+* Update LangChain runners to implement Runner protocol returning RunnerResult ([#150](https://github.com/launchdarkly/python-server-sdk-ai/issues/150)) ([62a8e25](https://github.com/launchdarkly/python-server-sdk-ai/commit/62a8e252f4389884fa2f6a90e325db4a8f79376a))
+
 ## [0.5.0](https://github.com/launchdarkly/python-server-sdk-ai/compare/launchdarkly-server-sdk-ai-langchain-0.4.1...launchdarkly-server-sdk-ai-langchain-0.5.0) (2026-04-21)
 
 
