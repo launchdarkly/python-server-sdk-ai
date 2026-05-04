@@ -1,11 +1,11 @@
 from time import sleep
-from unittest.mock import ANY, MagicMock, call
+from unittest.mock import ANY, AsyncMock, MagicMock, call
 
 import pytest
 from ldclient import Config, Context, LDClient
 from ldclient.integrations.test_data import TestData
 
-from ldai.providers.types import LDAIMetrics
+from ldai.providers.types import GraphMetrics, GraphMetricSummary, LDAIMetrics
 from ldai.tracker import AIGraphTracker, FeedbackKind, LDAIConfigTracker, TokenUsage
 
 
@@ -585,6 +585,219 @@ def test_ai_graph_tracker_track_total_tokens_tracks_when_positive(client: LDClie
         {"variationKey": "variation-key", "graphKey": "graph-key", "version": 2},
         42,
     )
+
+
+# --- AIGraphTracker get_summary tests ---
+
+
+def test_ai_graph_tracker_summary_starts_empty(client: LDClient):
+    context = Context.create("user-key")
+    g = AIGraphTracker(client, "variation-key", "graph-key", 2, context)
+    s = g.get_summary()
+    assert isinstance(s, GraphMetricSummary)
+    assert s.success is None
+    assert s.duration_ms is None
+    assert s.usage is None
+    assert s.path == []
+
+
+def test_ai_graph_tracker_summary_populated_by_tracking(client: LDClient):
+    context = Context.create("user-key")
+    g = AIGraphTracker(client, "variation-key", "graph-key", 2, context)
+    g.track_invocation_success()
+    g.track_duration(123)
+    g.track_path(["a", "b", "c"])
+    g.track_total_tokens(TokenUsage(50, 30, 20))
+
+    s = g.get_summary()
+    assert s.success is True
+    assert s.duration_ms == 123
+    assert s.path == ["a", "b", "c"]
+    assert s.usage is not None
+    assert s.usage.total == 50
+
+
+def test_ai_graph_tracker_summary_reflects_failure(client: LDClient):
+    context = Context.create("user-key")
+    g = AIGraphTracker(client, "variation-key", "graph-key", 2, context)
+    g.track_invocation_failure()
+    assert g.get_summary().success is False
+
+
+# --- AIGraphTracker at-most-once guard tests ---
+
+
+def test_ai_graph_tracker_duplicate_duration_is_ignored(client: LDClient):
+    context = Context.create("user-key")
+    g = AIGraphTracker(client, "variation-key", "graph-key", 2, context)
+    g.track_duration(100)
+    g.track_duration(200)
+    assert client.track.call_count == 1  # type: ignore
+    assert g.get_summary().duration_ms == 100
+
+
+def test_ai_graph_tracker_duplicate_success_is_ignored(client: LDClient):
+    context = Context.create("user-key")
+    g = AIGraphTracker(client, "variation-key", "graph-key", 2, context)
+    g.track_invocation_success()
+    g.track_invocation_failure()
+    success_calls = [c for c in client.track.mock_calls if c.args[0] == "$ld:ai:graph:invocation_success"]  # type: ignore
+    failure_calls = [c for c in client.track.mock_calls if c.args[0] == "$ld:ai:graph:invocation_failure"]  # type: ignore
+    assert len(success_calls) == 1
+    assert len(failure_calls) == 0
+    assert g.get_summary().success is True
+
+
+def test_ai_graph_tracker_duplicate_path_is_ignored(client: LDClient):
+    context = Context.create("user-key")
+    g = AIGraphTracker(client, "variation-key", "graph-key", 2, context)
+    g.track_path(["a", "b"])
+    g.track_path(["x", "y", "z"])
+    path_calls = [c for c in client.track.mock_calls if c.args[0] == "$ld:ai:graph:path"]  # type: ignore
+    assert len(path_calls) == 1
+    assert g.get_summary().path == ["a", "b"]
+
+
+def test_ai_graph_tracker_duplicate_tokens_is_ignored(client: LDClient):
+    context = Context.create("user-key")
+    g = AIGraphTracker(client, "variation-key", "graph-key", 2, context)
+    g.track_total_tokens(TokenUsage(10, 6, 4))
+    g.track_total_tokens(TokenUsage(99, 50, 49))
+    token_calls = [c for c in client.track.mock_calls if c.args[0] == "$ld:ai:graph:total_tokens"]  # type: ignore
+    assert len(token_calls) == 1
+    assert g.get_summary().usage.total == 10  # type: ignore
+
+
+# --- track_graph_metrics_of / track_graph_metrics_of_async tests ---
+
+_graph_td = {"variationKey": "variation-key", "graphKey": "graph-key", "version": 2}
+
+
+def test_track_graph_metrics_of_tracks_success(client: LDClient):
+    context = Context.create("user-key")
+    g = AIGraphTracker(client, "variation-key", "graph-key", 2, context)
+
+    result_obj = "done"
+    metrics = GraphMetrics(
+        success=True,
+        path=["a", "b"],
+        duration_ms=100,
+        usage=TokenUsage(10, 6, 4),
+    )
+
+    returned = g.track_graph_metrics_of(lambda r: metrics, lambda: result_obj)
+    assert returned == "done"
+
+    calls = client.track.mock_calls  # type: ignore
+    assert any(c.args[0] == "$ld:ai:graph:invocation_success" for c in calls)
+    assert not any(c.args[0] == "$ld:ai:graph:invocation_failure" for c in calls)
+    assert any(c.args[0] == "$ld:ai:graph:duration:total" and c.args[3] == 100 for c in calls)
+    assert any(c.args[0] == "$ld:ai:graph:path" for c in calls)
+    assert any(c.args[0] == "$ld:ai:graph:total_tokens" and c.args[3] == 10 for c in calls)
+
+
+def test_track_graph_metrics_of_tracks_failure(client: LDClient):
+    context = Context.create("user-key")
+    g = AIGraphTracker(client, "variation-key", "graph-key", 2, context)
+
+    metrics = GraphMetrics(success=False, duration_ms=5)
+
+    g.track_graph_metrics_of(lambda r: metrics, lambda: "done")
+
+    calls = client.track.mock_calls  # type: ignore
+    assert any(c.args[0] == "$ld:ai:graph:invocation_failure" for c in calls)
+    assert not any(c.args[0] == "$ld:ai:graph:invocation_success" for c in calls)
+
+
+def test_track_graph_metrics_of_uses_wallclock_when_no_duration_ms(client: LDClient):
+    context = Context.create("user-key")
+    g = AIGraphTracker(client, "variation-key", "graph-key", 2, context)
+
+    metrics = GraphMetrics(success=True, duration_ms=None)
+
+    g.track_graph_metrics_of(lambda r: metrics, lambda: "done")
+
+    calls = client.track.mock_calls  # type: ignore
+    duration_calls = [c for c in calls if c.args[0] == "$ld:ai:graph:duration:total"]
+    assert len(duration_calls) == 1
+    assert duration_calls[0].args[3] >= 0
+
+
+def test_track_graph_metrics_of_exception_tracks_failure_and_reraises(client: LDClient):
+    context = Context.create("user-key")
+    g = AIGraphTracker(client, "variation-key", "graph-key", 2, context)
+
+    with pytest.raises(ValueError, match="boom"):
+        g.track_graph_metrics_of(lambda r: None, lambda: (_ for _ in ()).throw(ValueError("boom")))
+
+    calls = client.track.mock_calls  # type: ignore
+    assert any(c.args[0] == "$ld:ai:graph:invocation_failure" for c in calls)
+    assert any(c.args[0] == "$ld:ai:graph:duration:total" for c in calls)
+
+
+def test_track_graph_metrics_of_handles_none_from_extractor(client: LDClient):
+    context = Context.create("user-key")
+    g = AIGraphTracker(client, "variation-key", "graph-key", 2, context)
+
+    g.track_graph_metrics_of(lambda r: None, lambda: "done")
+
+    calls = client.track.mock_calls  # type: ignore
+    assert any(c.args[0] == "$ld:ai:graph:duration:total" for c in calls)
+    assert not any(c.args[0] == "$ld:ai:graph:invocation_success" for c in calls)
+    assert not any(c.args[0] == "$ld:ai:graph:invocation_failure" for c in calls)
+
+
+def test_track_graph_metrics_of_skips_empty_path(client: LDClient):
+    context = Context.create("user-key")
+    g = AIGraphTracker(client, "variation-key", "graph-key", 2, context)
+
+    metrics = GraphMetrics(success=True)
+
+    g.track_graph_metrics_of(lambda r: metrics, lambda: "done")
+
+    calls = client.track.mock_calls  # type: ignore
+    assert not any(c.args[0] == "$ld:ai:graph:path" for c in calls)
+
+
+@pytest.mark.asyncio
+async def test_track_graph_metrics_of_async_tracks_success(client: LDClient):
+    context = Context.create("user-key")
+    g = AIGraphTracker(client, "variation-key", "graph-key", 2, context)
+
+    metrics = GraphMetrics(
+        success=True,
+        path=["x", "y"],
+        duration_ms=50,
+        usage=TokenUsage(20, 12, 8),
+    )
+
+    async def fn():
+        return "async done"
+
+    returned = await g.track_graph_metrics_of_async(lambda r: metrics, fn)
+    assert returned == "async done"
+
+    calls = client.track.mock_calls  # type: ignore
+    assert any(c.args[0] == "$ld:ai:graph:invocation_success" for c in calls)
+    assert any(c.args[0] == "$ld:ai:graph:duration:total" and c.args[3] == 50 for c in calls)
+    assert any(c.args[0] == "$ld:ai:graph:path" for c in calls)
+    assert any(c.args[0] == "$ld:ai:graph:total_tokens" and c.args[3] == 20 for c in calls)
+
+
+@pytest.mark.asyncio
+async def test_track_graph_metrics_of_async_exception_tracks_failure_and_reraises(client: LDClient):
+    context = Context.create("user-key")
+    g = AIGraphTracker(client, "variation-key", "graph-key", 2, context)
+
+    async def fn():
+        raise RuntimeError("async boom")
+
+    with pytest.raises(RuntimeError, match="async boom"):
+        await g.track_graph_metrics_of_async(lambda r: None, fn)
+
+    calls = client.track.mock_calls  # type: ignore
+    assert any(c.args[0] == "$ld:ai:graph:invocation_failure" for c in calls)
+    assert any(c.args[0] == "$ld:ai:graph:duration:total" for c in calls)
 
 
 # --- At-most-once guard tests ---

@@ -5,8 +5,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from ldclient import Config, Context, LDClient
 from ldclient.integrations.test_data import TestData
 
-from ldai import LDAIClient, ManagedAgentGraph, ManagedGraphResult
-from ldai.providers.types import AgentGraphRunnerResult, GraphMetrics, LDAIMetrics
+from ldai import LDAIClient, LDAIMetricSummary, ManagedAgentGraph, ManagedGraphResult
+from ldai.providers.types import AgentGraphRunnerResult, GraphMetrics, GraphMetricSummary, LDAIMetrics
 from ldai.providers import AgentGraphRunner, ToolRegistry
 from ldai.tracker import TokenUsage
 
@@ -58,12 +58,29 @@ class StubRunnerWithMetrics(AgentGraphRunner):
 
 # --- ManagedAgentGraph unit tests ---
 
+def _make_graph_tracker_mock(runner_result):
+    """Create a mock graph tracker whose track_graph_metrics_of_async returns runner_result."""
+    m = runner_result.metrics
+    summary = GraphMetricSummary(
+        success=m.success,
+        path=list(m.path),
+        duration_ms=m.duration_ms,
+        usage=m.usage,
+    )
+    mock_tracker = MagicMock()
+    mock_tracker.track_graph_metrics_of_async = AsyncMock(return_value=runner_result)
+    mock_tracker.get_summary = MagicMock(return_value=summary)
+    return mock_tracker
+
+
 @pytest.mark.asyncio
 async def test_managed_agent_graph_run_delegates_to_runner():
     """Runner result content is surfaced correctly."""
     runner = StubAgentGraphRunner("hello world")
+    runner_result = await runner.run("test input")
+
     mock_graph = MagicMock()
-    mock_graph.create_tracker = MagicMock(return_value=MagicMock())
+    mock_graph.create_tracker = MagicMock(return_value=_make_graph_tracker_mock(runner_result))
     mock_graph.get_node = MagicMock(return_value=None)
     managed = ManagedAgentGraph(mock_graph, runner)
     result = await managed.run("test input")
@@ -83,10 +100,11 @@ def test_managed_agent_graph_get_runner():
 async def test_managed_agent_graph_run_surfaces_graph_metrics():
     """GraphMetrics fields are reflected in GraphMetricSummary."""
     runner = StubRunnerWithMetrics("final answer")
+    runner_result = await runner.run("test input")
+
     mock_graph = MagicMock()
-    mock_tracker = MagicMock()
-    mock_graph.create_tracker = MagicMock(return_value=mock_tracker)
-    mock_graph.get_node = MagicMock(return_value=None)  # no nodes for this test
+    mock_graph.create_tracker = MagicMock(return_value=_make_graph_tracker_mock(runner_result))
+    mock_graph.get_node = MagicMock(return_value=None)
 
     managed = ManagedAgentGraph(mock_graph, runner)
     result = await managed.run("test input")
@@ -102,32 +120,39 @@ async def test_managed_agent_graph_run_surfaces_graph_metrics():
 
 @pytest.mark.asyncio
 async def test_managed_agent_graph_drives_graph_level_tracking():
-    """Managed layer calls graph tracker methods from result.metrics."""
+    """Managed layer delegates graph-level tracking to track_graph_metrics_of_async."""
     runner = StubRunnerWithMetrics()
+    runner_result = await runner.run("test input")
+
     mock_graph = MagicMock()
-    mock_tracker = MagicMock()
+    mock_tracker = _make_graph_tracker_mock(runner_result)
     mock_graph.create_tracker = MagicMock(return_value=mock_tracker)
     mock_graph.get_node = MagicMock(return_value=None)
 
     managed = ManagedAgentGraph(mock_graph, runner)
     await managed.run("test input")
 
-    mock_tracker.track_path.assert_called_once_with(["root", "specialist"])
-    mock_tracker.track_duration.assert_called_once_with(42)
-    mock_tracker.track_invocation_success.assert_called_once()
-    mock_tracker.track_total_tokens.assert_called_once()
+    mock_tracker.track_graph_metrics_of_async.assert_called_once()
+
+
+def _make_node_tracker_mock():
+    """Create a mock node tracker with a real LDAIMetricSummary from get_summary."""
+    tracker = MagicMock()
+    tracker.get_summary = MagicMock(return_value=LDAIMetricSummary())
+    return tracker
 
 
 @pytest.mark.asyncio
 async def test_managed_agent_graph_drives_per_node_tracking():
     """Managed layer creates per-node trackers and fires node-level events."""
     runner = StubRunnerWithMetrics()
-    mock_graph = MagicMock()
-    mock_graph_tracker = MagicMock()
-    mock_graph.create_tracker = MagicMock(return_value=mock_graph_tracker)
+    runner_result = await runner.run("test input")
 
-    root_tracker = MagicMock()
-    specialist_tracker = MagicMock()
+    mock_graph = MagicMock()
+    mock_graph.create_tracker = MagicMock(return_value=_make_graph_tracker_mock(runner_result))
+
+    root_tracker = _make_node_tracker_mock()
+    specialist_tracker = _make_node_tracker_mock()
 
     root_node = MagicMock()
     root_node.get_config.return_value.create_tracker = MagicMock(return_value=root_tracker)
@@ -140,7 +165,7 @@ async def test_managed_agent_graph_drives_per_node_tracking():
     mock_graph.get_node = get_node
 
     managed = ManagedAgentGraph(mock_graph, runner)
-    await managed.run("test input")
+    result = await managed.run("test input")
 
     # root node tracking
     root_tracker.track_tokens.assert_called_once()
@@ -152,14 +177,21 @@ async def test_managed_agent_graph_drives_per_node_tracking():
     specialist_tracker.track_duration.assert_called_once_with(22)
     specialist_tracker.track_success.assert_called_once()
 
+    # node_metrics on the summary are LDAIMetricSummary instances
+    assert "root" in result.metrics.node_metrics
+    assert "specialist" in result.metrics.node_metrics
+    assert isinstance(result.metrics.node_metrics["root"], LDAIMetricSummary)
+    assert isinstance(result.metrics.node_metrics["specialist"], LDAIMetricSummary)
+
 
 @pytest.mark.asyncio
 async def test_managed_agent_graph_run_succeeds_with_graph():
     """Run succeeds and returns correct content when graph is provided."""
     runner = StubRunnerWithMetrics()
+    runner_result = await runner.run("test input")
+
     mock_graph = MagicMock()
-    mock_tracker = MagicMock()
-    mock_graph.create_tracker = MagicMock(return_value=mock_tracker)
+    mock_graph.create_tracker = MagicMock(return_value=_make_graph_tracker_mock(runner_result))
     mock_graph.get_node = MagicMock(return_value=None)
     managed = ManagedAgentGraph(mock_graph, runner)
     result = await managed.run("test input")
@@ -168,8 +200,8 @@ async def test_managed_agent_graph_run_succeeds_with_graph():
 
 
 @pytest.mark.asyncio
-async def test_managed_agent_graph_failure_calls_track_invocation_failure():
-    """On a failed run, track_invocation_failure is called instead of success."""
+async def test_managed_agent_graph_failure_calls_track_graph_metrics():
+    """On a failed run, track_graph_metrics_of_async is still called."""
 
     class FailingRunner(AgentGraphRunner):
         async def run(self, input) -> AgentGraphRunnerResult:
@@ -179,17 +211,19 @@ async def test_managed_agent_graph_failure_calls_track_invocation_failure():
                 metrics=GraphMetrics(success=False, duration_ms=5),
             )
 
+    failing_runner = FailingRunner()
+    runner_result = await failing_runner.run("test input")
+
     mock_graph = MagicMock()
-    mock_tracker = MagicMock()
+    mock_tracker = _make_graph_tracker_mock(runner_result)
     mock_graph.create_tracker = MagicMock(return_value=mock_tracker)
     mock_graph.get_node = MagicMock(return_value=None)
 
-    managed = ManagedAgentGraph(mock_graph, FailingRunner())
+    managed = ManagedAgentGraph(mock_graph, failing_runner)
     result = await managed.run("test input")
 
     assert result.metrics.success is False
-    mock_tracker.track_invocation_failure.assert_called_once()
-    mock_tracker.track_invocation_success.assert_not_called()
+    mock_tracker.track_graph_metrics_of_async.assert_called_once()
 
 
 # --- LDAIClient.create_agent_graph() integration tests ---

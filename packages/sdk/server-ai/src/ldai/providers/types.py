@@ -110,8 +110,8 @@ class GraphMetrics:
 class GraphMetricSummary:
     """Contains a summary of metrics for an agent graph run."""
 
-    success: bool
-    """Whether the graph run succeeded."""
+    success: Optional[bool] = None
+    """Whether the graph run succeeded. Absent if invocation status has not been tracked."""
 
     path: List[str] = field(default_factory=list)
     """Ordered list of node keys visited during the run."""
@@ -122,8 +122,8 @@ class GraphMetricSummary:
     usage: Optional[TokenUsage] = None
     """Optional aggregate token usage information across all nodes in the graph run."""
 
-    node_metrics: Dict[str, LDAIMetrics] = field(default_factory=dict)
-    """Per-node metrics keyed by node key."""
+    node_metrics: Dict[str, LDAIMetricSummary] = field(default_factory=dict)
+    """Per-node metric summaries keyed by node key."""
 
     resumption_token: Optional[str] = None
     """Optional resumption token from the graph tracker for cross-process resumption."""
