@@ -184,3 +184,43 @@ async def test_openai_agent_graph_runner_run_success():
     # Runner accumulates per-node metrics in _node_metrics
     assert 'root-agent' in runner._node_metrics
     assert runner._node_metrics['root-agent'].success is True
+
+
+@pytest.mark.asyncio
+async def test_openai_agent_graph_runner_run_resets_node_metrics_between_runs():
+    """Successive runs do not leak stale node metrics from a previous run."""
+    graph = _make_graph()
+
+    mock_result = MagicMock()
+    mock_result.final_output = "answer"
+    mock_result.new_items = []
+    mock_result.context_wrapper.usage.request_usage_entries = []
+
+    mock_agents = MagicMock()
+    mock_agents.Runner.run = AsyncMock(
+        side_effect=[RuntimeError("boom"), mock_result]
+    )
+    mock_agents.Agent = MagicMock(return_value=MagicMock())
+    mock_agents.Handoff = MagicMock()
+    mock_agents.handoff = MagicMock()
+
+    mock_agents_ext = MagicMock()
+    mock_agents_ext.RECOMMENDED_PROMPT_PREFIX = '[PREFIX]'
+
+    with patch.dict('sys.modules', {
+        'agents': mock_agents,
+        'agents.extensions': MagicMock(),
+        'agents.extensions.handoff_prompt': mock_agents_ext,
+        'agents.tool_context': MagicMock(),
+    }):
+        runner = OpenAIAgentGraphRunner(graph, {})
+
+        first = await runner.run("attempt 1")
+        assert first.metrics.success is False
+        assert first.metrics.node_metrics['root-agent'].success is False
+        failed_metrics = first.metrics.node_metrics['root-agent']
+
+        second = await runner.run("attempt 2")
+        assert second.metrics.success is True
+        assert second.metrics.node_metrics['root-agent'].success is True
+        assert second.metrics.node_metrics['root-agent'] is not failed_metrics

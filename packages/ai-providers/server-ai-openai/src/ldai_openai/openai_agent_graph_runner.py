@@ -74,6 +74,7 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
         :param input: The string prompt to send to the agent graph
         :return: AgentGraphRunnerResult with the final content and GraphMetrics
         """
+        self._node_metrics = {}
         path: List[str] = []
         root_node = self._graph.root()
         root_key = root_node.get_key() if root_node else ''
