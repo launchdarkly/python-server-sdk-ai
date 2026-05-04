@@ -1,7 +1,8 @@
 """ManagedAgentGraph — LaunchDarkly managed wrapper for agent graph execution."""
 
-from typing import Any, Optional
+from typing import Any
 
+from ldai.agent_graph import AgentGraphDefinition
 from ldai.providers import AgentGraphRunner
 from ldai.providers.types import (
     AgentGraphRunnerResult,
@@ -23,18 +24,18 @@ class ManagedAgentGraph:
 
     def __init__(
         self,
+        graph: AgentGraphDefinition,
         runner: AgentGraphRunner,
-        graph: Optional[Any] = None,
     ):
         """
         Initialize ManagedAgentGraph.
 
-        :param runner: The AgentGraphRunner to delegate execution to
-        :param graph: Optional AgentGraphDefinition used to drive graph-level and
+        :param graph: The AgentGraphDefinition used to drive graph-level and
             per-node tracking from the runner result metrics.
+        :param runner: The AgentGraphRunner to delegate execution to
         """
-        self._runner = runner
         self._graph = graph
+        self._runner = runner
 
     async def run(self, input: Any) -> ManagedGraphResult:
         """
@@ -56,10 +57,9 @@ class ManagedAgentGraph:
 
         summary = self._build_summary_from_runner_result(result)
 
-        if self._graph is not None:
-            graph_tracker = self._graph.create_tracker()
-            self._flush_graph_tracking(result, graph_tracker)
-            self._flush_node_tracking(result)
+        graph_tracker = self._graph.create_tracker()
+        self._flush_graph_tracking(result, graph_tracker)
+        self._flush_node_tracking(result)
 
         return ManagedGraphResult(
             content=result.content,
@@ -106,9 +106,6 @@ class ManagedAgentGraph:
         config tracker via the graph definition and fires token, duration,
         tool call, and success/error events.
         """
-        if self._graph is None:
-            return
-
         for node_key, node_ldai_metrics in result.metrics.node_metrics.items():
             node = self._graph.get_node(node_key)
             if node is None:

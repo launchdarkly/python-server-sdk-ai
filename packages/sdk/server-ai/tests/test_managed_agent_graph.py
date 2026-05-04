@@ -62,7 +62,10 @@ class StubRunnerWithMetrics(AgentGraphRunner):
 async def test_managed_agent_graph_run_delegates_to_runner():
     """Runner result content is surfaced correctly."""
     runner = StubAgentGraphRunner("hello world")
-    managed = ManagedAgentGraph(runner)
+    mock_graph = MagicMock()
+    mock_graph.create_tracker = MagicMock(return_value=MagicMock())
+    mock_graph.get_node = MagicMock(return_value=None)
+    managed = ManagedAgentGraph(mock_graph, runner)
     result = await managed.run("test input")
     assert isinstance(result, ManagedGraphResult)
     assert result.content == "hello world"
@@ -71,7 +74,8 @@ async def test_managed_agent_graph_run_delegates_to_runner():
 
 def test_managed_agent_graph_get_runner():
     runner = StubAgentGraphRunner()
-    managed = ManagedAgentGraph(runner)
+    mock_graph = MagicMock()
+    managed = ManagedAgentGraph(mock_graph, runner)
     assert managed.get_agent_graph_runner() is runner
 
 
@@ -84,7 +88,7 @@ async def test_managed_agent_graph_run_surfaces_graph_metrics():
     mock_graph.create_tracker = MagicMock(return_value=mock_tracker)
     mock_graph.get_node = MagicMock(return_value=None)  # no nodes for this test
 
-    managed = ManagedAgentGraph(runner, graph=mock_graph)
+    managed = ManagedAgentGraph(mock_graph, runner)
     result = await managed.run("test input")
 
     assert isinstance(result, ManagedGraphResult)
@@ -105,7 +109,7 @@ async def test_managed_agent_graph_drives_graph_level_tracking():
     mock_graph.create_tracker = MagicMock(return_value=mock_tracker)
     mock_graph.get_node = MagicMock(return_value=None)
 
-    managed = ManagedAgentGraph(runner, graph=mock_graph)
+    managed = ManagedAgentGraph(mock_graph, runner)
     await managed.run("test input")
 
     mock_tracker.track_path.assert_called_once_with(["root", "specialist"])
@@ -135,7 +139,7 @@ async def test_managed_agent_graph_drives_per_node_tracking():
 
     mock_graph.get_node = get_node
 
-    managed = ManagedAgentGraph(runner, graph=mock_graph)
+    managed = ManagedAgentGraph(mock_graph, runner)
     await managed.run("test input")
 
     # root node tracking
@@ -150,10 +154,14 @@ async def test_managed_agent_graph_drives_per_node_tracking():
 
 
 @pytest.mark.asyncio
-async def test_managed_agent_graph_no_graph_skips_tracking():
-    """Without a graph reference, no tracking is called but run succeeds."""
+async def test_managed_agent_graph_run_succeeds_with_graph():
+    """Run succeeds and returns correct content when graph is provided."""
     runner = StubRunnerWithMetrics()
-    managed = ManagedAgentGraph(runner, graph=None)
+    mock_graph = MagicMock()
+    mock_tracker = MagicMock()
+    mock_graph.create_tracker = MagicMock(return_value=mock_tracker)
+    mock_graph.get_node = MagicMock(return_value=None)
+    managed = ManagedAgentGraph(mock_graph, runner)
     result = await managed.run("test input")
     assert result.content == "new shape output"
     assert result.metrics.success is True
@@ -176,7 +184,7 @@ async def test_managed_agent_graph_failure_calls_track_invocation_failure():
     mock_graph.create_tracker = MagicMock(return_value=mock_tracker)
     mock_graph.get_node = MagicMock(return_value=None)
 
-    managed = ManagedAgentGraph(FailingRunner(), graph=mock_graph)
+    managed = ManagedAgentGraph(mock_graph, FailingRunner())
     result = await managed.run("test input")
 
     assert result.metrics.success is False
