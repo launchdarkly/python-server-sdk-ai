@@ -1,12 +1,11 @@
 import re
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from ldai import log
 from ldai.agent_graph import AgentGraphDefinition, AgentGraphNode
-from ldai.providers import AgentGraphResult, AgentGraphRunner, ToolRegistry
-from ldai.providers.types import LDAIMetrics
-from ldai.tracker import TokenUsage
+from ldai.providers import AgentGraphRunner, ToolRegistry
+from ldai.providers.types import AgentGraphRunnerResult, GraphMetrics, LDAIMetrics
 
 from ldai_openai.openai_helper import (
     extract_usage_from_request_entry,
@@ -39,9 +38,10 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
 
     AgentGraphRunner implementation for the OpenAI Agents SDK.
 
-    Runs the agent graph with the OpenAI Agents SDK and automatically records
-    graph- and node-level AI metric data to the LaunchDarkly trackers on the
-    graph definition and each node.
+    Runs the agent graph with the OpenAI Agents SDK and collects graph- and
+    node-level metrics.  Tracking events are emitted by the managed layer
+    (:class:`~ldai.ManagedAgentGraph`) from the returned
+    :class:`~ldai.providers.types.AgentGraphRunnerResult`.
 
     Requires ``openai-agents`` to be installed.
     """
@@ -61,20 +61,20 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
         self._tools = tools
         self._agent_name_map: Dict[str, str] = {}
         self._tool_name_map: Dict[str, str] = {}
-        self._node_trackers: Dict[str, Any] = {}
+        self._node_metrics: Dict[str, LDAIMetrics] = {}
 
-    async def run(self, input: Any) -> AgentGraphResult:
+    async def run(self, input: Any) -> AgentGraphRunnerResult:
         """
         Run the agent graph with the given input.
 
         Builds the agent tree via reverse_traverse, then invokes the root
-        agent with Runner.run(). Tracks path, latency, and invocation
-        success/failure.
+        agent with Runner.run(). Collects path, latency, and per-node metrics.
+        Graph-level tracking events are emitted by the managed layer.
 
         :param input: The string prompt to send to the agent graph
-        :return: AgentGraphResult with the final output and metrics
+        :return: AgentGraphRunnerResult with the final content and GraphMetrics
         """
-        tracker = self._graph.create_tracker()
+        self._node_metrics = {}
         path: List[str] = []
         root_node = self._graph.root()
         root_key = root_node.get_key() if root_node else ''
@@ -86,24 +86,26 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
         state = _RunState(last_handoff_ns=start_ns, last_node_key=root_key)
         try:
             from agents import Runner
-            root_agent = self._build_agents(path, state, tracker)
+            root_agent = self._build_agents(path, state)
+            if root_key:
+                self._node_metrics[root_key] = LDAIMetrics(success=False)
             result = await Runner.run(root_agent, input_str)
             self._flush_final_segment(state, result)
-            self._track_tool_calls(result)
+            self._collect_tool_calls(result)
 
-            duration = (time.perf_counter_ns() - start_ns) // 1_000_000
+            duration_ms = (time.perf_counter_ns() - start_ns) // 1_000_000
             token_usage = get_ai_usage_from_response(result)
 
-            tracker.track_path(path)
-            tracker.track_duration(duration)
-            tracker.track_invocation_success()
-            if token_usage is not None:
-                tracker.track_total_tokens(token_usage)
-
-            return AgentGraphResult(
-                output=str(result.final_output),
+            return AgentGraphRunnerResult(
+                content=str(result.final_output),
                 raw=result,
-                metrics=LDAIMetrics(success=True, usage=token_usage),
+                metrics=GraphMetrics(
+                    success=True,
+                    path=path,
+                    duration_ms=duration_ms,
+                    usage=token_usage,
+                    node_metrics=self._node_metrics,
+                ),
             )
         except Exception as exc:
             if isinstance(exc, ImportError):
@@ -113,17 +115,20 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
                 )
             else:
                 log.warning(f'OpenAIAgentGraphRunner run failed: {exc}')
-            duration = (time.perf_counter_ns() - start_ns) // 1_000_000
-            tracker.track_duration(duration)
-            tracker.track_invocation_failure()
-            return AgentGraphResult(
-                output='',
+            duration_ms = (time.perf_counter_ns() - start_ns) // 1_000_000
+            return AgentGraphRunnerResult(
+                content='',
                 raw=None,
-                metrics=LDAIMetrics(success=False),
+                metrics=GraphMetrics(
+                    success=False,
+                    path=path,
+                    duration_ms=duration_ms,
+                    node_metrics=self._node_metrics,
+                ),
             )
 
     def _build_agents(
-        self, path: List[str], state: _RunState, tracker: Any
+        self, path: List[str], state: _RunState
     ) -> Any:
         """
         Build the agent tree from the graph definition via reverse_traverse.
@@ -133,7 +138,6 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
 
         :param path: Mutable list to accumulate the execution path
         :param state: Shared run state for tracking handoff timing and last node
-        :param tracker: Graph-level tracker shared across the entire run
         :return: The root Agent instance
         """
         try:
@@ -151,12 +155,9 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
 
         name_map: Dict[str, str] = {}
         tool_name_map: Dict[str, str] = {}
-        node_trackers: Dict[str, Any] = {}
 
         def build_node(node: AgentGraphNode, ctx: dict) -> Any:
             node_config = node.get_config()
-            config_tracker = node_config.create_tracker()
-            node_trackers[node_config.key] = config_tracker
             model = node_config.model
 
             if not model:
@@ -177,8 +178,6 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
                             node_config.key,
                             target_key,
                             path,
-                            tracker,
-                            config_tracker,
                             state,
                         ),
                     )
@@ -212,7 +211,6 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
         root = self._graph.reverse_traverse(fn=build_node)
         self._agent_name_map = name_map
         self._tool_name_map = tool_name_map
-        self._node_trackers = node_trackers
         return root
 
     def _make_on_handoff(
@@ -220,12 +218,10 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
         src: str,
         tgt: str,
         path: List[str],
-        tracker: Any,
-        config_tracker: Any,
         state: _RunState,
     ):
         def on_handoff(run_ctx: Any) -> None:
-            self._handle_handoff(run_ctx, src, tgt, path, tracker, config_tracker, state)
+            self._handle_handoff(run_ctx, src, tgt, path, state)
         return on_handoff
 
     def _handle_handoff(
@@ -234,64 +230,57 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
         src: str,
         tgt: str,
         path: List[str],
-        tracker: Any,
-        config_tracker: Any,
         state: _RunState,
     ) -> None:
         path.append(tgt)
-        state.last_node_key = tgt
-        tracker.track_handoff_success(src, tgt)
 
         now_ns = time.perf_counter_ns()
         duration_ms = (now_ns - state.last_handoff_ns) // 1_000_000
         state.last_handoff_ns = now_ns
 
-        usage: Optional[TokenUsage] = None
-        try:
-            usage = extract_usage_from_request_entry(
-                run_ctx.usage.request_usage_entries[-1]
-            )
-        except Exception:
-            pass
+        src_metrics = self._node_metrics.get(src)
+        if src_metrics is not None:
+            src_metrics.success = True
+            src_metrics.duration_ms = int(duration_ms)
+            try:
+                src_metrics.usage = extract_usage_from_request_entry(
+                    run_ctx.usage.request_usage_entries[-1]
+                )
+            except Exception:
+                pass
 
-        if config_tracker is not None:
-            if usage is not None:
-                config_tracker.track_tokens(usage)
-            if duration_ms is not None:
-                config_tracker.track_duration(int(duration_ms))
-            config_tracker.track_success()
+        self._node_metrics[tgt] = LDAIMetrics(success=False)
+        state.last_node_key = tgt
 
     def _flush_final_segment(self, state: _RunState, result: Any) -> None:
         """Record duration/tokens for the last active agent (no handoff after it)."""
         if not state.last_node_key:
             return
-        config_tracker = self._node_trackers.get(state.last_node_key)
-        if config_tracker is None:
+        metrics = self._node_metrics.get(state.last_node_key)
+        if metrics is None:
             return
 
+        metrics.success = True
         now_ns = time.perf_counter_ns()
-        duration_ms = (now_ns - state.last_handoff_ns) // 1_000_000
+        metrics.duration_ms = int((now_ns - state.last_handoff_ns) // 1_000_000)
 
-        usage: Optional[TokenUsage] = None
         try:
-            usage = extract_usage_from_request_entry(
+            metrics.usage = extract_usage_from_request_entry(
                 result.context_wrapper.usage.request_usage_entries[-1]
             )
         except Exception:
             pass
 
-        if usage is not None:
-            config_tracker.track_tokens(usage)
-        config_tracker.track_duration(int(duration_ms))
-        config_tracker.track_success()
-
-    def _track_tool_calls(self, result: Any) -> None:
-        """Track all tool calls from the run result, attributed to the node that called them."""
+    def _collect_tool_calls(self, result: Any) -> None:
+        """Collect all tool calls from the run result, attributed to the node that called them."""
         for agent_name, tool_fn_name in get_tool_calls_from_run_items(result.new_items):
             agent_key = self._agent_name_map.get(agent_name, agent_name)
             tool_name = self._tool_name_map.get(tool_fn_name)
             if tool_name is None:
                 continue
-            config_tracker = self._node_trackers.get(agent_key)
-            if config_tracker is not None:
-                config_tracker.track_tool_call(tool_name)
+            metrics = self._node_metrics.get(agent_key)
+            if metrics is not None:
+                if metrics.tool_calls is None:
+                    metrics.tool_calls = [tool_name]
+                else:
+                    metrics.tool_calls.append(tool_name)
