@@ -636,14 +636,14 @@ def test_ai_graph_tracker_duplicate_success_is_ignored(client: LDClient):
     assert g.get_summary().success is True
 
 
-def test_ai_graph_tracker_duplicate_path_is_ignored(client: LDClient):
+def test_ai_graph_tracker_path_accumulates(client: LDClient):
     context = Context.create("user-key")
     g = AIGraphTracker(client, "variation-key", "graph-key", 2, context)
     g.track_path(["a", "b"])
     g.track_path(["x", "y", "z"])
     path_calls = [c for c in client.track.mock_calls if c.args[0] == "$ld:ai:graph:path"]  # type: ignore
-    assert len(path_calls) == 1
-    assert g.get_summary().path == ["a", "b"]
+    assert len(path_calls) == 2
+    assert g.get_summary().path == ["a", "b", "x", "y", "z"]
 
 
 def test_ai_graph_tracker_duplicate_tokens_is_ignored(client: LDClient):
@@ -1236,6 +1236,23 @@ def test_track_metrics_of_calls_track_tool_calls_when_present(client: LDClient):
     assert len(tool_call_events) == 2
 
 
+def test_track_tool_calls_accumulates(client: LDClient):
+    context = Context.create("user-key")
+    tracker = LDAIConfigTracker(
+        ld_client=client, run_id="test-run-id", config_key="config-key",
+        variation_key="variation-key", version=3, model_name="m",
+        provider_name="p", context=context,
+    )
+    tracker.track_tool_calls(["foo", "bar"])
+    tracker.track_tool_calls(["baz"])
+    assert tracker.get_summary().tool_calls == ["foo", "bar", "baz"]
+    tool_call_events = [
+        c for c in client.track.mock_calls  # type: ignore
+        if c.args[0] == "$ld:ai:tool_call"
+    ]
+    assert len(tool_call_events) == 3
+
+
 def test_track_metrics_of_skips_track_tool_calls_when_absent(client: LDClient):
     context = Context.create("user-key")
     tracker = LDAIConfigTracker(
@@ -1251,7 +1268,7 @@ def test_track_metrics_of_skips_track_tool_calls_when_absent(client: LDClient):
         return LDAIMetrics(success=True, usage=None)
 
     tracker.track_metrics_of(extract, fn)
-    assert tracker.get_summary().tool_calls is None
+    assert tracker.get_summary().tool_calls == []
     tool_call_events = [
         c for c in client.track.mock_calls  # type: ignore
         if c.args[0] == "$ld:ai:tool_call"

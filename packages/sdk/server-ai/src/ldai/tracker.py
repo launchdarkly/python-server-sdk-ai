@@ -51,7 +51,7 @@ class LDAIMetricSummary:
         self._feedback: Optional[Dict[str, FeedbackKind]] = None
         self._usage: Optional[TokenUsage] = None
         self._time_to_first_token: Optional[int] = None
-        self._tool_calls: Optional[List[str]] = None
+        self._tool_calls: List[str] = []
         self._resumption_token: Optional[str] = None
 
     @property
@@ -89,7 +89,7 @@ class LDAIMetricSummary:
         return self._time_to_first_token
 
     @property
-    def tool_calls(self) -> Optional[List[str]]:
+    def tool_calls(self) -> List[str]:
         """List of tool keys that were invoked during this operation."""
         return self._tool_calls
 
@@ -429,16 +429,13 @@ class LDAIConfigTracker:
         """
         Track the tool calls made during an AI operation.
 
-        Stores the tool call names on the summary (guarding against duplicate
-        tracking) and fires a ``$ld:ai:tool_call`` event for each tool.
+        Appends to the summary's tool call list and fires a
+        ``$ld:ai:tool_call`` event for each tool.
 
         :param tool_calls: Tool identifiers (e.g. from a model response).
         """
-        if self._summary.tool_calls is not None:
-            log.warning("Tool calls have already been tracked for this execution. %s", self.__get_track_data())
-            return
         tool_calls_list = list(tool_calls)
-        self._summary._tool_calls = tool_calls_list
+        self._summary._tool_calls.extend(tool_calls_list)
         for tool_key in tool_calls_list:
             self.track_tool_call(tool_key)
 
@@ -749,12 +746,12 @@ class AIGraphTracker:
         """
         Track the execution path through the graph.
 
+        Appends to the summary's path list and fires a ``$ld:ai:graph:path``
+        event. Can be called multiple times to build the path incrementally.
+
         :param path: An array of configuration keys representing the sequence of nodes executed during graph traversal.
         """
-        if self._summary.path:
-            log.warning("Path has already been tracked for this graph execution. %s", self.__get_track_data())
-            return
-        self._summary.path = list(path)
+        self._summary.path.extend(path)
         track_data = {**self.__get_track_data(), "path": path}
         self._ld_client.track(
             "$ld:ai:graph:path",
