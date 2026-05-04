@@ -2,7 +2,7 @@ import pytest
 from ldclient import Config, Context, LDClient
 from ldclient.integrations.test_data import TestData
 
-from ldai import LDTool, LDAIClient
+from ldai import LDAIClient, LDTool
 from ldai.models import AIAgentConfigDefault, AICompletionConfigDefault
 
 
@@ -256,7 +256,9 @@ def test_completion_config_model_params_tools_as_list_returns_none(client, conte
 
 
 def test_completion_config_model_params_tools_skips_bad_entries_silently(client, context):
-    result = client.completion_config('completion-model-params-tools-missing-name', context, AICompletionConfigDefault())
+    result = client.completion_config(
+        'completion-model-params-tools-missing-name', context, AICompletionConfigDefault()
+    )
 
     assert result.tools is not None
     assert 'valid-tool' in result.tools

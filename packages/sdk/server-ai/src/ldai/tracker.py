@@ -13,7 +13,7 @@ from ldclient import Context, LDClient, Result
 from ldai import log
 
 if TYPE_CHECKING:
-    from ldai.providers.types import LDAIMetrics
+    from ldai.providers.types import GraphMetrics, GraphMetricSummary, LDAIMetrics
 
 
 class FeedbackKind(Enum):
@@ -51,7 +51,7 @@ class LDAIMetricSummary:
         self._feedback: Optional[Dict[str, FeedbackKind]] = None
         self._usage: Optional[TokenUsage] = None
         self._time_to_first_token: Optional[int] = None
-        self._tool_calls: Optional[List[str]] = None
+        self._tool_calls: List[str] = []
         self._resumption_token: Optional[str] = None
 
     @property
@@ -89,7 +89,7 @@ class LDAIMetricSummary:
         return self._time_to_first_token
 
     @property
-    def tool_calls(self) -> Optional[List[str]]:
+    def tool_calls(self) -> List[str]:
         """List of tool keys that were invoked during this operation."""
         return self._tool_calls
 
@@ -429,16 +429,13 @@ class LDAIConfigTracker:
         """
         Track the tool calls made during an AI operation.
 
-        Stores the tool call names on the summary (guarding against duplicate
-        tracking) and fires a ``$ld:ai:tool_call`` event for each tool.
+        Appends to the summary's tool call list and fires a
+        ``$ld:ai:tool_call`` event for each tool.
 
         :param tool_calls: Tool identifiers (e.g. from a model response).
         """
-        if self._summary.tool_calls is not None:
-            log.warning("Tool calls have already been tracked for this execution. %s", self.__get_track_data())
-            return
         tool_calls_list = list(tool_calls)
-        self._summary._tool_calls = tool_calls_list
+        self._summary._tool_calls.extend(tool_calls_list)
         for tool_key in tool_calls_list:
             self.track_tool_call(tool_key)
 
@@ -616,7 +613,11 @@ def _openai_to_token_usage(data: dict) -> TokenUsage:
 
 class AIGraphTracker:
     """
-    Tracks graph-level, node-level, and edge-level metrics for AI agent graph operations.
+    Tracks graph-level metrics for AI agent graph operations.
+
+    Maintains an internal :class:`~ldai.providers.types.GraphMetricSummary`
+    that is updated as tracking methods are called. Retrieve it via
+    :meth:`get_summary`.
     """
 
     def __init__(
@@ -642,10 +643,21 @@ class AIGraphTracker:
         self._version = version
         self._context = context
 
+        from ldai.providers.types import GraphMetricSummary
+        self._summary = GraphMetricSummary()
+
     @property
     def graph_key(self) -> str:
         """Graph configuration key used in tracking payloads."""
         return self._graph_key
+
+    def get_summary(self) -> GraphMetricSummary:
+        """
+        Get the current summary of graph-level metrics.
+
+        :return: Summary of graph metrics tracked so far.
+        """
+        return self._summary
 
     def __get_track_data(self):
         """
@@ -664,6 +676,12 @@ class AIGraphTracker:
         """
         Track a successful graph invocation.
         """
+        if self._summary.success is not None:
+            log.warning(
+                "Invocation status has already been tracked for this graph execution. %s",
+                self.__get_track_data())
+            return
+        self._summary.success = True
         self._ld_client.track(
             "$ld:ai:graph:invocation_success",
             self._context,
@@ -675,6 +693,12 @@ class AIGraphTracker:
         """
         Track an unsuccessful graph invocation.
         """
+        if self._summary.success is not None:
+            log.warning(
+                "Invocation status has already been tracked for this graph execution. %s",
+                self.__get_track_data())
+            return
+        self._summary.success = False
         self._ld_client.track(
             "$ld:ai:graph:invocation_failure",
             self._context,
@@ -688,6 +712,10 @@ class AIGraphTracker:
 
         :param duration: Duration in milliseconds.
         """
+        if self._summary.duration_ms is not None:
+            log.warning("Duration has already been tracked for this graph execution. %s", self.__get_track_data())
+            return
+        self._summary.duration_ms = duration
         self._ld_client.track(
             "$ld:ai:graph:duration:total",
             self._context,
@@ -703,6 +731,10 @@ class AIGraphTracker:
         """
         if tokens is None or tokens.total <= 0:
             return
+        if self._summary.usage is not None:
+            log.warning("Token usage has already been tracked for this graph execution. %s", self.__get_track_data())
+            return
+        self._summary.usage = tokens
         self._ld_client.track(
             "$ld:ai:graph:total_tokens",
             self._context,
@@ -714,8 +746,12 @@ class AIGraphTracker:
         """
         Track the execution path through the graph.
 
+        Appends to the summary's path list and fires a ``$ld:ai:graph:path``
+        event. Can be called multiple times to build the path incrementally.
+
         :param path: An array of configuration keys representing the sequence of nodes executed during graph traversal.
         """
+        self._summary.path.extend(path)
         track_data = {**self.__get_track_data(), "path": path}
         self._ld_client.track(
             "$ld:ai:graph:path",
@@ -780,3 +816,92 @@ class AIGraphTracker:
             track_data,
             1,
         )
+
+    def _track_from_graph_metrics(
+        self,
+        result: Any,
+        metrics_extractor: Callable[[Any], Optional[GraphMetrics]],
+        elapsed_ms: int,
+    ) -> None:
+        metrics: Optional[GraphMetrics] = None
+        try:
+            metrics = metrics_extractor(result)
+        except Exception as exc:
+            log.warning("Failed to extract graph metrics: %s", exc)
+
+        if metrics is None:
+            self.track_duration(elapsed_ms)
+            return
+
+        self.track_duration(metrics.duration_ms if metrics.duration_ms is not None else elapsed_ms)
+        if metrics.success:
+            self.track_invocation_success()
+        else:
+            self.track_invocation_failure()
+        if metrics.path:
+            self.track_path(metrics.path)
+        if metrics.usage is not None:
+            self.track_total_tokens(metrics.usage)
+
+    def track_graph_metrics_of(
+        self,
+        metrics_extractor: Callable[[Any], Optional[GraphMetrics]],
+        func: Callable[[], Any],
+    ) -> Any:
+        """
+        Track graph-level metrics for a synchronous graph operation.
+
+        Times the operation, extracts :class:`~ldai.providers.types.GraphMetrics`
+        via the provided extractor, and fires graph-level tracking events
+        (path, duration, success/failure, total tokens).
+
+        If the extracted ``GraphMetrics`` has a non-``None`` ``duration_ms``,
+        that value is used instead of the wall-clock elapsed time.
+
+        Node-level metrics are not tracked by this method.
+
+        For async operations, use :meth:`track_graph_metrics_of_async`.
+
+        :param metrics_extractor: Function that extracts GraphMetrics from the result
+        :param func: Synchronous callable that runs the graph operation
+        :return: The result of the operation
+        """
+        start_ns = time.perf_counter_ns()
+        try:
+            result = func()
+        except Exception as err:
+            duration = (time.perf_counter_ns() - start_ns) // 1_000_000
+            self.track_duration(duration)
+            self.track_invocation_failure()
+            raise err
+
+        elapsed_ms = (time.perf_counter_ns() - start_ns) // 1_000_000
+        self._track_from_graph_metrics(result, metrics_extractor, elapsed_ms)
+        return result
+
+    async def track_graph_metrics_of_async(
+        self,
+        metrics_extractor: Callable[[Any], Optional[GraphMetrics]],
+        func: Callable[[], Any],
+    ) -> Any:
+        """
+        Track graph-level metrics for an async graph operation (``func`` is awaited).
+
+        Same event semantics as :meth:`track_graph_metrics_of`.
+
+        :param metrics_extractor: Function that extracts GraphMetrics from the result
+        :param func: Async callable that runs the graph operation
+        :return: The result of the operation
+        """
+        start_ns = time.perf_counter_ns()
+        try:
+            result = await func()
+        except Exception as err:
+            duration = (time.perf_counter_ns() - start_ns) // 1_000_000
+            self.track_duration(duration)
+            self.track_invocation_failure()
+            raise err
+
+        elapsed_ms = (time.perf_counter_ns() - start_ns) // 1_000_000
+        self._track_from_graph_metrics(result, metrics_extractor, elapsed_ms)
+        return result

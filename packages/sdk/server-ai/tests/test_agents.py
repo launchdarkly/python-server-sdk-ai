@@ -2,8 +2,13 @@ import pytest
 from ldclient import Config, Context, LDClient
 from ldclient.integrations.test_data import TestData
 
-from ldai import (LDAIAgentConfig, LDAIAgentDefaults, LDAIClient, ModelConfig,
-                  ProviderConfig)
+from ldai import (
+    LDAIAgentConfig,
+    LDAIAgentDefaults,
+    LDAIClient,
+    ModelConfig,
+    ProviderConfig,
+)
 
 
 @pytest.fixture
@@ -17,7 +22,10 @@ def td() -> TestData:
             {
                 'model': {'name': 'gpt-4', 'parameters': {'temperature': 0.3, 'maxTokens': 2048}},
                 'provider': {'name': 'openai'},
-                'instructions': 'You are a helpful customer support agent for {{company_name}}. Always be polite and professional.',
+                'instructions': (
+                    'You are a helpful customer support agent for {{company_name}}.'
+                    ' Always be polite and professional.'
+                ),
                 '_ldMeta': {'enabled': True, 'variationKey': 'agent-v1', 'version': 1, 'mode': 'agent'},
             }
         )
@@ -30,7 +38,10 @@ def td() -> TestData:
         .variations(
             {
                 'model': {'name': 'claude-3', 'parameters': {'temperature': 0.5}},
-                'instructions': 'Hello {{ldctx.name}}! I am your personal assistant. Your user key is {{ldctx.key}}.',
+                'instructions': (
+                    'Hello {{ldctx.name}}! I am your personal assistant.'
+                    ' Your user key is {{ldctx.key}}.'
+                ),
                 '_ldMeta': {'enabled': True, 'variationKey': 'personal-v1', 'version': 2, 'mode': 'agent'},
             }
         )
@@ -43,7 +54,10 @@ def td() -> TestData:
         .variations(
             {
                 'model': {'name': 'gpt-3.5-turbo'},
-                'instructions': 'Welcome {{ldctx.user.name}} from {{ldctx.org.name}}! Your organization tier is {{ldctx.org.tier}}.',
+                'instructions': (
+                    'Welcome {{ldctx.user.name}} from {{ldctx.org.name}}!'
+                    ' Your organization tier is {{ldctx.org.tier}}.'
+                ),
                 '_ldMeta': {'enabled': True, 'variationKey': 'multi-v1', 'version': 1, 'mode': 'agent'},
             }
         )
@@ -82,7 +96,10 @@ def td() -> TestData:
             {
                 'model': {'name': 'gpt-4', 'parameters': {'temperature': 0.7}},
                 'provider': {'name': 'openai'},
-                'instructions': 'You are a sales assistant for {{company_name}}. Help customers find the right products.',
+                'instructions': (
+                    'You are a sales assistant for {{company_name}}.'
+                    ' Help customers find the right products.'
+                ),
                 '_ldMeta': {'enabled': True, 'variationKey': 'sales-v1', 'version': 1, 'mode': 'agent'},
             }
         )
@@ -96,7 +113,10 @@ def td() -> TestData:
             {
                 'model': {'name': 'gpt-4', 'parameters': {'temperature': 0.2, 'maxTokens': 3000}},
                 'provider': {'name': 'openai'},
-                'instructions': 'You are a research assistant specializing in {{topic}}. Your expertise level should match {{ldctx.expertise}}.',
+                'instructions': (
+                    'You are a research assistant specializing in {{topic}}.'
+                    ' Your expertise level should match {{ldctx.expertise}}.'
+                ),
                 '_ldMeta': {'enabled': True, 'variationKey': 'research-v1', 'version': 1, 'mode': 'agent'},
             }
         )
@@ -139,7 +159,10 @@ def test_single_agent_method(ldai_client: LDAIClient):
     assert agent.model.get_parameter('maxTokens') == 3000
     assert agent.provider is not None
     assert agent.provider.name == 'openai'
-    assert agent.instructions == 'You are a research assistant specializing in quantum computing. Your expertise level should match advanced.'
+    assert agent.instructions == (
+        'You are a research assistant specializing in quantum computing.'
+        ' Your expertise level should match advanced.'
+    )
     assert callable(agent.create_tracker)
 
 
@@ -237,7 +260,10 @@ def test_agents_method_different_variables_per_agent(ldai_client: LDAIClient):
     assert personal_agent.instructions == 'Hello Alice! I am your personal assistant. Your user key is user-key.'
 
     support_agent = agents['customer-support-agent']
-    assert support_agent.instructions == 'You are a helpful customer support agent for TechStart Inc. Always be polite and professional.'
+    assert support_agent.instructions == (
+        'You are a helpful customer support agent for TechStart Inc.'
+        ' Always be polite and professional.'
+    )
 
 
 def test_agents_with_multi_context_interpolation(ldai_client: LDAIClient):

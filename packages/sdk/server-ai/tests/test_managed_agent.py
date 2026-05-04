@@ -1,16 +1,16 @@
 """Tests for ManagedAgent."""
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock
+
+import pytest
+from ldclient import Config, Context, LDClient
+from ldclient.integrations.test_data import TestData
 
 from ldai import LDAIClient, ManagedAgent
 from ldai.managed_agent import ManagedAgent
 from ldai.models import AIAgentConfig, AIAgentConfigDefault, ModelConfig, ProviderConfig
 from ldai.providers.types import LDAIMetrics, ManagedResult, RunnerResult
 from ldai.tracker import LDAIMetricSummary
-
-from ldclient import Config, Context, LDClient
-from ldclient.integrations.test_data import TestData
 
 
 def _make_summary(success: bool = True) -> LDAIMetricSummary:

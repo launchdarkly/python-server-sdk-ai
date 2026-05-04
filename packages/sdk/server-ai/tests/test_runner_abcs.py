@@ -1,17 +1,22 @@
 import pytest
 
-from ldai.providers import AgentGraphResult, AgentGraphRunner, ToolRegistry
-from ldai.providers.types import LDAIMetrics, RunnerResult
-
+from ldai.providers import (
+    AgentGraphResult,
+    AgentGraphRunner,
+    AgentGraphRunnerResult,
+    ToolRegistry,
+)
+from ldai.providers.types import GraphMetrics, LDAIMetrics, RunnerResult
 
 # --- Concrete test doubles ---
 
+
 class ConcreteAgentGraphRunner:
     async def run(self, input):
-        return AgentGraphResult(
-            output=f"graph response to: {input}",
+        return AgentGraphRunnerResult(
+            content=f"graph response to: {input}",
             raw={"raw": input},
-            metrics=LDAIMetrics(success=True),
+            metrics=GraphMetrics(success=True),
         )
 
 
@@ -39,20 +44,20 @@ def test_agent_graph_runner_structural_check_fails_when_run_missing():
 
 
 @pytest.mark.asyncio
-async def test_agent_graph_runner_run_returns_agent_graph_result():
+async def test_agent_graph_runner_run_returns_agent_graph_runner_result():
     runner = ConcreteAgentGraphRunner()
     result = await runner.run("hello graph")
-    assert isinstance(result, AgentGraphResult)
-    assert result.output == "graph response to: hello graph"
+    assert isinstance(result, AgentGraphRunnerResult)
+    assert result.content == "graph response to: hello graph"
     assert result.raw == {"raw": "hello graph"}
     assert result.metrics.success is True
 
 
 @pytest.mark.asyncio
-async def test_agent_graph_result_fields():
-    metrics = LDAIMetrics(success=False)
-    result = AgentGraphResult(output="", raw=None, metrics=metrics)
-    assert result.output == ""
+async def test_agent_graph_runner_result_fields():
+    metrics = GraphMetrics(success=False)
+    result = AgentGraphRunnerResult(content="", raw=None, metrics=metrics)
+    assert result.content == ""
     assert result.raw is None
     assert result.metrics.success is False
 

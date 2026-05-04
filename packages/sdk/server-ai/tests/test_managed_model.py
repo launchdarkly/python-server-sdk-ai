@@ -13,7 +13,6 @@ from ldai.providers.types import JudgeResult, LDAIMetrics, ManagedResult, Runner
 from ldai.tracker import LDAIConfigTracker, LDAIMetricSummary
 
 
-
 def _make_runner_result(content: str = 'response text') -> RunnerResult:
     return RunnerResult(
         content=content,

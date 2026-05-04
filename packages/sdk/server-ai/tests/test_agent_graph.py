@@ -1,15 +1,15 @@
+from unittest.mock import MagicMock
+
 import pytest
 from ldclient import Config, Context, LDClient
 from ldclient.integrations.test_data import TestData
 
-from unittest.mock import MagicMock
-
 from ldai import (
-    LDAIClient,
-    AIAgentGraphConfig,
     AgentGraphDefinition,
     AIAgentConfig,
+    AIAgentGraphConfig,
     Edge,
+    LDAIClient,
 )
 from ldai.evaluator import Evaluator
 
@@ -124,7 +124,10 @@ def td() -> TestData:
                     "parameters": {"temperature": 0.3, "maxTokens": 2048},
                 },
                 "provider": {"name": "openai"},
-                "instructions": "You are a helpful customer support agent for {{company_name}}. Always be polite and professional.",
+                "instructions": (
+                    "You are a helpful customer support agent for {{company_name}}."
+                    " Always be polite and professional."
+                ),
                 "_ldMeta": {
                     "enabled": True,
                     "variationKey": "agent-v1",
@@ -142,7 +145,10 @@ def td() -> TestData:
         .variations(
             {
                 "model": {"name": "claude-3", "parameters": {"temperature": 0.5}},
-                "instructions": "Hello {{ldctx.name}}! I am your personal assistant. Your user key is {{ldctx.key}}.",
+                "instructions": (
+                    "Hello {{ldctx.name}}! I am your personal assistant."
+                    " Your user key is {{ldctx.key}}."
+                ),
                 "_ldMeta": {
                     "enabled": True,
                     "variationKey": "personal-v1",
@@ -160,7 +166,10 @@ def td() -> TestData:
         .variations(
             {
                 "model": {"name": "gpt-3.5-turbo"},
-                "instructions": "Welcome {{ldctx.user.name}} from {{ldctx.org.name}}! Your organization tier is {{ldctx.org.tier}}.",
+                "instructions": (
+                    "Welcome {{ldctx.user.name}} from {{ldctx.org.name}}!"
+                    " Your organization tier is {{ldctx.org.tier}}."
+                ),
                 "_ldMeta": {
                     "enabled": True,
                     "variationKey": "multi-v1",
