@@ -86,6 +86,8 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
         try:
             from agents import Runner
             root_agent = self._build_agents(path, state)
+            if root_key:
+                self._node_metrics[root_key] = LDAIMetrics(success=False)
             result = await Runner.run(root_agent, input_str)
             self._flush_final_segment(state, result)
             self._collect_tool_calls(result)
@@ -152,12 +154,9 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
 
         name_map: Dict[str, str] = {}
         tool_name_map: Dict[str, str] = {}
-        node_metrics: Dict[str, LDAIMetrics] = {}
 
         def build_node(node: AgentGraphNode, ctx: dict) -> Any:
             node_config = node.get_config()
-            metrics = LDAIMetrics(success=True)
-            node_metrics[node_config.key] = metrics
             model = node_config.model
 
             if not model:
@@ -178,7 +177,6 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
                             node_config.key,
                             target_key,
                             path,
-                            metrics,
                             state,
                         ),
                     )
@@ -212,7 +210,6 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
         root = self._graph.reverse_traverse(fn=build_node)
         self._agent_name_map = name_map
         self._tool_name_map = tool_name_map
-        self._node_metrics = node_metrics
         return root
 
     def _make_on_handoff(
@@ -220,11 +217,10 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
         src: str,
         tgt: str,
         path: List[str],
-        metrics: LDAIMetrics,
         state: _RunState,
     ):
         def on_handoff(run_ctx: Any) -> None:
-            self._handle_handoff(run_ctx, src, tgt, path, metrics, state)
+            self._handle_handoff(run_ctx, src, tgt, path, state)
         return on_handoff
 
     def _handle_handoff(
@@ -233,24 +229,27 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
         src: str,
         tgt: str,
         path: List[str],
-        metrics: LDAIMetrics,
         state: _RunState,
     ) -> None:
         path.append(tgt)
-        state.last_node_key = tgt
 
         now_ns = time.perf_counter_ns()
         duration_ms = (now_ns - state.last_handoff_ns) // 1_000_000
         state.last_handoff_ns = now_ns
 
-        try:
-            metrics.usage = extract_usage_from_request_entry(
-                run_ctx.usage.request_usage_entries[-1]
-            )
-        except Exception:
-            pass
+        src_metrics = self._node_metrics.get(src)
+        if src_metrics is not None:
+            src_metrics.success = True
+            src_metrics.duration_ms = int(duration_ms)
+            try:
+                src_metrics.usage = extract_usage_from_request_entry(
+                    run_ctx.usage.request_usage_entries[-1]
+                )
+            except Exception:
+                pass
 
-        metrics.duration_ms = int(duration_ms)
+        self._node_metrics[tgt] = LDAIMetrics(success=False)
+        state.last_node_key = tgt
 
     def _flush_final_segment(self, state: _RunState, result: Any) -> None:
         """Record duration/tokens for the last active agent (no handoff after it)."""
@@ -260,6 +259,7 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
         if metrics is None:
             return
 
+        metrics.success = True
         now_ns = time.perf_counter_ns()
         metrics.duration_ms = int((now_ns - state.last_handoff_ns) // 1_000_000)
 

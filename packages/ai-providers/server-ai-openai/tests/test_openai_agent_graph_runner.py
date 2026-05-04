@@ -94,8 +94,38 @@ async def test_openai_agent_graph_runner_run_failure_returns_metrics():
     assert isinstance(result, AgentGraphRunnerResult)
     assert result.metrics.success is False
     assert result.metrics.duration_ms is not None
+    # Import failure happens before node metrics are created
+    assert len(result.metrics.node_metrics) == 0
     # Runner no longer calls graph tracker — graph.create_tracker should NOT be called
     graph.create_tracker.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_openai_agent_graph_runner_run_failure_marks_node_not_success():
+    """When Runner.run() raises, started nodes retain success=False."""
+    graph = _make_graph()
+
+    mock_agents = MagicMock()
+    mock_agents.Runner.run = AsyncMock(side_effect=RuntimeError("boom"))
+    mock_agents.Agent = MagicMock(return_value=MagicMock())
+    mock_agents.Handoff = MagicMock()
+    mock_agents.handoff = MagicMock()
+
+    mock_agents_ext = MagicMock()
+    mock_agents_ext.RECOMMENDED_PROMPT_PREFIX = '[PREFIX]'
+
+    with patch.dict('sys.modules', {
+        'agents': mock_agents,
+        'agents.extensions': MagicMock(),
+        'agents.extensions.handoff_prompt': mock_agents_ext,
+        'agents.tool_context': MagicMock(),
+    }):
+        runner = OpenAIAgentGraphRunner(graph, {})
+        result = await runner.run("test input")
+
+    assert result.metrics.success is False
+    assert 'root-agent' in result.metrics.node_metrics
+    assert result.metrics.node_metrics['root-agent'].success is False
 
 
 @pytest.mark.asyncio
@@ -153,3 +183,4 @@ async def test_openai_agent_graph_runner_run_success():
 
     # Runner accumulates per-node metrics in _node_metrics
     assert 'root-agent' in runner._node_metrics
+    assert runner._node_metrics['root-agent'].success is True
