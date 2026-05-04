@@ -1,17 +1,23 @@
 """Tests for ManagedAgentGraph and LDAIClient.create_agent_graph()."""
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 from ldclient import Config, Context, LDClient
 from ldclient.integrations.test_data import TestData
 
 from ldai import LDAIClient, LDAIMetricSummary, ManagedAgentGraph, ManagedGraphResult
-from ldai.providers.types import AgentGraphRunnerResult, GraphMetrics, GraphMetricSummary, LDAIMetrics
 from ldai.providers import AgentGraphRunner, ToolRegistry
+from ldai.providers.types import (
+    AgentGraphRunnerResult,
+    GraphMetrics,
+    GraphMetricSummary,
+    LDAIMetrics,
+)
 from ldai.tracker import TokenUsage
 
-
 # --- Test doubles ---
+
 
 class StubAgentGraphRunner(AgentGraphRunner):
     """Runner that returns AgentGraphRunnerResult (new shape)."""

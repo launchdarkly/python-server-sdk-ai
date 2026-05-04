@@ -680,7 +680,9 @@ class AIGraphTracker:
         Track a successful graph invocation.
         """
         if self._summary.success is not None:
-            log.warning("Invocation status has already been tracked for this graph execution. %s", self.__get_track_data())
+            log.warning(
+                "Invocation status has already been tracked for this graph execution. %s",
+                self.__get_track_data())
             return
         self._summary.success = True
         self._ld_client.track(
@@ -695,7 +697,9 @@ class AIGraphTracker:
         Track an unsuccessful graph invocation.
         """
         if self._summary.success is not None:
-            log.warning("Invocation status has already been tracked for this graph execution. %s", self.__get_track_data())
+            log.warning(
+                "Invocation status has already been tracked for this graph execution. %s",
+                self.__get_track_data())
             return
         self._summary.success = False
         self._ld_client.track(

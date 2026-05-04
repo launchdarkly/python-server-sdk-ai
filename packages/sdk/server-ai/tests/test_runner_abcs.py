@@ -1,10 +1,15 @@
 import pytest
 
-from ldai.providers import AgentGraphResult, AgentGraphRunner, AgentGraphRunnerResult, ToolRegistry
+from ldai.providers import (
+    AgentGraphResult,
+    AgentGraphRunner,
+    AgentGraphRunnerResult,
+    ToolRegistry,
+)
 from ldai.providers.types import GraphMetrics, LDAIMetrics, RunnerResult
 
-
 # --- Concrete test doubles ---
+
 
 class ConcreteAgentGraphRunner:
     async def run(self, input):
