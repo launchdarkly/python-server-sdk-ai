@@ -120,6 +120,7 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
                     success=False,
                     path=path,
                     duration_ms=duration_ms,
+                    node_metrics=self._node_metrics,
                 ),
             )
 
