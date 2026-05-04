@@ -342,6 +342,9 @@ class OptimizationOptions:
     project_key: Optional[str] = None  # required when auto_commit=True
     output_key: Optional[str] = None   # variation key/name; auto-generated if omitted
     base_url: Optional[str] = None  # override to target a non-default LD instance
+    # When set, uses this specific variation as the base instead of the SDK-evaluated default.
+    # Requires LAUNCHDARKLY_API_KEY to be set and project_key to be provided.
+    variation_key: Optional[str] = None
     on_passing_result: Optional[Callable[[OptimizationContext], None]] = None
     on_failing_result: Optional[Callable[[OptimizationContext], None]] = None
     # called to provide status updates during the optimization flow
@@ -434,6 +437,9 @@ class GroundTruthOptimizationOptions:
     project_key: Optional[str] = None  # required when auto_commit=True
     output_key: Optional[str] = None   # variation key/name; auto-generated if omitted
     base_url: Optional[str] = None  # override to target a non-default LD instance
+    # When set, uses this specific variation as the base instead of the SDK-evaluated default.
+    # Requires LAUNCHDARKLY_API_KEY to be set and project_key to be provided.
+    variation_key: Optional[str] = None
     token_limit: Optional[int] = None  # stop the run when total token usage reaches this value
 
     def __post_init__(self):

@@ -90,6 +90,7 @@ class AgentOptimizationConfig(_AgentOptimizationConfigRequired, total=False):
     groundTruthResponses: List[str]
     metricKey: str
     tokenLimit: int
+    variationKey: str
 
 
 # ---------------------------------------------------------------------------
@@ -286,6 +287,29 @@ class LDApiClient:
         """
         path = f"/api/v2/projects/{project_key}/ai-configs/{config_key}"
         return self._request("GET", path, extra_headers={"LD-API-Version": "beta"})
+
+    def get_ai_config_variation(
+        self, project_key: str, config_key: str, variation_key: str
+    ) -> Dict[str, Any]:
+        """Fetch a specific variation of an AI config by key.
+
+        Returns the first (latest) item from the variations response.
+
+        :param project_key: LaunchDarkly project key.
+        :param config_key: Key of the AI Config (aiConfigKey).
+        :param variation_key: Key of the specific variation to fetch.
+        :return: The variation dict (first item from the ``items`` array).
+        :raises LDApiError: If the variation is not found or the request fails.
+        """
+        path = f"/api/v2/projects/{project_key}/ai-configs/{config_key}/variations/{variation_key}"
+        result = self._request("GET", path, extra_headers={"LD-API-Version": "beta"})
+        items = result.get("items") if isinstance(result, dict) else None
+        if not items:
+            raise LDApiError(
+                f"Variation '{variation_key}' not found for AI config '{config_key}'.",
+                path=path,
+            )
+        return items[0]
 
     def create_ai_config_variation(
         self, project_key: str, config_key: str, payload: Dict[str, Any]

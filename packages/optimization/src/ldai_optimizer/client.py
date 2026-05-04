@@ -824,29 +824,61 @@ class OptimizationClient:
         return dataclasses.replace(judge_result, duration_ms=judge_duration_ms, usage=judge_response.usage)
 
     async def _get_agent_config(
-        self, agent_key: str, context: Context
+        self,
+        agent_key: str,
+        context: Context,
+        variation_key: Optional[str] = None,
+        project_key: Optional[str] = None,
+        api_client: Optional["LDApiClient"] = None,
+        base_url: Optional[str] = None,
     ) -> AIAgentConfig:
         """
         Fetch the agent configuration, replacing the instructions with the raw variation
         template so that {{placeholder}} tokens are preserved for client-side interpolation.
 
         agent_config() is called normally so we get a fully populated AIAgentConfig
-        (including the tracker). We then call variation() separately to retrieve the
-        unrendered instruction template and swap it in, keeping everything else intact.
+        (including the tracker). When variation_key is set, the specific variation's
+        data (instructions, model, tools) is fetched via the REST API and used as the
+        base instead of the SDK-evaluated default. Otherwise, variation() is called to
+        retrieve the unrendered instruction template for the SDK-evaluated variation.
 
         :param agent_key: The key for the agent to get the configuration for
         :param context: The evaluation context
+        :param variation_key: If set, fetch this specific variation from the API as the base.
+        :param project_key: Required when variation_key is set.
+        :param api_client: Optional pre-built LDApiClient to reuse (e.g. from optimize_from_config).
+        :param base_url: Optional base URL override for a newly created LDApiClient.
         :return: AIAgentConfig with raw {{placeholder}} instruction templates intact
         """
         try:
             agent_config = self._ldClient.agent_config(agent_key, context)
 
-            # variation() returns the raw JSON before chevron.render(), so instructions
-            # still contain {{placeholder}} tokens rather than empty strings.
-            raw_variation = self._ldClient._client.variation(agent_key, context, {})
-            raw_instructions = raw_variation.get(
-                "instructions", agent_config.instructions
-            )
+            if variation_key:
+                # Fetch the specific variation from the REST API so instructions,
+                # model, and tools all come from the requested base variation rather
+                # than whatever the SDK evaluates for the given context.
+                client = api_client or LDApiClient(
+                    self._api_key,  # type: ignore[arg-type]
+                    **({"base_url": base_url} if base_url else {}),
+                )
+                variation_data = client.get_ai_config_variation(project_key, agent_key, variation_key)  # type: ignore[arg-type]
+                raw_instructions = variation_data.get("instructions") or ""
+                raw_tools = variation_data.get("tools") or []
+                model_config_key = variation_data.get("modelConfigKey") or ""
+                if model_config_key:
+                    agent_config = dataclasses.replace(
+                        agent_config,
+                        model=ModelConfig(name=model_config_key, parameters={}),
+                    )
+            else:
+                # variation() returns the raw JSON before chevron.render(), so instructions
+                # still contain {{placeholder}} tokens rather than empty strings.
+                raw_variation = self._ldClient._client.variation(agent_key, context, {})
+                raw_instructions = raw_variation.get(
+                    "instructions", agent_config.instructions
+                )
+                raw_tools = raw_variation.get("tools", [])
+
             if not raw_instructions:
                 raise ValueError(
                     f"Agent '{agent_key}' has no instructions configured. "
@@ -854,7 +886,6 @@ class OptimizationClient:
                 )
             self._initial_instructions = raw_instructions
 
-            raw_tools = raw_variation.get("tools", [])
             self._initial_tool_keys = [
                 t["key"]
                 for t in raw_tools
@@ -888,9 +919,24 @@ class OptimizationClient:
                 raise ValueError(
                     "auto_commit requires project_key to be set on OptimizationOptions"
                 )
+        if options.variation_key:
+            if not self._has_api_key:
+                raise ValueError(
+                    "variation_key requires LAUNCHDARKLY_API_KEY to be set"
+                )
+            if not options.project_key:
+                raise ValueError(
+                    "variation_key requires project_key to be set on OptimizationOptions"
+                )
         self._agent_key = agent_key
         context = random.choice(options.context_choices)
-        agent_config = await self._get_agent_config(agent_key, context)
+        agent_config = await self._get_agent_config(
+            agent_key,
+            context,
+            variation_key=options.variation_key,
+            project_key=options.project_key,
+            base_url=options.base_url,
+        )
         result = await self._run_optimization(agent_config, options)
         if options.auto_commit and self._last_run_succeeded and self._last_succeeded_context:
             self._commit_variation(
@@ -926,9 +972,24 @@ class OptimizationClient:
                 raise ValueError(
                     "auto_commit requires project_key to be set on GroundTruthOptimizationOptions"
                 )
+        if options.variation_key:
+            if not self._has_api_key:
+                raise ValueError(
+                    "variation_key requires LAUNCHDARKLY_API_KEY to be set"
+                )
+            if not options.project_key:
+                raise ValueError(
+                    "variation_key requires project_key to be set on GroundTruthOptimizationOptions"
+                )
         self._agent_key = agent_key
         context = random.choice(options.context_choices)
-        agent_config = await self._get_agent_config(agent_key, context)
+        agent_config = await self._get_agent_config(
+            agent_key,
+            context,
+            variation_key=options.variation_key,
+            project_key=options.project_key,
+            base_url=options.base_url,
+        )
         result = await self._run_ground_truth_optimization(agent_config, options)
         if options.auto_commit and self._last_run_succeeded and self._last_succeeded_context:
             self._commit_variation(
@@ -1425,7 +1486,13 @@ class OptimizationClient:
         context = random.choice(options.context_choices)
         # _get_agent_config calls _initialize_class_members_from_config internally;
         # _run_optimization calls it again to reset history before the loop starts.
-        agent_config = await self._get_agent_config(self._agent_key, context)
+        agent_config = await self._get_agent_config(
+            self._agent_key,
+            context,
+            variation_key=config.get("variationKey"),
+            project_key=options.project_key,
+            api_client=api_client,
+        )
 
         optimization_options = self._build_options_from_config(
             config, options, api_client, optimization_key, run_id, model_configs
