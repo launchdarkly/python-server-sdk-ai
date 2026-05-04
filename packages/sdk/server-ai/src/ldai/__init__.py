@@ -35,7 +35,6 @@ from ldai.providers import (
     AgentGraphResult,
     AgentGraphRunner,
     AgentGraphRunnerResult,
-    AgentRunner,
     GraphMetrics,
     GraphMetricSummary,
     ManagedGraphResult,
@@ -50,7 +49,6 @@ from ldai.tracker import AIGraphTracker, LDAIMetricSummary
 __all__ = [
     'LDAIClient',
     'Evaluator',
-    'AgentRunner',
     'AgentGraphRunner',
     'AgentGraphResult',
     'AgentGraphRunnerResult',

@@ -1,19 +1,10 @@
 import pytest
 
-from ldai.providers import AgentGraphResult, AgentGraphRunner, AgentRunner, ToolRegistry
+from ldai.providers import AgentGraphResult, AgentGraphRunner, ToolRegistry
 from ldai.providers.types import LDAIMetrics, RunnerResult
 
 
 # --- Concrete test doubles ---
-
-class ConcreteAgentRunner:
-    async def run(self, input):
-        return RunnerResult(
-            content=f"agent response to: {input}",
-            metrics=LDAIMetrics(success=True),
-            raw={"raw": input},
-        )
-
 
 class ConcreteAgentGraphRunner:
     async def run(self, input):
@@ -26,26 +17,6 @@ class ConcreteAgentGraphRunner:
 
 class MissingRunMethod:
     pass
-
-
-# --- AgentRunner ---
-
-def test_agent_runner_structural_check_passes():
-    assert isinstance(ConcreteAgentRunner(), AgentRunner)
-
-
-def test_agent_runner_structural_check_fails_when_run_missing():
-    assert not isinstance(MissingRunMethod(), AgentRunner)
-
-
-@pytest.mark.asyncio
-async def test_agent_runner_run_returns_runner_result():
-    runner = ConcreteAgentRunner()
-    result = await runner.run("hello")
-    assert isinstance(result, RunnerResult)
-    assert result.content == "agent response to: hello"
-    assert result.raw == {"raw": "hello"}
-    assert result.metrics.success is True
 
 
 @pytest.mark.asyncio
@@ -101,7 +72,6 @@ def test_tool_registry_is_dict_of_callables():
 
 def test_top_level_exports():
     import ldai
-    assert hasattr(ldai, 'AgentRunner')
     assert hasattr(ldai, 'AgentGraphRunner')
     assert hasattr(ldai, 'AgentGraphResult')
     assert hasattr(ldai, 'RunnerResult')
