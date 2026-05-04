@@ -157,6 +157,7 @@ class OptimizationClient:
         self._last_succeeded_context: Optional[OptimizationContext] = None
         self._last_optimization_result_id: Optional[str] = None
         self._initial_tool_keys: List[str] = []
+        self._initial_model_custom: Optional[Dict[str, Any]] = None
         self._total_token_usage: int = 0
 
         if os.environ.get("LAUNCHDARKLY_API_KEY"):
@@ -861,6 +862,11 @@ class OptimizationClient:
                 if isinstance(t, dict) and "key" in t
             ]
 
+            raw_model = raw_variation.get("model")
+            self._initial_model_custom = (
+                raw_model.get("custom") if isinstance(raw_model, dict) else None
+            )
+
             agent_config = dataclasses.replace(
                 agent_config, instructions=raw_instructions
             )
@@ -1231,7 +1237,32 @@ class OptimizationClient:
         for msg in placeholder_warnings:
             logger.warning("[Iteration %d] -> %s", iteration, msg)
 
-        self._current_parameters = response_data["current_parameters"]
+        # Merge the LLM's returned parameters into the existing ones so that custom
+        # parameters (e.g. response_format, max_tokens, structured-output config)
+        # are preserved even when the LLM omits them from its response.
+        original_params = self._current_parameters.copy()
+        new_params = response_data["current_parameters"]
+        merged_params = {**original_params, **new_params}
+
+        # Tools must be returned "unchanged" per the variation prompt. Always restore
+        # the original tools so that (a) user-defined tools are never silently dropped
+        # and (b) internal framework tools (e.g. structured-output tool injected by
+        # the agent SDK) cannot leak in from the LLM's response.
+        original_tools = original_params.get("tools")
+        if original_tools is not None:
+            returned_tools = new_params.get("tools")
+            if returned_tools is not None and returned_tools != original_tools:
+                logger.warning(
+                    "[Iteration %d] -> LLM returned a modified tools list; restoring "
+                    "original tools to prevent tool drift or internal-tool leakage. "
+                    "Original: %s  Returned: %s",
+                    iteration,
+                    [t.get("name") if isinstance(t, dict) else getattr(t, "name", t) for t in original_tools],
+                    [t.get("name") if isinstance(t, dict) else getattr(t, "name", t) for t in returned_tools],
+                )
+            merged_params["tools"] = original_tools
+
+        self._current_parameters = merged_params
 
         # Update model — it should always be provided since it's required in the schema
         model_value = (
@@ -2017,6 +2048,8 @@ class OptimizationClient:
         }
         if self._initial_tool_keys:
             payload["toolKeys"] = list(self._initial_tool_keys)
+        if self._initial_model_custom:
+            payload["model"] = {"custom": self._initial_model_custom}
 
         last_exc: Optional[Exception] = None
         for attempt in range(1, 4):
