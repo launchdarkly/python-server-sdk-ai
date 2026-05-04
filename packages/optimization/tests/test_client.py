@@ -949,6 +949,162 @@ class TestGenerateNewVariation:
 
 
 # ---------------------------------------------------------------------------
+# Parameter persistence across variation generation
+# ---------------------------------------------------------------------------
+
+
+class TestParameterPersistence:
+    """Ensure custom parameters are preserved when the LLM generates a new variation."""
+
+    def setup_method(self):
+        self.client = _make_client()
+        agent_config = _make_agent_config()
+        self.client._agent_key = "test-agent"
+        self.client._agent_config = agent_config
+        self.client._initial_instructions = AGENT_INSTRUCTIONS
+        self.client._initialize_class_members_from_config(agent_config)
+
+    def _set_params(self, params: Dict[str, Any]) -> None:
+        self.client._current_parameters = params
+
+    def _run_variation(self, returned_params: Dict[str, Any]) -> None:
+        """Helper: simulate _apply_new_variation_response with a given returned params dict."""
+        variation_ctx = OptimizationContext(
+            scores={},
+            completion_response="",
+            current_instructions=AGENT_INSTRUCTIONS,
+            current_parameters={"temperature": 0.1},
+            current_variables={},
+            current_model="gpt-4o",
+            user_input=None,
+            iteration=1,
+        )
+        response_data = {
+            "current_instructions": "Improved instructions.",
+            "current_parameters": returned_params,
+            "model": "gpt-4o",
+        }
+        self.client._options = _make_options()
+        self.client._apply_new_variation_response(response_data, variation_ctx, json.dumps(response_data), 1)
+
+    async def test_custom_param_preserved_when_llm_omits_it(self):
+        """Parameters not in LLM response should be preserved from the original config."""
+        self.client._options = _make_options()
+        self.client._current_parameters = {"temperature": 0.7, "max_tokens": 512, "seed": 42}
+        self._run_variation({"temperature": 0.5})
+        assert self.client._current_parameters["max_tokens"] == 512
+        assert self.client._current_parameters["seed"] == 42
+        assert self.client._current_parameters["temperature"] == 0.5
+
+    async def test_response_format_preserved_when_llm_omits_it(self):
+        """response_format (structured output config) is preserved even if LLM returns only temperature."""
+        self.client._options = _make_options()
+        self.client._current_parameters = {
+            "temperature": 0.7,
+            "response_format": {"type": "json_schema", "json_schema": {"name": "output"}},
+        }
+        self._run_variation({"temperature": 0.5})
+        assert self.client._current_parameters["response_format"] == {
+            "type": "json_schema",
+            "json_schema": {"name": "output"},
+        }
+
+    async def test_empty_returned_params_preserves_all_original_params(self):
+        """If LLM returns {}, all original parameters survive."""
+        self.client._options = _make_options()
+        self.client._current_parameters = {"temperature": 0.7, "max_tokens": 256}
+        self._run_variation({})
+        assert self.client._current_parameters["temperature"] == 0.7
+        assert self.client._current_parameters["max_tokens"] == 256
+
+    async def test_llm_explicit_param_override_is_applied(self):
+        """If the LLM explicitly returns a parameter, the new value is used."""
+        self.client._options = _make_options()
+        self.client._current_parameters = {"temperature": 0.7, "max_tokens": 256}
+        self._run_variation({"temperature": 0.3, "max_tokens": 128})
+        assert self.client._current_parameters["temperature"] == 0.3
+        assert self.client._current_parameters["max_tokens"] == 128
+
+    async def test_original_tools_always_restored(self):
+        """Tools from the original config are always restored regardless of LLM response."""
+        original_tool = {"name": "my-tool", "type": "function", "description": "desc", "parameters": {}}
+        self.client._options = _make_options()
+        self.client._current_parameters = {"temperature": 0.7, "tools": [original_tool]}
+        self._run_variation({"temperature": 0.5, "tools": []})
+        assert self.client._current_parameters["tools"] == [original_tool]
+
+    async def test_internal_tool_leakage_is_blocked(self):
+        """If LLM returns tools including an internal framework tool, original tools are restored."""
+        original_tool = {"name": "user-lookup", "type": "function", "description": "Looks up users", "parameters": {}}
+        internal_tool = {"name": "FinalAnswer", "type": "function", "description": "internal", "parameters": {}}
+        self.client._options = _make_options()
+        self.client._current_parameters = {"temperature": 0.7, "tools": [original_tool]}
+        self._run_variation({"temperature": 0.5, "tools": [original_tool, internal_tool]})
+        result_tools = self.client._current_parameters["tools"]
+        assert result_tools == [original_tool]
+        assert not any(t.get("name") == "FinalAnswer" for t in result_tools)
+
+    async def test_internal_tool_leakage_logs_warning(self):
+        """Tool mismatch should emit a warning."""
+        original_tool = {"name": "my-tool", "type": "function", "description": "d", "parameters": {}}
+        internal_tool = {"name": "structured_output_tool", "type": "function", "description": "internal", "parameters": {}}
+        self.client._options = _make_options()
+        self.client._current_parameters = {"temperature": 0.7, "tools": [original_tool]}
+        with patch("ldai_optimizer.client.logger") as mock_logger:
+            self._run_variation({"temperature": 0.5, "tools": [internal_tool]})
+            warning_calls = [c for c in mock_logger.warning.call_args_list if "tool" in str(c).lower()]
+            assert len(warning_calls) >= 1
+
+    async def test_no_original_tools_allows_llm_returned_tools(self):
+        """When the original config had no tools, the LLM is free to return tools."""
+        new_tool = {"name": "new-tool", "type": "function", "description": "desc", "parameters": {}}
+        self.client._options = _make_options()
+        self.client._current_parameters = {"temperature": 0.7}
+        self._run_variation({"temperature": 0.5, "tools": [new_tool]})
+        assert self.client._current_parameters.get("tools") == [new_tool]
+
+    async def test_params_preserved_across_full_optimization_loop(self):
+        """End-to-end: custom params survive through a full failed-then-succeeded optimization."""
+        custom_params_response = json.dumps({
+            "current_instructions": "Improved.",
+            "current_parameters": {"temperature": 0.3},  # omits max_tokens and response_format
+            "model": "gpt-4o",
+        })
+        agent_config_with_params = _make_agent_config(
+            parameters={"temperature": 0.7, "max_tokens": 512, "response_format": {"type": "json_object"}},
+        )
+        mock_ldai = _make_ldai_client(agent_config=agent_config_with_params)
+        mock_ldai._client.variation.return_value = {
+            "instructions": AGENT_INSTRUCTIONS,
+        }
+        agent_responses = [
+            OptimizationResponse(output="Bad answer."),          # iteration 1: agent
+            OptimizationResponse(output=custom_params_response), # iteration 1: variation
+            OptimizationResponse(output="Good answer."),         # iteration 2: agent
+            OptimizationResponse(output="Good answer."),         # iteration 2: validation
+        ]
+        handle_agent_call = AsyncMock(side_effect=agent_responses)
+        judge_responses = [
+            OptimizationResponse(output=JUDGE_FAIL_RESPONSE),
+            OptimizationResponse(output=JUDGE_PASS_RESPONSE),
+            OptimizationResponse(output=JUDGE_PASS_RESPONSE),
+        ]
+        handle_judge_call = AsyncMock(side_effect=judge_responses)
+        client = _make_client(mock_ldai)
+        options = _make_options(
+            handle_agent_call=handle_agent_call,
+            handle_judge_call=handle_judge_call,
+            max_attempts=3,
+        )
+        result = await client.optimize_from_options("test-agent", options)
+        assert result.scores["accuracy"].score == 1.0
+        # After variation, max_tokens and response_format should still be present
+        assert client._current_parameters.get("max_tokens") == 512
+        assert client._current_parameters.get("response_format") == {"type": "json_object"}
+        assert client._current_parameters.get("temperature") == 0.3  # LLM's update applied
+
+
+# ---------------------------------------------------------------------------
 # Full optimization loop
 # ---------------------------------------------------------------------------
 
@@ -4048,6 +4204,48 @@ class TestCommitVariation:
         payload = api_client.create_ai_config_variation.call_args[0][2]
         assert "toolKeys" not in payload
 
+    # --- model.custom propagation ---
+
+    def test_model_custom_included_in_payload_when_set(self):
+        client = self._make_client()
+        client._initial_model_custom = {"myApp": {"debug": True, "region": "us-east-1"}}
+        api_client = _make_api_client_for_commit()
+
+        client._commit_variation(
+            _make_winning_context(), project_key="my-project",
+            ai_config_key="my-agent", output_key="k", api_client=api_client,
+        )
+
+        payload = api_client.create_ai_config_variation.call_args[0][2]
+        assert payload["model"] == {"custom": {"myApp": {"debug": True, "region": "us-east-1"}}}
+
+    def test_model_not_in_payload_when_model_custom_is_none(self):
+        client = self._make_client()
+        client._initial_model_custom = None
+        api_client = _make_api_client_for_commit()
+
+        client._commit_variation(
+            _make_winning_context(), project_key="my-project",
+            ai_config_key="my-agent", output_key="k", api_client=api_client,
+        )
+
+        payload = api_client.create_ai_config_variation.call_args[0][2]
+        assert "model" not in payload
+
+    def test_model_not_in_payload_when_model_custom_is_empty_dict(self):
+        """An empty custom dict is falsy — treated the same as absent."""
+        client = self._make_client()
+        client._initial_model_custom = {}
+        api_client = _make_api_client_for_commit()
+
+        client._commit_variation(
+            _make_winning_context(), project_key="my-project",
+            ai_config_key="my-agent", output_key="k", api_client=api_client,
+        )
+
+        payload = api_client.create_ai_config_variation.call_args[0][2]
+        assert "model" not in payload
+
 
 # ---------------------------------------------------------------------------
 # Tool key extraction from raw variation (_get_agent_config)
@@ -4096,6 +4294,36 @@ class TestGetAgentConfigToolKeyExtraction:
         client = self._make_client_with_variation(raw)
         await client._get_agent_config("test-agent", LD_CONTEXT)
         assert client._initial_tool_keys == ["good-tool"]
+
+    async def test_extracts_model_custom_from_raw_variation(self):
+        raw = {
+            "instructions": AGENT_INSTRUCTIONS,
+            "model": {"modelName": "gpt-4o", "custom": {"myApp": {"debug": True}}},
+        }
+        client = self._make_client_with_variation(raw)
+        await client._get_agent_config("test-agent", LD_CONTEXT)
+        assert client._initial_model_custom == {"myApp": {"debug": True}}
+
+    async def test_model_custom_is_none_when_variation_has_no_model(self):
+        raw = {"instructions": AGENT_INSTRUCTIONS}
+        client = self._make_client_with_variation(raw)
+        await client._get_agent_config("test-agent", LD_CONTEXT)
+        assert client._initial_model_custom is None
+
+    async def test_model_custom_is_none_when_model_has_no_custom_key(self):
+        raw = {
+            "instructions": AGENT_INSTRUCTIONS,
+            "model": {"modelName": "gpt-4o", "parameters": {"temperature": 0.7}},
+        }
+        client = self._make_client_with_variation(raw)
+        await client._get_agent_config("test-agent", LD_CONTEXT)
+        assert client._initial_model_custom is None
+
+    async def test_model_custom_is_none_when_model_is_not_a_dict(self):
+        raw = {"instructions": AGENT_INSTRUCTIONS, "model": "gpt-4o"}
+        client = self._make_client_with_variation(raw)
+        await client._get_agent_config("test-agent", LD_CONTEXT)
+        assert client._initial_model_custom is None
 
 
 # ---------------------------------------------------------------------------
