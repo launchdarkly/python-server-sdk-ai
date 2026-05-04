@@ -2,6 +2,15 @@
 
 All notable changes to the LaunchDarkly Python AI OpenAI provider package will be documented in this file. This project adheres to [Semantic Versioning](http://semver.org).
 
+## [0.5.0](https://github.com/launchdarkly/python-server-sdk-ai/compare/launchdarkly-server-sdk-ai-openai-0.4.0...launchdarkly-server-sdk-ai-openai-0.5.0) (2026-05-04)
+
+
+### Features
+
+* Add judge evaluation support to agent graphs ([#142](https://github.com/launchdarkly/python-server-sdk-ai/issues/142)) ([3d5a6a9](https://github.com/launchdarkly/python-server-sdk-ai/commit/3d5a6a91a87c7475a83a7e440cd4b71337cfd56f))
+* Update OpenAI graph runner to return AgentGraphRunnerResult with GraphMetrics ([#155](https://github.com/launchdarkly/python-server-sdk-ai/issues/155)) ([388b7af](https://github.com/launchdarkly/python-server-sdk-ai/commit/388b7af70c23180607764a0fc4783ae4d0cd096d))
+* Update OpenAI runners to implement Runner protocol returning RunnerResult ([#149](https://github.com/launchdarkly/python-server-sdk-ai/issues/149)) ([382e662](https://github.com/launchdarkly/python-server-sdk-ai/commit/382e662af00b224f7269397beea94c70c2872b9a))
+
 ## [0.4.0](https://github.com/launchdarkly/python-server-sdk-ai/compare/launchdarkly-server-sdk-ai-openai-0.3.0...launchdarkly-server-sdk-ai-openai-0.4.0) (2026-04-21)
 
 
