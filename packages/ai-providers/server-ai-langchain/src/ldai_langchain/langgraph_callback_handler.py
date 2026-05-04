@@ -20,8 +20,9 @@ class LDMetricsCallbackHandler(BaseCallbackHandler):
     LangChain callback handler that collects per-node metrics during a LangGraph run.
 
     Records token usage, tool calls, and duration for each agent node in the graph.
-    Call ``collect_node_metrics()`` after the run completes to retrieve the accumulated
-    per-node metrics for use by the managed layer.
+    Each node's :class:`~ldai.providers.types.LDAIMetrics` is built incrementally
+    as callbacks fire.  Access the ``node_metrics`` property after the run completes
+    to retrieve the accumulated per-node metrics.
     """
 
     def __init__(self, node_keys: Set[str], fn_name_to_config_key: Dict[str, str]):
@@ -39,14 +40,10 @@ class LDMetricsCallbackHandler(BaseCallbackHandler):
 
         # run_id -> node_key for active chain runs
         self._run_to_node: Dict[UUID, str] = {}
-        # accumulated token usage per node
-        self._node_tokens: Dict[str, TokenUsage] = {}
-        # tool config keys called per node
-        self._node_tool_calls: Dict[str, List[str]] = {}
         # start time (ns) per active run_id — keyed by run_id to handle re-entrant nodes
         self._node_start_ns: Dict[UUID, int] = {}
-        # accumulated duration (ms) per node
-        self._node_duration_ms: Dict[str, int] = {}
+        # per-node metrics, built incrementally as callbacks fire
+        self._node_metrics: Dict[str, LDAIMetrics] = {}
         # execution path in order (deduplicated)
         self._path: List[str] = []
         self._path_set: Set[str] = set()
@@ -61,19 +58,9 @@ class LDMetricsCallbackHandler(BaseCallbackHandler):
         return list(self._path)
 
     @property
-    def node_tokens(self) -> Dict[str, TokenUsage]:
-        """Accumulated token usage per node key."""
-        return dict(self._node_tokens)
-
-    @property
-    def node_tool_calls(self) -> Dict[str, List[str]]:
-        """Tool config keys called per node key."""
-        return {k: list(v) for k, v in self._node_tool_calls.items()}
-
-    @property
-    def node_durations_ms(self) -> Dict[str, int]:
-        """Accumulated duration in milliseconds per node key."""
-        return dict(self._node_duration_ms)
+    def node_metrics(self) -> Dict[str, LDAIMetrics]:
+        """Per-node metrics keyed by node key."""
+        return dict(self._node_metrics)
 
     # ------------------------------------------------------------------
     # Callbacks
@@ -101,10 +88,10 @@ class LDMetricsCallbackHandler(BaseCallbackHandler):
             if name not in self._path_set:
                 self._path.append(name)
                 self._path_set.add(name)
+                self._node_metrics[name] = LDAIMetrics(success=False)
         elif name.endswith('__tools'):
             stripped = name[: -len('__tools')]
             if stripped in self._node_keys:
-                # Attribute tool events to the owning agent node
                 self._run_to_node[run_id] = stripped
 
     def on_chain_end(
@@ -121,9 +108,10 @@ class LDMetricsCallbackHandler(BaseCallbackHandler):
         start_ns = self._node_start_ns.pop(run_id, None)
         if start_ns is not None:
             elapsed_ms = (time.perf_counter_ns() - start_ns) // 1_000_000
-            self._node_duration_ms[node_key] = (
-                self._node_duration_ms.get(node_key, 0) + elapsed_ms
-            )
+            metrics = self._node_metrics.get(node_key)
+            if metrics is not None:
+                metrics.success = True
+                metrics.duration_ms = (metrics.duration_ms or 0) + elapsed_ms
 
     def on_llm_end(
         self,
@@ -151,11 +139,14 @@ class LDMetricsCallbackHandler(BaseCallbackHandler):
         if usage is None:
             return
 
-        existing = self._node_tokens.get(node_key)
+        metrics = self._node_metrics.get(node_key)
+        if metrics is None:
+            return
+        existing = metrics.usage
         if existing is None:
-            self._node_tokens[node_key] = usage
+            metrics.usage = usage
         else:
-            self._node_tokens[node_key] = TokenUsage(
+            metrics.usage = TokenUsage(
                 total=existing.total + usage.total,
                 input=existing.input + usage.input,
                 output=existing.output + usage.output,
@@ -179,32 +170,11 @@ class LDMetricsCallbackHandler(BaseCallbackHandler):
 
         config_key = self._fn_name_to_config_key.get(name)
         if config_key is None:
-            # Tool is not a registered functional tool (e.g. a handoff tool) — skip tracking.
             return
-        if node_key not in self._node_tool_calls:
-            self._node_tool_calls[node_key] = []
-        self._node_tool_calls[node_key].append(config_key)
-
-    def collect_node_metrics(self) -> Dict[str, LDAIMetrics]:
-        """
-        Build a per-node ``LDAIMetrics`` map from data collected during the run.
-
-        Pure data extraction — no LaunchDarkly tracker events are emitted.
-        :class:`LangGraphAgentGraphRunner` uses this to populate
-        ``GraphMetrics.node_metrics`` so the managed layer can drive per-node
-        events.
-
-        :return: Mapping of node key to its accumulated ``LDAIMetrics``.
-        """
-        node_metrics: Dict[str, LDAIMetrics] = {}
-        for node_key in self._path:
-            if node_key in node_metrics:
-                continue
-            tool_calls = self._node_tool_calls.get(node_key, [])
-            node_metrics[node_key] = LDAIMetrics(
-                success=True,
-                usage=self._node_tokens.get(node_key),
-                tool_calls=list(tool_calls) if tool_calls else None,
-                duration_ms=self._node_duration_ms.get(node_key),
-            )
-        return node_metrics
+        metrics = self._node_metrics.get(node_key)
+        if metrics is None:
+            return
+        if metrics.tool_calls is None:
+            metrics.tool_calls = [config_key]
+        else:
+            metrics.tool_calls.append(config_key)

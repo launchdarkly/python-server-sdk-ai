@@ -6,7 +6,7 @@ from typing import Annotated, Any, Dict, List, Set, Tuple
 from ldai import log
 from ldai.agent_graph import AgentGraphDefinition, AgentGraphNode
 from ldai.providers import AgentGraphRunner, ToolRegistry
-from ldai.providers.types import AgentGraphRunnerResult, GraphMetrics, LDAIMetrics
+from ldai.providers.types import AgentGraphRunnerResult, GraphMetrics
 
 from ldai_langchain.langchain_helper import (
     build_structured_tools,
@@ -304,18 +304,7 @@ class LangGraphAgentGraphRunner(AgentGraphRunner):
             output = extract_last_message_content(messages)
             total_usage = sum_token_usage_from_messages(messages)
 
-            # Build per-node LDAIMetrics from callback handler data
-            node_metrics: Dict[str, LDAIMetrics] = {}
-            for node_key in handler.path:
-                usage = handler.node_tokens.get(node_key)
-                duration = handler.node_durations_ms.get(node_key)
-                tool_calls = handler.node_tool_calls.get(node_key) or []
-                node_metrics[node_key] = LDAIMetrics(
-                    success=True,
-                    usage=usage,
-                    duration_ms=duration,
-                    tool_calls=tool_calls if tool_calls else None,
-                )
+            node_metrics = handler.node_metrics
 
             return AgentGraphRunnerResult(
                 content=output,

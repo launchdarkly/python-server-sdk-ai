@@ -9,7 +9,6 @@ from uuid import uuid4
 
 from langchain_core.messages import AIMessage
 from langchain_core.outputs import ChatGeneration, LLMResult
-from ldai.tracker import TokenUsage
 
 from ldai_langchain.langgraph_callback_handler import LDMetricsCallbackHandler
 
@@ -37,6 +36,15 @@ def test_on_chain_start_records_agent_node():
     run_id = uuid4()
     handler.on_chain_start({}, {}, run_id=run_id, name='root-agent')
     assert handler.path == ['root-agent']
+
+
+def test_on_chain_start_seeds_node_metrics():
+    """Agent node gets an LDAIMetrics entry with success=False on first chain_start."""
+    handler = LDMetricsCallbackHandler({'root-agent'}, {})
+    handler.on_chain_start({}, {}, run_id=uuid4(), name='root-agent')
+    metrics = handler.node_metrics
+    assert 'root-agent' in metrics
+    assert metrics['root-agent'].success is False
 
 
 def test_on_chain_start_deduplicates_path():
@@ -100,8 +108,8 @@ def test_on_chain_end_accumulates_duration():
     run_id = uuid4()
     handler.on_chain_start({}, {}, run_id=run_id, name='root-agent')
     handler.on_chain_end({}, run_id=run_id)
-    # Duration may be 0 on fast machines but the key must be present
-    assert 'root-agent' in handler.node_durations_ms
+    assert handler.node_metrics['root-agent'].duration_ms is not None
+    assert handler.node_metrics['root-agent'].success is True
 
 
 def test_on_chain_end_accumulates_across_multiple_runs():
@@ -111,12 +119,12 @@ def test_on_chain_end_accumulates_across_multiple_runs():
     run1 = uuid4()
     handler.on_chain_start({}, {}, run_id=run1, name='root-agent')
     handler.on_chain_end({}, run_id=run1)
-    duration_after_first = handler.node_durations_ms.get('root-agent', 0)
+    duration_after_first = handler.node_metrics['root-agent'].duration_ms or 0
 
     run2 = uuid4()
     handler.on_chain_start({}, {}, run_id=run2, name='root-agent')
     handler.on_chain_end({}, run_id=run2)
-    duration_after_second = handler.node_durations_ms.get('root-agent', 0)
+    duration_after_second = handler.node_metrics['root-agent'].duration_ms or 0
 
     assert duration_after_second >= duration_after_first
 
@@ -140,11 +148,11 @@ def test_on_llm_end_accumulates_tokens():
     result = _llm_result(total=15, prompt=10, completion=5)
     handler.on_llm_end(result, run_id=uuid4(), parent_run_id=node_run_id)
 
-    tokens = handler.node_tokens.get('root-agent')
-    assert tokens is not None
-    assert tokens.total == 15
-    assert tokens.input == 10
-    assert tokens.output == 5
+    usage = handler.node_metrics['root-agent'].usage
+    assert usage is not None
+    assert usage.total == 15
+    assert usage.input == 10
+    assert usage.output == 5
 
 
 def test_on_llm_end_accumulates_across_multiple_calls():
@@ -158,10 +166,10 @@ def test_on_llm_end_accumulates_across_multiple_calls():
     handler.on_llm_end(result1, run_id=uuid4(), parent_run_id=node_run_id)
     handler.on_llm_end(result2, run_id=uuid4(), parent_run_id=node_run_id)
 
-    tokens = handler.node_tokens['root-agent']
-    assert tokens.total == 16
-    assert tokens.input == 11
-    assert tokens.output == 5
+    usage = handler.node_metrics['root-agent'].usage
+    assert usage.total == 16
+    assert usage.input == 11
+    assert usage.output == 5
 
 
 def test_on_llm_end_none_parent_run_id_ignored():
@@ -169,7 +177,7 @@ def test_on_llm_end_none_parent_run_id_ignored():
     handler = LDMetricsCallbackHandler({'root-agent'}, {})
     result = _llm_result(total=5, prompt=3, completion=2)
     handler.on_llm_end(result, run_id=uuid4(), parent_run_id=None)
-    assert handler.node_tokens == {}
+    assert handler.node_metrics == {}
 
 
 def test_on_llm_end_unknown_parent_run_id_ignored():
@@ -177,7 +185,7 @@ def test_on_llm_end_unknown_parent_run_id_ignored():
     handler = LDMetricsCallbackHandler({'root-agent'}, {})
     result = _llm_result(total=5, prompt=3, completion=2)
     handler.on_llm_end(result, run_id=uuid4(), parent_run_id=uuid4())
-    assert handler.node_tokens == {}
+    assert handler.node_metrics == {}
 
 
 def test_on_llm_end_camel_case_token_keys():
@@ -195,11 +203,11 @@ def test_on_llm_end_camel_case_token_keys():
     )
     handler.on_llm_end(result, run_id=uuid4(), parent_run_id=node_run_id)
 
-    tokens = handler.node_tokens.get('root-agent')
-    assert tokens is not None
-    assert tokens.total == 20
-    assert tokens.input == 12
-    assert tokens.output == 8
+    usage = handler.node_metrics['root-agent'].usage
+    assert usage is not None
+    assert usage.total == 20
+    assert usage.input == 12
+    assert usage.output == 8
 
 
 # ---------------------------------------------------------------------------
@@ -209,36 +217,42 @@ def test_on_llm_end_camel_case_token_keys():
 def test_on_tool_end_records_tool_call():
     """Tool end event records config key for the owning agent node."""
     handler = LDMetricsCallbackHandler({'root-agent'}, {'fetch_weather': 'get_weather_open_meteo'})
+    agent_run_id = uuid4()
+    handler.on_chain_start({}, {}, run_id=agent_run_id, name='root-agent')
     tools_run_id = uuid4()
     handler.on_chain_start({}, {}, run_id=tools_run_id, name='root-agent__tools')
     handler.on_tool_end('sunny', run_id=uuid4(), parent_run_id=tools_run_id, name='fetch_weather')
-    assert handler.node_tool_calls.get('root-agent') == ['get_weather_open_meteo']
+    assert handler.node_metrics['root-agent'].tool_calls == ['get_weather_open_meteo']
 
 
 def test_on_tool_end_skips_unregistered_tools():
     """Tool end is ignored for tools not in the fn_name_to_config_key map (e.g. handoff tools)."""
     handler = LDMetricsCallbackHandler({'root-agent'}, {})
+    agent_run_id = uuid4()
+    handler.on_chain_start({}, {}, run_id=agent_run_id, name='root-agent')
     tools_run_id = uuid4()
     handler.on_chain_start({}, {}, run_id=tools_run_id, name='root-agent__tools')
     handler.on_tool_end('result', run_id=uuid4(), parent_run_id=tools_run_id, name='transfer_to_child')
-    assert handler.node_tool_calls.get('root-agent') is None
+    assert handler.node_metrics['root-agent'].tool_calls is None
 
 
 def test_on_tool_end_multiple_tools_accumulated():
     """Multiple tool calls are accumulated in order."""
     handler = LDMetricsCallbackHandler({'root-agent'}, {'search': 'search', 'summarize': 'summarize'})
+    agent_run_id = uuid4()
+    handler.on_chain_start({}, {}, run_id=agent_run_id, name='root-agent')
     tools_run_id = uuid4()
     handler.on_chain_start({}, {}, run_id=tools_run_id, name='root-agent__tools')
     handler.on_tool_end('r1', run_id=uuid4(), parent_run_id=tools_run_id, name='search')
     handler.on_tool_end('r2', run_id=uuid4(), parent_run_id=tools_run_id, name='summarize')
-    assert handler.node_tool_calls.get('root-agent') == ['search', 'summarize']
+    assert handler.node_metrics['root-agent'].tool_calls == ['search', 'summarize']
 
 
 def test_on_tool_end_none_parent_run_id_ignored():
     """Tool end with parent_run_id=None does not raise."""
     handler = LDMetricsCallbackHandler({'root-agent'}, {})
     handler.on_tool_end('result', run_id=uuid4(), parent_run_id=None, name='my_tool')
-    assert handler.node_tool_calls == {}
+    assert handler.node_metrics == {}
 
 
 def test_on_tool_end_none_name_ignored():
@@ -247,21 +261,21 @@ def test_on_tool_end_none_name_ignored():
     run_id = uuid4()
     handler.on_chain_start({}, {}, run_id=run_id, name='root-agent')
     handler.on_tool_end('result', run_id=uuid4(), parent_run_id=run_id, name=None)
-    assert handler.node_tool_calls == {}
+    assert handler.node_metrics['root-agent'].tool_calls is None
 
 
 # ---------------------------------------------------------------------------
-# collect_node_metrics() tests
+# node_metrics property tests
 # ---------------------------------------------------------------------------
 
-def test_collect_node_metrics_includes_tokens():
-    """collect_node_metrics() returns token usage for nodes that received LLM calls."""
+def test_node_metrics_includes_tokens():
+    """node_metrics returns token usage for nodes that received LLM calls."""
     handler = LDMetricsCallbackHandler({'root-agent'}, {})
     node_run_id = uuid4()
     handler.on_chain_start({}, {}, run_id=node_run_id, name='root-agent')
     handler.on_llm_end(_llm_result(15, 10, 5), run_id=uuid4(), parent_run_id=node_run_id)
 
-    metrics = handler.collect_node_metrics()
+    metrics = handler.node_metrics
 
     assert 'root-agent' in metrics
     node = metrics['root-agent']
@@ -269,24 +283,24 @@ def test_collect_node_metrics_includes_tokens():
     assert node.usage.total == 15
     assert node.usage.input == 10
     assert node.usage.output == 5
-    assert node.success is True
 
 
-def test_collect_node_metrics_includes_duration():
-    """collect_node_metrics() returns duration_ms for nodes that completed a chain run."""
+def test_node_metrics_includes_duration():
+    """node_metrics returns duration_ms for nodes that completed a chain run."""
     handler = LDMetricsCallbackHandler({'root-agent'}, {})
     run_id = uuid4()
     handler.on_chain_start({}, {}, run_id=run_id, name='root-agent')
     handler.on_chain_end({}, run_id=run_id)
 
-    metrics = handler.collect_node_metrics()
+    metrics = handler.node_metrics
 
     assert 'root-agent' in metrics
     assert metrics['root-agent'].duration_ms is not None
+    assert metrics['root-agent'].success is True
 
 
-def test_collect_node_metrics_includes_tool_calls():
-    """collect_node_metrics() returns tool_calls for nodes with recorded tool invocations."""
+def test_node_metrics_includes_tool_calls():
+    """node_metrics returns tool_calls for nodes with recorded tool invocations."""
     handler = LDMetricsCallbackHandler({'root-agent'}, {'fn_search': 'search'})
     agent_run_id = uuid4()
     handler.on_chain_start({}, {}, run_id=agent_run_id, name='root-agent')
@@ -294,23 +308,23 @@ def test_collect_node_metrics_includes_tool_calls():
     handler.on_chain_start({}, {}, run_id=tools_run_id, name='root-agent__tools')
     handler.on_tool_end('r', run_id=uuid4(), parent_run_id=tools_run_id, name='fn_search')
 
-    metrics = handler.collect_node_metrics()
+    metrics = handler.node_metrics
 
     assert 'root-agent' in metrics
     assert metrics['root-agent'].tool_calls == ['search']
 
 
-def test_collect_node_metrics_skips_nodes_not_in_path():
-    """collect_node_metrics() returns an empty dict when no nodes were executed."""
+def test_node_metrics_empty_when_no_nodes_executed():
+    """node_metrics returns an empty dict when no nodes were executed."""
     handler = LDMetricsCallbackHandler({'root-agent'}, {})
 
-    metrics = handler.collect_node_metrics()
+    metrics = handler.node_metrics
 
     assert metrics == {}
 
 
-def test_collect_node_metrics_multiple_nodes():
-    """collect_node_metrics() returns separate entries for each executed node."""
+def test_node_metrics_multiple_nodes():
+    """node_metrics returns separate entries for each executed node."""
     handler = LDMetricsCallbackHandler({'root-agent', 'child-agent'}, {})
 
     root_run_id = uuid4()
@@ -321,7 +335,7 @@ def test_collect_node_metrics_multiple_nodes():
     handler.on_chain_start({}, {}, run_id=child_run_id, name='child-agent')
     handler.on_llm_end(_llm_result(5, 3, 2), run_id=uuid4(), parent_run_id=child_run_id)
 
-    metrics = handler.collect_node_metrics()
+    metrics = handler.node_metrics
 
     assert 'root-agent' in metrics
     assert 'child-agent' in metrics
@@ -329,26 +343,26 @@ def test_collect_node_metrics_multiple_nodes():
     assert metrics['child-agent'].usage.total == 5
 
 
-def test_collect_node_metrics_no_tool_calls_returns_none():
-    """collect_node_metrics() sets tool_calls to None for nodes with no tool invocations."""
+def test_node_metrics_no_tool_calls_returns_none():
+    """node_metrics sets tool_calls to None for nodes with no tool invocations."""
     handler = LDMetricsCallbackHandler({'root-agent'}, {})
     node_run_id = uuid4()
     handler.on_chain_start({}, {}, run_id=node_run_id, name='root-agent')
     handler.on_llm_end(_llm_result(5, 3, 2), run_id=uuid4(), parent_run_id=node_run_id)
 
-    metrics = handler.collect_node_metrics()
+    metrics = handler.node_metrics
 
     assert metrics['root-agent'].tool_calls is None
 
 
-def test_collect_node_metrics_no_usage_returns_none():
-    """collect_node_metrics() sets usage to None for nodes with no LLM calls."""
+def test_node_metrics_no_usage_returns_none():
+    """node_metrics sets usage to None for nodes with no LLM calls."""
     handler = LDMetricsCallbackHandler({'root-agent'}, {})
     run_id = uuid4()
     handler.on_chain_start({}, {}, run_id=run_id, name='root-agent')
     handler.on_chain_end({}, run_id=run_id)
 
-    metrics = handler.collect_node_metrics()
+    metrics = handler.node_metrics
 
     assert metrics['root-agent'].usage is None
 
@@ -366,12 +380,10 @@ def test_path_property_returns_copy():
     assert handler.path == ['root-agent']
 
 
-def test_node_tokens_property_returns_copy():
+def test_node_metrics_property_returns_copy():
     """Mutating the returned dict does not affect the handler's internal state."""
     handler = LDMetricsCallbackHandler({'root-agent'}, {})
-    node_run_id = uuid4()
-    handler.on_chain_start({}, {}, run_id=node_run_id, name='root-agent')
-    handler.on_llm_end(_llm_result(5, 3, 2), run_id=uuid4(), parent_run_id=node_run_id)
-    tokens = handler.node_tokens
-    tokens['other'] = TokenUsage(total=1, input=1, output=0)
-    assert 'other' not in handler.node_tokens
+    handler.on_chain_start({}, {}, run_id=uuid4(), name='root-agent')
+    metrics = handler.node_metrics
+    del metrics['root-agent']
+    assert 'root-agent' in handler.node_metrics

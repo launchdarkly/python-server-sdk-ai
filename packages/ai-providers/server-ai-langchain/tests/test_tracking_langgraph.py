@@ -248,7 +248,7 @@ async def test_tracks_node_and_graph_tokens_on_success():
     assert result.content == 'Sunny.'
 
     # Manually simulate what the callback handler would collect
-    # (mock models don't fire LangChain callbacks, so we test collect_node_metrics directly)
+    # (mock models don't fire LangChain callbacks, so we test node_metrics directly)
     handler = LDMetricsCallbackHandler({'root-agent'}, {})
     node_run_id = uuid4()
     handler.on_chain_start({}, {}, run_id=node_run_id, name='root-agent')
@@ -266,7 +266,7 @@ async def test_tracks_node_and_graph_tokens_on_success():
     handler.on_llm_end(llm_result, run_id=uuid4(), parent_run_id=node_run_id)
     handler.on_chain_end({}, run_id=node_run_id)
 
-    node_metrics = handler.collect_node_metrics()
+    node_metrics = handler.node_metrics
     assert 'root-agent' in node_metrics
     node = node_metrics['root-agent']
     assert node.usage is not None
@@ -335,7 +335,7 @@ async def test_tracks_tool_calls():
     handler.on_chain_start({}, {}, run_id=tools_run_id, name='root-agent__tools')
     handler.on_tool_end('sunny', run_id=uuid4(), parent_run_id=tools_run_id, name='get_weather')
 
-    node_metrics = handler.collect_node_metrics()
+    node_metrics = handler.node_metrics
     assert 'root-agent' in node_metrics
     assert node_metrics['root-agent'].tool_calls == ['get_weather']
 
@@ -383,7 +383,7 @@ async def test_tracks_multiple_tool_calls():
     handler.on_tool_end('result', run_id=uuid4(), parent_run_id=tools_run_id, name='search')
     handler.on_tool_end('summary', run_id=uuid4(), parent_run_id=tools_run_id, name='summarize')
 
-    node_metrics = handler.collect_node_metrics()
+    node_metrics = handler.node_metrics
     assert 'root-agent' in node_metrics
     assert sorted(node_metrics['root-agent'].tool_calls) == ['search', 'summarize']
 
@@ -492,7 +492,7 @@ async def test_multi_node_tracks_per_node_tokens_and_path():
     )
     handler.on_llm_end(child_llm_result, run_id=uuid4(), parent_run_id=child_run_id)
 
-    node_metrics = handler.collect_node_metrics()
+    node_metrics = handler.node_metrics
 
     # Per-node token usage is keyed by node key
     assert node_metrics['root-agent'].usage.total == 15
