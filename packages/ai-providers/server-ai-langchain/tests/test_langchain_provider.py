@@ -1,10 +1,9 @@
 """Tests for LangChain Provider."""
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock
 
+import pytest
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
-
 from ldai import LDMessage
 from ldai.evaluator import Evaluator
 
@@ -404,6 +403,7 @@ class TestCreateAgent:
     def test_creates_agent_runner_with_instructions_and_tool_definitions(self):
         """Should create LangChainAgentRunner wrapping a compiled graph."""
         from unittest.mock import patch
+
         from ldai_langchain import LangChainAgentRunner
 
         mock_ai_config = MagicMock()
@@ -436,6 +436,7 @@ class TestCreateAgent:
     def test_creates_agent_runner_with_no_tools(self):
         """Should create LangChainAgentRunner with no tool definitions."""
         from unittest.mock import patch
+
         from ldai_langchain import LangChainAgentRunner
 
         mock_ai_config = MagicMock()
@@ -522,6 +523,7 @@ class TestBuildTools:
 
     def test_registers_sync_callable_as_structured_tool_func(self):
         from ldai.models import AIAgentConfig, ModelConfig, ProviderConfig
+
         from ldai_langchain.langchain_helper import build_structured_tools
 
         def sync_tool(x: str = '') -> str:
@@ -546,6 +548,7 @@ class TestBuildTools:
 
     def test_registers_async_callable_as_structured_tool_coroutine(self):
         from ldai.models import AIAgentConfig, ModelConfig, ProviderConfig
+
         from ldai_langchain.langchain_helper import build_structured_tools
 
         async def async_tool(x: str = '') -> str:

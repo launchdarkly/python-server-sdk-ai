@@ -4,8 +4,7 @@ from uuid import UUID
 
 from langchain_core.callbacks import BaseCallbackHandler
 from langchain_core.outputs import ChatGeneration, LLMResult
-from ldai.agent_graph import AgentGraphDefinition
-from ldai.providers.types import JudgeResult
+from ldai.providers.types import LDAIMetrics
 from ldai.tracker import TokenUsage
 
 from ldai_langchain.langchain_helper import get_ai_usage_from_response
@@ -20,8 +19,10 @@ class LDMetricsCallbackHandler(BaseCallbackHandler):
 
     LangChain callback handler that collects per-node metrics during a LangGraph run.
 
-    Records token usage, tool calls, and duration for each agent node in the graph,
-    then flushes them to LaunchDarkly trackers after the run completes via ``flush()``.
+    Records token usage, tool calls, and duration for each agent node in the graph.
+    Each node's :class:`~ldai.providers.types.LDAIMetrics` is built incrementally
+    as callbacks fire.  Access the ``node_metrics`` property after the run completes
+    to retrieve the accumulated per-node metrics.
     """
 
     def __init__(self, node_keys: Set[str], fn_name_to_config_key: Dict[str, str]):
@@ -39,14 +40,10 @@ class LDMetricsCallbackHandler(BaseCallbackHandler):
 
         # run_id -> node_key for active chain runs
         self._run_to_node: Dict[UUID, str] = {}
-        # accumulated token usage per node
-        self._node_tokens: Dict[str, TokenUsage] = {}
-        # tool config keys called per node
-        self._node_tool_calls: Dict[str, List[str]] = {}
         # start time (ns) per active run_id — keyed by run_id to handle re-entrant nodes
         self._node_start_ns: Dict[UUID, int] = {}
-        # accumulated duration (ms) per node
-        self._node_duration_ms: Dict[str, int] = {}
+        # per-node metrics, built incrementally as callbacks fire
+        self._node_metrics: Dict[str, LDAIMetrics] = {}
         # execution path in order (deduplicated)
         self._path: List[str] = []
         self._path_set: Set[str] = set()
@@ -61,19 +58,9 @@ class LDMetricsCallbackHandler(BaseCallbackHandler):
         return list(self._path)
 
     @property
-    def node_tokens(self) -> Dict[str, TokenUsage]:
-        """Accumulated token usage per node key."""
-        return dict(self._node_tokens)
-
-    @property
-    def node_tool_calls(self) -> Dict[str, List[str]]:
-        """Tool config keys called per node key."""
-        return {k: list(v) for k, v in self._node_tool_calls.items()}
-
-    @property
-    def node_durations_ms(self) -> Dict[str, int]:
-        """Accumulated duration in milliseconds per node key."""
-        return dict(self._node_duration_ms)
+    def node_metrics(self) -> Dict[str, LDAIMetrics]:
+        """Per-node metrics keyed by node key."""
+        return dict(self._node_metrics)
 
     # ------------------------------------------------------------------
     # Callbacks
@@ -101,10 +88,10 @@ class LDMetricsCallbackHandler(BaseCallbackHandler):
             if name not in self._path_set:
                 self._path.append(name)
                 self._path_set.add(name)
+                self._node_metrics[name] = LDAIMetrics(success=False)
         elif name.endswith('__tools'):
             stripped = name[: -len('__tools')]
             if stripped in self._node_keys:
-                # Attribute tool events to the owning agent node
                 self._run_to_node[run_id] = stripped
 
     def on_chain_end(
@@ -121,9 +108,10 @@ class LDMetricsCallbackHandler(BaseCallbackHandler):
         start_ns = self._node_start_ns.pop(run_id, None)
         if start_ns is not None:
             elapsed_ms = (time.perf_counter_ns() - start_ns) // 1_000_000
-            self._node_duration_ms[node_key] = (
-                self._node_duration_ms.get(node_key, 0) + elapsed_ms
-            )
+            metrics = self._node_metrics.get(node_key)
+            if metrics is not None:
+                metrics.success = True
+                metrics.duration_ms = (metrics.duration_ms or 0) + elapsed_ms
 
     def on_llm_end(
         self,
@@ -151,11 +139,14 @@ class LDMetricsCallbackHandler(BaseCallbackHandler):
         if usage is None:
             return
 
-        existing = self._node_tokens.get(node_key)
+        metrics = self._node_metrics.get(node_key)
+        if metrics is None:
+            return
+        existing = metrics.usage
         if existing is None:
-            self._node_tokens[node_key] = usage
+            metrics.usage = usage
         else:
-            self._node_tokens[node_key] = TokenUsage(
+            metrics.usage = TokenUsage(
                 total=existing.total + usage.total,
                 input=existing.input + usage.input,
                 output=existing.output + usage.output,
@@ -179,64 +170,11 @@ class LDMetricsCallbackHandler(BaseCallbackHandler):
 
         config_key = self._fn_name_to_config_key.get(name)
         if config_key is None:
-            # Tool is not a registered functional tool (e.g. a handoff tool) — skip tracking.
             return
-        if node_key not in self._node_tool_calls:
-            self._node_tool_calls[node_key] = []
-        self._node_tool_calls[node_key].append(config_key)
-
-    # ------------------------------------------------------------------
-    # Flush
-    # ------------------------------------------------------------------
-
-    async def flush(
-        self, graph: AgentGraphDefinition, eval_tasks=None
-    ) -> List[JudgeResult]:
-        """
-        Emit all collected per-node metrics to the LaunchDarkly trackers.
-
-        Call this once after the graph run completes.
-
-        :param graph: The AgentGraphDefinition whose nodes hold the LD config trackers.
-        :param eval_tasks: Optional dict mapping node key to a list of awaitables that
-            return judge evaluation results. Multiple tasks arise when a node is visited
-            more than once (e.g. in a graph with cycles).
-        :return: All judge results collected across all nodes.
-        """
-        node_trackers: Dict[str, Any] = {}
-        all_eval_results: List[JudgeResult] = []
-        for node_key in self._path:
-            if node_key in node_trackers:
-                continue
-            node = graph.get_node(node_key)
-            if not node:
-                continue
-            config_tracker = node.get_config().create_tracker()
-            if not config_tracker:
-                continue
-            node_trackers[node_key] = config_tracker
-
-            usage = self._node_tokens.get(node_key)
-            if usage:
-                config_tracker.track_tokens(usage)
-
-            duration = self._node_duration_ms.get(node_key)
-            if duration is not None:
-                config_tracker.track_duration(duration)
-
-            config_tracker.track_success()
-
-            for tool_key in self._node_tool_calls.get(node_key, []):
-                config_tracker.track_tool_call(tool_key)
-
-            if not eval_tasks:
-                continue
-
-            for eval_task in eval_tasks.get(node_key, []):
-                results = await eval_task
-                all_eval_results.extend(results)
-                for r in results:
-                    if r.success:
-                        config_tracker.track_judge_result(r)
-
-        return all_eval_results
+        metrics = self._node_metrics.get(node_key)
+        if metrics is None:
+            return
+        if metrics.tool_calls is None:
+            metrics.tool_calls = [config_key]
+        else:
+            metrics.tool_calls.append(config_key)

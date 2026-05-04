@@ -1,14 +1,16 @@
 """Tests for LangGraphAgentGraphRunner and LangChainRunnerFactory.create_agent_graph()."""
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
 from ldai.agent_graph import AgentGraphDefinition
 from ldai.evaluator import Evaluator
-from ldai.models import AIAgentGraphConfig, AIAgentConfig, ModelConfig, ProviderConfig
-from ldai.providers import AgentGraphResult, ToolRegistry
-from ldai_langchain.langgraph_agent_graph_runner import LangGraphAgentGraphRunner
+from ldai.models import AIAgentConfig, AIAgentGraphConfig, ModelConfig, ProviderConfig
+from ldai.providers import ToolRegistry
+from ldai.providers.types import AgentGraphRunnerResult
+
 from ldai_langchain.langchain_runner_factory import LangChainRunnerFactory
+from ldai_langchain.langgraph_agent_graph_runner import LangGraphAgentGraphRunner
 
 
 def _make_graph(enabled: bool = True) -> AgentGraphDefinition:
@@ -75,22 +77,22 @@ async def test_langgraph_runner_run_raises_when_langgraph_not_installed():
 
     with patch.dict('sys.modules', {'langgraph': None, 'langgraph.graph': None}):
         result = await runner.run("test")
-        assert isinstance(result, AgentGraphResult)
+        assert isinstance(result, AgentGraphRunnerResult)
         assert result.metrics.success is False
 
 
 @pytest.mark.asyncio
-async def test_langgraph_runner_run_tracks_failure_on_exception():
+async def test_langgraph_runner_run_returns_failure_on_exception():
+    """Runner now returns AgentGraphRunnerResult; managed layer drives tracker events."""
     graph = _make_graph()
-    tracker = graph.create_tracker()
     runner = LangGraphAgentGraphRunner(graph, {})
 
     with patch.dict('sys.modules', {'langgraph': None, 'langgraph.graph': None}):
         result = await runner.run("fail")
 
+    assert isinstance(result, AgentGraphRunnerResult)
     assert result.metrics.success is False
-    tracker.track_invocation_failure.assert_called_once()
-    tracker.track_duration.assert_called_once()
+    assert result.metrics.duration_ms is not None
 
 
 @pytest.mark.asyncio
@@ -147,9 +149,10 @@ async def test_langgraph_runner_run_success():
         runner = LangGraphAgentGraphRunner(graph, {})
         result = await runner.run("find restaurants")
 
-    assert isinstance(result, AgentGraphResult)
-    assert result.output == "langgraph answer"
-    assert result.metrics.success is True
-    tracker.track_path.assert_called_once_with([])
-    tracker.track_invocation_success.assert_called_once()
-    tracker.track_duration.assert_called_once()
+    assert isinstance(result, AgentGraphRunnerResult)
+    assert result.metrics.duration_ms is not None
+    # Tracker events now fire from the managed layer (ManagedAgentGraph) using
+    # result.metrics; the runner no longer touches the graph tracker directly.
+    tracker.track_path.assert_not_called()
+    tracker.track_invocation_success.assert_not_called()
+    tracker.track_duration.assert_not_called()
