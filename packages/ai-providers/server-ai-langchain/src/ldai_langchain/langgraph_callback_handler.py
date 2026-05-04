@@ -4,8 +4,7 @@ from uuid import UUID
 
 from langchain_core.callbacks import BaseCallbackHandler
 from langchain_core.outputs import ChatGeneration, LLMResult
-from ldai.agent_graph import AgentGraphDefinition
-from ldai.providers.types import JudgeResult, LDAIMetrics
+from ldai.providers.types import LDAIMetrics
 from ldai.tracker import TokenUsage
 
 from ldai_langchain.langchain_helper import get_ai_usage_from_response
@@ -20,8 +19,9 @@ class LDMetricsCallbackHandler(BaseCallbackHandler):
 
     LangChain callback handler that collects per-node metrics during a LangGraph run.
 
-    Records token usage, tool calls, and duration for each agent node in the graph,
-    then flushes them to LaunchDarkly trackers after the run completes via ``flush()``.
+    Records token usage, tool calls, and duration for each agent node in the graph.
+    Call ``collect_node_metrics()`` after the run completes to retrieve the accumulated
+    per-node metrics for use by the managed layer.
     """
 
     def __init__(self, node_keys: Set[str], fn_name_to_config_key: Dict[str, str]):
@@ -184,67 +184,6 @@ class LDMetricsCallbackHandler(BaseCallbackHandler):
         if node_key not in self._node_tool_calls:
             self._node_tool_calls[node_key] = []
         self._node_tool_calls[node_key].append(config_key)
-
-    # ------------------------------------------------------------------
-    # Flush
-    # ------------------------------------------------------------------
-
-    async def flush(
-        self, graph: AgentGraphDefinition, eval_tasks=None
-    ) -> List[JudgeResult]:
-        """
-        Emit collected per-node metrics to LaunchDarkly trackers.
-
-        .. deprecated::
-            Per-node tracking is now driven by the managed layer
-            (:class:`ManagedAgentGraph`) from
-            :attr:`AgentGraphRunnerResult.metrics.node_metrics`. This method
-            is retained for tests and any external callers that still rely on
-            the original handler-driven tracking path; production code should
-            not call it.
-
-        :param graph: The AgentGraphDefinition whose nodes hold the LD config trackers.
-        :param eval_tasks: Optional dict mapping node key to a list of awaitables that
-            return judge evaluation results.
-        :return: All judge results collected across all nodes.
-        """
-        node_trackers: Dict[str, Any] = {}
-        all_eval_results: List[JudgeResult] = []
-        for node_key in self._path:
-            if node_key in node_trackers:
-                continue
-            node = graph.get_node(node_key)
-            if not node:
-                continue
-            config_tracker = node.get_config().create_tracker()
-            if not config_tracker:
-                continue
-            node_trackers[node_key] = config_tracker
-
-            usage = self._node_tokens.get(node_key)
-            if usage:
-                config_tracker.track_tokens(usage)
-
-            duration = self._node_duration_ms.get(node_key)
-            if duration is not None:
-                config_tracker.track_duration(duration)
-
-            config_tracker.track_success()
-
-            for tool_key in self._node_tool_calls.get(node_key, []):
-                config_tracker.track_tool_call(tool_key)
-
-            if not eval_tasks:
-                continue
-
-            for eval_task in eval_tasks.get(node_key, []):
-                results = await eval_task
-                all_eval_results.extend(results)
-                for r in results:
-                    if r.success:
-                        config_tracker.track_judge_result(r)
-
-        return all_eval_results
 
     def collect_node_metrics(self) -> Dict[str, LDAIMetrics]:
         """

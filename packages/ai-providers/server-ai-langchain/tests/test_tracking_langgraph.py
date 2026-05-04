@@ -6,15 +6,22 @@ and a fake LangChain model to verify that the correct LD events are emitted
 with the correct payloads — without making real API calls.
 """
 
-import pytest
 from collections import defaultdict
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
 from ldai.agent_graph import AgentGraphDefinition
-from ldai.managed_agent_graph import ManagedAgentGraph
-from ldai.models import AIAgentGraphConfig, AIAgentConfig, Edge, ModelConfig, ProviderConfig
-from ldai.tracker import AIGraphTracker, LDAIConfigTracker
 from ldai.evaluator import Evaluator
+from ldai.managed_agent_graph import ManagedAgentGraph
+from ldai.models import (
+    AIAgentConfig,
+    AIAgentGraphConfig,
+    Edge,
+    ModelConfig,
+    ProviderConfig,
+)
+from ldai.tracker import AIGraphTracker, LDAIConfigTracker
+
 from ldai_langchain.langgraph_agent_graph_runner import LangGraphAgentGraphRunner
 
 
@@ -222,8 +229,10 @@ def _make_two_node_graph(mock_ld_client: MagicMock) -> 'AgentGraphDefinition':
 async def test_tracks_node_and_graph_tokens_on_success():
     """Node-level and graph-level token events fire with the correct counts."""
     from uuid import uuid4
+
     from langchain_core.messages import AIMessage as _AIMsg
-    from langchain_core.outputs import LLMResult, ChatGeneration
+    from langchain_core.outputs import ChatGeneration, LLMResult
+
     from ldai_langchain.langgraph_callback_handler import LDMetricsCallbackHandler
 
     mock_ld_client = MagicMock()
@@ -238,33 +247,34 @@ async def test_tracks_node_and_graph_tokens_on_success():
     assert result.metrics.success is True
     assert result.content == 'Sunny.'
 
-    # Manually simulate what the callback handler would collect and flush
-    # (mock models don't fire LangChain callbacks, so we test flush directly)
-    mock_ld_client2 = MagicMock()
-    graph2 = _make_graph(mock_ld_client2)
-    tracker2 = graph2.create_tracker()
-
+    # Manually simulate what the callback handler would collect
+    # (mock models don't fire LangChain callbacks, so we test collect_node_metrics directly)
     handler = LDMetricsCallbackHandler({'root-agent'}, {})
     node_run_id = uuid4()
     handler.on_chain_start({}, {}, run_id=node_run_id, name='root-agent')
 
     llm_result = LLMResult(
         generations=[[ChatGeneration(
-            message=_AIMsg(content='Sunny.', usage_metadata={'total_tokens': 15, 'input_tokens': 10, 'output_tokens': 5}),
+            message=_AIMsg(
+                content='Sunny.',
+                usage_metadata={'total_tokens': 15, 'input_tokens': 10, 'output_tokens': 5},
+            ),
             text='Sunny.',
         )]],
         llm_output={},
     )
     handler.on_llm_end(llm_result, run_id=uuid4(), parent_run_id=node_run_id)
     handler.on_chain_end({}, run_id=node_run_id)
-    await handler.flush(graph2)
 
-    ev2 = _events(mock_ld_client2)
-    assert ev2['$ld:ai:tokens:total'][0][1] == 15
-    assert ev2['$ld:ai:tokens:input'][0][1] == 10
-    assert ev2['$ld:ai:tokens:output'][0][1] == 5
-    assert ev2['$ld:ai:generation:success'][0][1] == 1
-    assert '$ld:ai:duration:total' in ev2
+    node_metrics = handler.collect_node_metrics()
+    assert 'root-agent' in node_metrics
+    node = node_metrics['root-agent']
+    assert node.usage is not None
+    assert node.usage.total == 15
+    assert node.usage.input == 10
+    assert node.usage.output == 5
+    assert node.success is True
+    assert node.duration_ms is not None
 
     # Graph-level events are now driven by ManagedAgentGraph from
     # AgentGraphRunnerResult.metrics — see test_managed_agent_graph.py for the
@@ -292,6 +302,7 @@ async def test_tracks_execution_path():
 async def test_tracks_tool_calls():
     """A tool_call event fires for each tool name found in the model response."""
     from uuid import uuid4
+
     from ldai_langchain.langgraph_callback_handler import LDMetricsCallbackHandler
 
     mock_ld_client = MagicMock()
@@ -317,29 +328,23 @@ async def test_tracks_tool_calls():
         await runner.run('What is the weather?')
 
     # Simulate tool call tracking via the callback handler directly
-    mock_ld_client2 = MagicMock()
-    graph2 = _make_graph(mock_ld_client2, tool_names=['get_weather'])
-    tracker2 = graph2.create_tracker()
-
     handler = LDMetricsCallbackHandler({'root-agent'}, {'get_weather': 'get_weather'})
-    # Agent node must appear in path for flush() to emit its events
     agent_run_id = uuid4()
     handler.on_chain_start({}, {}, run_id=agent_run_id, name='root-agent')
     tools_run_id = uuid4()
     handler.on_chain_start({}, {}, run_id=tools_run_id, name='root-agent__tools')
     handler.on_tool_end('sunny', run_id=uuid4(), parent_run_id=tools_run_id, name='get_weather')
-    await handler.flush(graph2)
 
-    ev2 = _events(mock_ld_client2)
-    tool_events = ev2.get('$ld:ai:tool_call', [])
-    assert len(tool_events) == 1
-    assert tool_events[0][0]['toolKey'] == 'get_weather'
+    node_metrics = handler.collect_node_metrics()
+    assert 'root-agent' in node_metrics
+    assert node_metrics['root-agent'].tool_calls == ['get_weather']
 
 
 @pytest.mark.asyncio
 async def test_tracks_multiple_tool_calls():
     """One tool_call event fires per tool name in the response."""
     from uuid import uuid4
+
     from ldai_langchain.langgraph_callback_handler import LDMetricsCallbackHandler
 
     mock_ld_client = MagicMock()
@@ -369,55 +374,42 @@ async def test_tracks_multiple_tool_calls():
         await runner.run('Search and summarize.')
 
     # Simulate multiple tool calls via the callback handler directly
-    mock_ld_client2 = MagicMock()
-    graph2 = _make_graph(mock_ld_client2, tool_names=['search', 'summarize'])
-    tracker2 = graph2.create_tracker()
-
     fn_map = {'search': 'search', 'summarize': 'summarize'}
     handler = LDMetricsCallbackHandler({'root-agent'}, fn_map)
-    # Agent node must appear in path for flush() to emit its events
     agent_run_id = uuid4()
     handler.on_chain_start({}, {}, run_id=agent_run_id, name='root-agent')
     tools_run_id = uuid4()
     handler.on_chain_start({}, {}, run_id=tools_run_id, name='root-agent__tools')
     handler.on_tool_end('result', run_id=uuid4(), parent_run_id=tools_run_id, name='search')
     handler.on_tool_end('summary', run_id=uuid4(), parent_run_id=tools_run_id, name='summarize')
-    await handler.flush(graph2)
 
-    ev2 = _events(mock_ld_client2)
-    tool_keys = [data['toolKey'] for data, _ in ev2.get('$ld:ai:tool_call', [])]
-    assert sorted(tool_keys) == ['search', 'summarize']
+    node_metrics = handler.collect_node_metrics()
+    assert 'root-agent' in node_metrics
+    assert sorted(node_metrics['root-agent'].tool_calls) == ['search', 'summarize']
 
 
 @pytest.mark.asyncio
 async def test_tracks_graph_key_on_node_events():
-    """Node-level events include the graphKey so they can be correlated to the graph."""
+    """Node-level metrics are collected per node and can be correlated to the graph via the runner result."""
     from uuid import uuid4
+
     from langchain_core.messages import AIMessage as _AIMsg
-    from langchain_core.outputs import LLMResult, ChatGeneration
+    from langchain_core.outputs import ChatGeneration, LLMResult
+
     from ldai_langchain.langgraph_callback_handler import LDMetricsCallbackHandler
 
     mock_ld_client = MagicMock()
     graph = _make_graph(mock_ld_client, graph_key='my-graph')
-    tracker = graph.create_tracker()
+    fake_response = _make_fake_response('OK.', input_tokens=5, output_tokens=3)
 
-    handler = LDMetricsCallbackHandler({'root-agent'}, {})
-    node_run_id = uuid4()
-    handler.on_chain_start({}, {}, run_id=node_run_id, name='root-agent')
+    with patch('ldai_langchain.langgraph_agent_graph_runner.create_langchain_model',
+               return_value=_mock_model(fake_response)):
+        runner = LangGraphAgentGraphRunner(graph, {})
+        result = await runner.run('hello')
 
-    llm_result = LLMResult(
-        generations=[[ChatGeneration(
-            message=_AIMsg(content='OK.', usage_metadata={'total_tokens': 8, 'input_tokens': 5, 'output_tokens': 3}),
-            text='OK.',
-        )]],
-        llm_output={},
-    )
-    handler.on_llm_end(llm_result, run_id=uuid4(), parent_run_id=node_run_id)
-    await handler.flush(graph)
-
-    ev = _events(mock_ld_client)
-    token_data = ev['$ld:ai:tokens:total'][0][0]
-    assert token_data.get('graphKey') == 'my-graph'
+    # The runner result carries node_metrics; the managed layer uses graph_key from the graph
+    assert result.metrics.node_metrics is not None
+    assert 'root-agent' in result.metrics.node_metrics
 
 
 @pytest.mark.asyncio
@@ -445,8 +437,10 @@ async def test_tracks_failure_and_latency_on_model_error():
 async def test_multi_node_tracks_per_node_tokens_and_path():
     """Each node emits its own token events; path and graph total cover both nodes."""
     from uuid import uuid4
+
     from langchain_core.messages import AIMessage as _AIMsg
-    from langchain_core.outputs import LLMResult, ChatGeneration
+    from langchain_core.outputs import ChatGeneration, LLMResult
+
     from ldai_langchain.langgraph_callback_handler import LDMetricsCallbackHandler
 
     mock_ld_client = MagicMock()
@@ -467,18 +461,17 @@ async def test_multi_node_tracks_per_node_tokens_and_path():
 
     assert result.metrics.success is True
 
-    # Simulate per-node token events via callback handler (mock models don't fire callbacks)
-    mock_ld_client2 = MagicMock()
-    graph2 = _make_two_node_graph(mock_ld_client2)
-    tracker2 = graph2.create_tracker()
-
+    # Simulate per-node metric collection via callback handler (mock models don't fire callbacks)
     handler = LDMetricsCallbackHandler({'root-agent', 'child-agent'}, {})
 
     root_run_id = uuid4()
     handler.on_chain_start({}, {}, run_id=root_run_id, name='root-agent')
     root_llm_result = LLMResult(
         generations=[[ChatGeneration(
-            message=_AIMsg(content='Root done.', usage_metadata={'total_tokens': 15, 'input_tokens': 10, 'output_tokens': 5}),
+            message=_AIMsg(
+                content='Root done.',
+                usage_metadata={'total_tokens': 15, 'input_tokens': 10, 'output_tokens': 5},
+            ),
             text='Root done.',
         )]],
         llm_output={},
@@ -489,22 +482,21 @@ async def test_multi_node_tracks_per_node_tokens_and_path():
     handler.on_chain_start({}, {}, run_id=child_run_id, name='child-agent')
     child_llm_result = LLMResult(
         generations=[[ChatGeneration(
-            message=_AIMsg(content='Child done.', usage_metadata={'total_tokens': 5, 'input_tokens': 3, 'output_tokens': 2}),
+            message=_AIMsg(
+                content='Child done.',
+                usage_metadata={'total_tokens': 5, 'input_tokens': 3, 'output_tokens': 2},
+            ),
             text='Child done.',
         )]],
         llm_output={},
     )
     handler.on_llm_end(child_llm_result, run_id=uuid4(), parent_run_id=child_run_id)
 
-    await handler.flush(graph2)
+    node_metrics = handler.collect_node_metrics()
 
-    ev2 = _events(mock_ld_client2)
-
-    # Per-node token events identified by configKey
-    root_tokens = [(d, v) for d, v in ev2.get('$ld:ai:tokens:total', []) if d.get('configKey') == 'root-agent']
-    child_tokens = [(d, v) for d, v in ev2.get('$ld:ai:tokens:total', []) if d.get('configKey') == 'child-agent']
-    assert root_tokens[0][1] == 15
-    assert child_tokens[0][1] == 5
+    # Per-node token usage is keyed by node key
+    assert node_metrics['root-agent'].usage.total == 15
+    assert node_metrics['child-agent'].usage.total == 5
 
     # Graph-level total from the real runner run
     ev = _events(mock_ld_client)

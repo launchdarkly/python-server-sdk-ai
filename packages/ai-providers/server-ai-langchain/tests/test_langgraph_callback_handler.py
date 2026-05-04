@@ -5,70 +5,13 @@ Tests the callback handler directly by simulating the events that LangChain
 fires during a graph run — without needing a real or mock LangGraph execution.
 """
 
-from collections import defaultdict
-from unittest.mock import MagicMock
 from uuid import uuid4
-
-import pytest
 
 from langchain_core.messages import AIMessage
 from langchain_core.outputs import ChatGeneration, LLMResult
+from ldai.tracker import TokenUsage
 
-from ldai.agent_graph import AgentGraphDefinition
-from ldai.models import AIAgentConfig, AIAgentGraphConfig, ModelConfig, ProviderConfig
-from ldai.tracker import AIGraphTracker, LDAIConfigTracker, TokenUsage
-from ldai.evaluator import Evaluator
 from ldai_langchain.langgraph_callback_handler import LDMetricsCallbackHandler
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-def _make_graph(mock_ld_client: MagicMock, node_key: str = 'root-agent', graph_key: str = 'test-graph'):
-    """Build a minimal single-node AgentGraphDefinition for flush() tests."""
-    context = MagicMock()
-    node_tracker = LDAIConfigTracker(
-        ld_client=mock_ld_client,
-        variation_key='v1',
-        config_key=node_key,
-        version=1,
-        model_name='gpt-4',
-        provider_name='openai',
-        context=context,
-        run_id='test-run-id',
-        graph_key=graph_key,
-    )
-    graph_tracker = AIGraphTracker(
-        ld_client=mock_ld_client,
-        variation_key='v1',
-        graph_key=graph_key,
-        version=1,
-        context=context,
-    )
-    node_config = AIAgentConfig(
-        key=node_key,
-        enabled=True,
-        evaluator=Evaluator.noop(),
-        model=ModelConfig(name='gpt-4', parameters={}),
-        provider=ProviderConfig(name='openai'),
-        instructions='Be helpful.',
-        create_tracker=lambda: node_tracker,
-    )
-    graph_config = AIAgentGraphConfig(
-        key=graph_key,
-        root_config_key=node_key,
-        edges=[],
-        enabled=True,
-    )
-    nodes = AgentGraphDefinition.build_nodes(graph_config, {node_key: node_config})
-    return AgentGraphDefinition(
-        agent_graph=graph_config,
-        nodes=nodes,
-        context=context,
-        enabled=True,
-        create_tracker=lambda: graph_tracker,
-    )
 
 
 def _llm_result(total: int, prompt: int, completion: int) -> LLMResult:
@@ -82,14 +25,6 @@ def _llm_result(total: int, prompt: int, completion: int) -> LLMResult:
         )]],
         llm_output={},
     )
-
-
-def _events(mock_ld_client: MagicMock) -> dict:
-    result = defaultdict(list)
-    for call in mock_ld_client.track.call_args_list:
-        name, _ctx, data, value = call.args
-        result[name].append((data, value))
-    return dict(result)
 
 
 # ---------------------------------------------------------------------------
@@ -316,187 +251,106 @@ def test_on_tool_end_none_name_ignored():
 
 
 # ---------------------------------------------------------------------------
-# flush() tests
+# collect_node_metrics() tests
 # ---------------------------------------------------------------------------
 
-@pytest.mark.asyncio
-async def test_flush_emits_token_events_to_ld_tracker():
-    """flush() calls track_tokens on the node's config tracker."""
-    mock_ld_client = MagicMock()
-    graph = _make_graph(mock_ld_client, node_key='root-agent', graph_key='g1')
-    tracker = graph.create_tracker()
-
+def test_collect_node_metrics_includes_tokens():
+    """collect_node_metrics() returns token usage for nodes that received LLM calls."""
     handler = LDMetricsCallbackHandler({'root-agent'}, {})
     node_run_id = uuid4()
     handler.on_chain_start({}, {}, run_id=node_run_id, name='root-agent')
     handler.on_llm_end(_llm_result(15, 10, 5), run_id=uuid4(), parent_run_id=node_run_id)
-    await handler.flush(graph)
 
-    ev = _events(mock_ld_client)
-    assert ev['$ld:ai:tokens:total'][0][1] == 15
-    assert ev['$ld:ai:tokens:input'][0][1] == 10
-    assert ev['$ld:ai:tokens:output'][0][1] == 5
-    assert ev['$ld:ai:generation:success'][0][1] == 1
+    metrics = handler.collect_node_metrics()
+
+    assert 'root-agent' in metrics
+    node = metrics['root-agent']
+    assert node.usage is not None
+    assert node.usage.total == 15
+    assert node.usage.input == 10
+    assert node.usage.output == 5
+    assert node.success is True
 
 
-@pytest.mark.asyncio
-async def test_flush_emits_duration():
-    """flush() calls track_duration when duration was recorded."""
-    mock_ld_client = MagicMock()
-    graph = _make_graph(mock_ld_client)
-    tracker = graph.create_tracker()
-
+def test_collect_node_metrics_includes_duration():
+    """collect_node_metrics() returns duration_ms for nodes that completed a chain run."""
     handler = LDMetricsCallbackHandler({'root-agent'}, {})
     run_id = uuid4()
     handler.on_chain_start({}, {}, run_id=run_id, name='root-agent')
     handler.on_chain_end({}, run_id=run_id)
-    await handler.flush(graph)
 
-    ev = _events(mock_ld_client)
-    assert '$ld:ai:duration:total' in ev
+    metrics = handler.collect_node_metrics()
+
+    assert 'root-agent' in metrics
+    assert metrics['root-agent'].duration_ms is not None
 
 
-@pytest.mark.asyncio
-async def test_flush_emits_tool_calls():
-    """flush() calls track_tool_call for each recorded tool invocation."""
-    mock_ld_client = MagicMock()
-    graph = _make_graph(mock_ld_client)
-    tracker = graph.create_tracker()
-
+def test_collect_node_metrics_includes_tool_calls():
+    """collect_node_metrics() returns tool_calls for nodes with recorded tool invocations."""
     handler = LDMetricsCallbackHandler({'root-agent'}, {'fn_search': 'search'})
-    # The agent node must be started first so it appears in the path for flush()
     agent_run_id = uuid4()
     handler.on_chain_start({}, {}, run_id=agent_run_id, name='root-agent')
-    # Tool calls are attributed via the __tools chain run_id
     tools_run_id = uuid4()
     handler.on_chain_start({}, {}, run_id=tools_run_id, name='root-agent__tools')
     handler.on_tool_end('r', run_id=uuid4(), parent_run_id=tools_run_id, name='fn_search')
-    await handler.flush(graph)
 
-    ev = _events(mock_ld_client)
-    tool_events = ev.get('$ld:ai:tool_call', [])
-    assert len(tool_events) == 1
-    assert tool_events[0][0]['toolKey'] == 'search'
+    metrics = handler.collect_node_metrics()
+
+    assert 'root-agent' in metrics
+    assert metrics['root-agent'].tool_calls == ['search']
 
 
-@pytest.mark.asyncio
-async def test_flush_includes_graph_key_in_node_events():
-    """flush() passes graph_key to the node tracker so graphKey appears in events."""
-    mock_ld_client = MagicMock()
-    graph = _make_graph(mock_ld_client, graph_key='my-graph')
-    tracker = graph.create_tracker()
+def test_collect_node_metrics_skips_nodes_not_in_path():
+    """collect_node_metrics() returns an empty dict when no nodes were executed."""
+    handler = LDMetricsCallbackHandler({'root-agent'}, {})
 
+    metrics = handler.collect_node_metrics()
+
+    assert metrics == {}
+
+
+def test_collect_node_metrics_multiple_nodes():
+    """collect_node_metrics() returns separate entries for each executed node."""
+    handler = LDMetricsCallbackHandler({'root-agent', 'child-agent'}, {})
+
+    root_run_id = uuid4()
+    handler.on_chain_start({}, {}, run_id=root_run_id, name='root-agent')
+    handler.on_llm_end(_llm_result(15, 10, 5), run_id=uuid4(), parent_run_id=root_run_id)
+
+    child_run_id = uuid4()
+    handler.on_chain_start({}, {}, run_id=child_run_id, name='child-agent')
+    handler.on_llm_end(_llm_result(5, 3, 2), run_id=uuid4(), parent_run_id=child_run_id)
+
+    metrics = handler.collect_node_metrics()
+
+    assert 'root-agent' in metrics
+    assert 'child-agent' in metrics
+    assert metrics['root-agent'].usage.total == 15
+    assert metrics['child-agent'].usage.total == 5
+
+
+def test_collect_node_metrics_no_tool_calls_returns_none():
+    """collect_node_metrics() sets tool_calls to None for nodes with no tool invocations."""
     handler = LDMetricsCallbackHandler({'root-agent'}, {})
     node_run_id = uuid4()
     handler.on_chain_start({}, {}, run_id=node_run_id, name='root-agent')
     handler.on_llm_end(_llm_result(5, 3, 2), run_id=uuid4(), parent_run_id=node_run_id)
-    await handler.flush(graph)
 
-    ev = _events(mock_ld_client)
-    token_data = ev['$ld:ai:tokens:total'][0][0]
-    assert token_data.get('graphKey') == 'my-graph'
+    metrics = handler.collect_node_metrics()
+
+    assert metrics['root-agent'].tool_calls is None
 
 
-@pytest.mark.asyncio
-async def test_flush_with_no_graph_key_on_node_tracker():
-    """When node tracker has no graph_key, events omit graphKey."""
-    mock_ld_client = MagicMock()
-    context = MagicMock()
-    node_tracker = LDAIConfigTracker(
-        ld_client=mock_ld_client,
-        variation_key='v1',
-        config_key='root-agent',
-        version=1,
-        model_name='gpt-4',
-        provider_name='openai',
-        context=context,
-        run_id='test-run-id',
-    )
-    node_config = AIAgentConfig(
-        key='root-agent',
-        enabled=True,
-        evaluator=Evaluator.noop(),
-        model=ModelConfig(name='gpt-4', parameters={}),
-        provider=ProviderConfig(name='openai'),
-        instructions='Be helpful.',
-        create_tracker=lambda: node_tracker,
-    )
-    graph_config = AIAgentGraphConfig(
-        key='test-graph',
-        root_config_key='root-agent',
-        edges=[],
-        enabled=True,
-    )
-    nodes = AgentGraphDefinition.build_nodes(graph_config, {'root-agent': node_config})
-    graph = AgentGraphDefinition(
-        agent_graph=graph_config,
-        nodes=nodes,
-        context=context,
-        enabled=True,
-        create_tracker=lambda: AIGraphTracker(mock_ld_client, 'v1', 'test-graph', 1, context),
-    )
-
+def test_collect_node_metrics_no_usage_returns_none():
+    """collect_node_metrics() sets usage to None for nodes with no LLM calls."""
     handler = LDMetricsCallbackHandler({'root-agent'}, {})
-    node_run_id = uuid4()
-    handler.on_chain_start({}, {}, run_id=node_run_id, name='root-agent')
-    handler.on_llm_end(_llm_result(5, 3, 2), run_id=uuid4(), parent_run_id=node_run_id)
-    await handler.flush(graph)
+    run_id = uuid4()
+    handler.on_chain_start({}, {}, run_id=run_id, name='root-agent')
+    handler.on_chain_end({}, run_id=run_id)
 
-    ev = _events(mock_ld_client)
-    token_data = ev['$ld:ai:tokens:total'][0][0]
-    assert 'graphKey' not in token_data
+    metrics = handler.collect_node_metrics()
 
-
-@pytest.mark.asyncio
-async def test_flush_skips_nodes_not_in_path():
-    """flush() only emits events for nodes that were actually executed."""
-    mock_ld_client = MagicMock()
-    graph = _make_graph(mock_ld_client)
-    tracker = graph.create_tracker()
-
-    # Handler with 'root-agent' in node_keys but never started
-    handler = LDMetricsCallbackHandler({'root-agent'}, {})
-    await handler.flush(graph)
-
-    ev = _events(mock_ld_client)
-    assert '$ld:ai:tokens:total' not in ev
-    assert '$ld:ai:generation:success' not in ev
-
-
-@pytest.mark.asyncio
-async def test_flush_skips_node_without_tracker():
-    """flush() silently skips nodes whose config has no tracker."""
-    mock_ld_client = MagicMock()
-    context = MagicMock()
-
-    node_config_no_tracker = AIAgentConfig(
-        key='no-track',
-        enabled=True,
-        create_tracker=lambda: None,
-        evaluator=Evaluator.noop(),
-        model=ModelConfig(name='gpt-4', parameters={}),
-        provider=ProviderConfig(name='openai'),
-        instructions='',
-    )
-    graph_config = AIAgentGraphConfig(
-        key='g', root_config_key='no-track', edges=[], enabled=True
-    )
-    nodes = AgentGraphDefinition.build_nodes(graph_config, {'no-track': node_config_no_tracker})
-    graph = AgentGraphDefinition(
-        agent_graph=graph_config,
-        nodes=nodes,
-        context=context,
-        enabled=True,
-        create_tracker=lambda: None,
-    )
-
-    handler = LDMetricsCallbackHandler({'no-track'}, {})
-    node_run_id = uuid4()
-    handler.on_chain_start({}, {}, run_id=node_run_id, name='no-track')
-    handler.on_llm_end(_llm_result(5, 3, 2), run_id=uuid4(), parent_run_id=node_run_id)
-    await handler.flush(graph)  # should not raise
-
-    mock_ld_client.track.assert_not_called()
+    assert metrics['root-agent'].usage is None
 
 
 # ---------------------------------------------------------------------------
