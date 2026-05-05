@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, cast
 
 from langchain_core.chat_history import InMemoryChatMessageHistory
 from langchain_core.language_models.chat_models import BaseChatModel
@@ -28,7 +28,7 @@ class LangChainModelRunner(Runner):
     def __init__(self, llm: BaseChatModel, config_messages: Optional[List[LDMessage]] = None):
         self._llm = llm
         self._chat_history = InMemoryChatMessageHistory(
-            messages=convert_messages_to_langchain(config_messages or [])
+            messages=cast(List[BaseMessage], convert_messages_to_langchain(config_messages or []))
         )
 
     def get_llm(self) -> BaseChatModel:
@@ -46,11 +46,6 @@ class LangChainModelRunner(Runner):
     ) -> RunnerResult:
         """
         Run the LangChain model with the given input.
-
-        Sends the full chat history (seeded with config messages at construction
-        time via InMemoryChatMessageHistory) plus the new user message. On
-        success, appends the user/assistant exchange so subsequent calls include
-        prior context.
 
         :param input: A string prompt
         :param output_type: Optional JSON schema dict requesting structured output.

@@ -43,10 +43,6 @@ class OpenAIModelRunner(Runner):
         """
         Run the OpenAI model with the given input.
 
-        Sends the full conversation history (seeded with config messages at
-        construction time) plus the new user message. On success, appends the
-        user/assistant exchange to history so subsequent calls include prior context.
-
         :param input: A string prompt
         :param output_type: Optional JSON schema dict requesting structured output.
             When provided, ``parsed`` on the returned :class:`RunnerResult` is
