@@ -69,4 +69,5 @@ class LangChainRunnerFactory(AIProvider):
         :return: LangChainModelRunner ready to invoke the model
         """
         llm = create_langchain_model(config)
-        return LangChainModelRunner(llm)
+        config_messages = list(getattr(config, 'messages', None) or [])
+        return LangChainModelRunner(llm, config_messages)

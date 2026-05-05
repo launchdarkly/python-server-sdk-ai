@@ -233,8 +233,7 @@ class TestRunCompletion:
         mock_llm.ainvoke = AsyncMock(return_value=mock_response)
         provider = LangChainModelRunner(mock_llm)
 
-        messages = [LDMessage(role='user', content='Hello')]
-        result = await provider.run(messages)
+        result = await provider.run('Hello')
 
         assert result.metrics.success is True
         assert result.content == 'Test response'
@@ -246,8 +245,7 @@ class TestRunCompletion:
         mock_llm.ainvoke = AsyncMock(return_value=mock_response)
         provider = LangChainModelRunner(mock_llm)
 
-        messages = [LDMessage(role='user', content='Hello')]
-        result = await provider.run(messages)
+        result = await provider.run('Hello')
 
         assert result.metrics.success is False
         assert result.content == ''
@@ -259,8 +257,7 @@ class TestRunCompletion:
         mock_llm.ainvoke = AsyncMock(side_effect=error)
         provider = LangChainModelRunner(mock_llm)
 
-        messages = [LDMessage(role='user', content='Hello')]
-        result = await provider.run(messages)
+        result = await provider.run('Hello')
 
         assert result.metrics.success is False
         assert result.content == ''
@@ -284,9 +281,8 @@ class TestRunStructured:
         mock_llm.with_structured_output = MagicMock(return_value=mock_structured_llm)
         provider = LangChainModelRunner(mock_llm)
 
-        messages = [LDMessage(role='user', content='Hello')]
         response_structure = {'type': 'object', 'properties': {}}
-        result = await provider.run(messages, output_type=response_structure)
+        result = await provider.run('Hello', output_type=response_structure)
 
         assert result.metrics.success is True
         assert result.parsed == parsed_data
@@ -300,9 +296,8 @@ class TestRunStructured:
         mock_llm.with_structured_output = MagicMock(return_value=mock_structured_llm)
         provider = LangChainModelRunner(mock_llm)
 
-        messages = [LDMessage(role='user', content='Hello')]
         response_structure = {'type': 'object', 'properties': {}}
-        result = await provider.run(messages, output_type=response_structure)
+        result = await provider.run('Hello', output_type=response_structure)
 
         assert result.metrics.success is False
         assert result.parsed is None

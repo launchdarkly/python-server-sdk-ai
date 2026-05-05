@@ -24,8 +24,9 @@ class LangChainModelRunner(Runner):
     :meth:`run`.
     """
 
-    def __init__(self, llm: BaseChatModel):
+    def __init__(self, llm: BaseChatModel, config_messages: Optional[List[LDMessage]] = None):
         self._llm = llm
+        self._config_messages: List[LDMessage] = list(config_messages or [])
 
     def get_llm(self) -> BaseChatModel:
         """
@@ -37,36 +38,27 @@ class LangChainModelRunner(Runner):
 
     async def run(
         self,
-        input: Any,
+        input: str,
         output_type: Optional[Dict[str, Any]] = None,
     ) -> RunnerResult:
         """
         Run the LangChain model with the given input.
 
-        :param input: A string prompt or a list of :class:`LDMessage` objects
+        Prepends any config messages (system prompt, instructions, etc.) stored
+        at construction time before the user message.
+
+        :param input: A string prompt
         :param output_type: Optional JSON schema dict requesting structured output.
             When provided, ``parsed`` on the returned :class:`RunnerResult` is
             populated with the parsed JSON document.
         :return: :class:`RunnerResult` containing ``content``, ``metrics``,
             ``raw`` and (when ``output_type`` is set) ``parsed``.
         """
-        messages = self._coerce_input(input)
+        messages = self._config_messages + [LDMessage(role='user', content=input)]
 
         if output_type is not None:
             return await self._run_structured(messages, output_type)
         return await self._run_completion(messages)
-
-    # convert_messages_to_langchain only accepts List[LDMessage]; _coerce_input
-    # normalizes a bare string to [LDMessage(role='user', ...)] before that step.
-    @staticmethod
-    def _coerce_input(input: Any) -> List[LDMessage]:
-        if isinstance(input, str):
-            return [LDMessage(role='user', content=input)]
-        if isinstance(input, list):
-            return input
-        raise TypeError(
-            f"Unsupported input type for LangChainModelRunner.run: {type(input).__name__}"
-        )
 
     async def _run_completion(self, messages: List[LDMessage]) -> RunnerResult:
         try:

@@ -9,7 +9,7 @@ from ldclient.client import LDClient
 from ldai import log
 from ldai.agent_graph import AgentGraphDefinition
 from ldai.evaluator import Evaluator
-from ldai.judge import Judge
+from ldai.judge import Judge, _strip_legacy_judge_messages
 from ldai.managed_agent import ManagedAgent
 from ldai.managed_agent_graph import ManagedAgentGraph
 from ldai.managed_model import ManagedModel
@@ -236,6 +236,10 @@ class LDAIClient:
             return None
 
         evaluation_metric_key = _extract_evaluation_metric_key(variation)
+
+        # strip legacy judge template messages before creating config
+        if messages:
+            messages = _strip_legacy_judge_messages(messages)
 
         config = AIJudgeConfig(
             key=key,
