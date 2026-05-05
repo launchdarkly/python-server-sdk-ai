@@ -34,6 +34,7 @@ class OpenAIModelRunner(Runner):
         self._model_name = model_name
         self._parameters = parameters
         self._config_messages: List[LDMessage] = list(config_messages or [])
+        self._history: List[LDMessage] = []
 
     async def run(
         self,
@@ -43,8 +44,9 @@ class OpenAIModelRunner(Runner):
         """
         Run the OpenAI model with the given input.
 
-        Prepends any config messages (system prompt, instructions, etc.) stored
-        at construction time before the user message.
+        Prepends config messages and accumulated conversation history before the
+        user message. On success, appends the user/assistant exchange to history
+        so subsequent calls include prior context.
 
         :param input: A string prompt
         :param output_type: Optional JSON schema dict requesting structured output.
@@ -53,11 +55,19 @@ class OpenAIModelRunner(Runner):
         :return: :class:`RunnerResult` containing ``content``, ``metrics``,
             ``raw`` and (when ``output_type`` is set) ``parsed``.
         """
-        messages = self._config_messages + [LDMessage(role='user', content=input)]
+        user_message = LDMessage(role='user', content=input)
+        messages = self._config_messages + self._history + [user_message]
 
         if output_type is not None:
-            return await self._run_structured(messages, output_type)
-        return await self._run_completion(messages)
+            result = await self._run_structured(messages, output_type)
+        else:
+            result = await self._run_completion(messages)
+
+        if result.metrics.success and result.content:
+            self._history.append(user_message)
+            self._history.append(LDMessage(role='assistant', content=result.content))
+
+        return result
 
     async def _run_completion(self, messages: List[LDMessage]) -> RunnerResult:
         try:
