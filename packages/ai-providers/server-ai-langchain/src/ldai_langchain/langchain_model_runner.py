@@ -1,7 +1,8 @@
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, cast
 
+from langchain_core.chat_history import InMemoryChatMessageHistory
 from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_core.messages import BaseMessage
+from langchain_core.messages import BaseMessage, HumanMessage
 from ldai import LDMessage, log
 from ldai.providers.runner import Runner
 from ldai.providers.types import LDAIMetrics, RunnerResult
@@ -26,7 +27,9 @@ class LangChainModelRunner(Runner):
 
     def __init__(self, llm: BaseChatModel, config_messages: Optional[List[LDMessage]] = None):
         self._llm = llm
-        self._config_messages: List[LDMessage] = list(config_messages or [])
+        self._chat_history = InMemoryChatMessageHistory(
+            messages=cast(List[BaseMessage], convert_messages_to_langchain(config_messages or []))
+        )
 
     def get_llm(self) -> BaseChatModel:
         """
@@ -44,9 +47,6 @@ class LangChainModelRunner(Runner):
         """
         Run the LangChain model with the given input.
 
-        Prepends any config messages (system prompt, instructions, etc.) stored
-        at construction time before the user message.
-
         :param input: A string prompt
         :param output_type: Optional JSON schema dict requesting structured output.
             When provided, ``parsed`` on the returned :class:`RunnerResult` is
@@ -54,16 +54,22 @@ class LangChainModelRunner(Runner):
         :return: :class:`RunnerResult` containing ``content``, ``metrics``,
             ``raw`` and (when ``output_type`` is set) ``parsed``.
         """
-        messages = self._config_messages + [LDMessage(role='user', content=input)]
+        langchain_messages = self._chat_history.messages + [HumanMessage(content=input)]
 
         if output_type is not None:
-            return await self._run_structured(messages, output_type)
-        return await self._run_completion(messages)
+            result = await self._run_structured(langchain_messages, output_type)
+        else:
+            result = await self._run_completion(langchain_messages)
 
-    async def _run_completion(self, messages: List[LDMessage]) -> RunnerResult:
+        if result.metrics.success and result.content:
+            self._chat_history.add_user_message(input)
+            self._chat_history.add_ai_message(result.content)
+
+        return result
+
+    async def _run_completion(self, messages: List[BaseMessage]) -> RunnerResult:
         try:
-            langchain_messages = convert_messages_to_langchain(messages)
-            response: BaseMessage = await self._llm.ainvoke(langchain_messages)
+            response: BaseMessage = await self._llm.ainvoke(messages)
             metrics = get_ai_metrics_from_response(response)
 
             content: str = ''
@@ -90,13 +96,12 @@ class LangChainModelRunner(Runner):
 
     async def _run_structured(
         self,
-        messages: List[LDMessage],
+        messages: List[BaseMessage],
         output_type: Dict[str, Any],
     ) -> RunnerResult:
         try:
-            langchain_messages = convert_messages_to_langchain(messages)
             structured_llm = self._llm.with_structured_output(output_type, include_raw=True)
-            response = await structured_llm.ainvoke(langchain_messages)
+            response = await structured_llm.ainvoke(messages)
 
             if not isinstance(response, dict):
                 log.warning(f'Structured output did not return a dict. Got: {type(response)}')

@@ -204,6 +204,61 @@ class TestRunCompletion:
         assert result.content == ''
         assert result.metrics.success is False
 
+    @pytest.mark.asyncio
+    async def test_accumulates_history_across_successful_calls(self, mock_client):
+        """Should include prior exchange in messages on subsequent calls."""
+        def make_response(text: str):
+            r = MagicMock()
+            r.context_wrapper = None
+            r.choices = [MagicMock()]
+            r.choices[0].message = MagicMock()
+            r.choices[0].message.content = text
+            r.usage = None
+            return r
+
+        mock_client.chat = MagicMock()
+        mock_client.chat.completions = MagicMock()
+        mock_client.chat.completions.create = AsyncMock(side_effect=[
+            make_response('First response'),
+            make_response('Second response'),
+        ])
+
+        provider = OpenAIModelRunner(mock_client, 'gpt-4o', {})
+        await provider.run('First question')
+        await provider.run('Second question')
+
+        second_call_messages = mock_client.chat.completions.create.call_args_list[1].kwargs['messages']
+        assert second_call_messages == [
+            {'role': 'user', 'content': 'First question'},
+            {'role': 'assistant', 'content': 'First response'},
+            {'role': 'user', 'content': 'Second question'},
+        ]
+
+    @pytest.mark.asyncio
+    async def test_does_not_accumulate_history_on_failed_call(self, mock_client):
+        """Should not add to history when the call fails."""
+        mock_client.chat = MagicMock()
+        mock_client.chat.completions = MagicMock()
+        mock_client.chat.completions.create = AsyncMock(side_effect=Exception('API Error'))
+
+        provider = OpenAIModelRunner(mock_client, 'gpt-4o', {})
+        await provider.run('Hello!')
+
+        def make_ok_response():
+            r = MagicMock()
+            r.context_wrapper = None
+            r.choices = [MagicMock()]
+            r.choices[0].message = MagicMock()
+            r.choices[0].message.content = 'Recovery'
+            r.usage = None
+            return r
+
+        mock_client.chat.completions.create = AsyncMock(return_value=make_ok_response())
+        await provider.run('Try again')
+
+        second_call_messages = mock_client.chat.completions.create.call_args.kwargs['messages']
+        assert second_call_messages == [{'role': 'user', 'content': 'Try again'}]
+
 
 class TestRunStructured:
     """Tests for the unified run() method (structured-output path)."""
