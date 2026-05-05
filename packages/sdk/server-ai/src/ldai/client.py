@@ -68,6 +68,8 @@ def _resolve_tools(variation: Dict[str, Any]) -> Optional[Dict[str, LDTool]]:
                     parameters=tool_dict.get('parameters'),
                     custom_parameters=tool_dict.get('customParameters'),
                 )
+            else:
+                log.warning('Skipping tool "%s": expected a dict, got %s', tool_name, type(tool_dict).__name__)
         return tools or None
 
     model = variation.get('model')
@@ -82,15 +84,20 @@ def _resolve_tools(variation: Dict[str, Any]) -> Optional[Dict[str, LDTool]]:
 
     tools = {}
     for item in tools_list:
-        if isinstance(item, dict) and item.get('name'):
-            tool_name = str(item['name'])
-            tools[tool_name] = LDTool(
-                name=tool_name,
-                description=item.get('description'),
-                type=item.get('type'),
-                parameters=item.get('parameters'),
-                custom_parameters=item.get('customParameters'),
-            )
+        if not isinstance(item, dict):
+            log.warning('Skipping tool entry: expected a dict, got %s', type(item).__name__)
+            continue
+        if not item.get('name'):
+            log.warning('Skipping tool entry: missing name')
+            continue
+        tool_name = str(item['name'])
+        tools[tool_name] = LDTool(
+            name=tool_name,
+            description=item.get('description'),
+            type=item.get('type'),
+            parameters=item.get('parameters'),
+            custom_parameters=item.get('customParameters'),
+        )
     return tools or None
 
 
