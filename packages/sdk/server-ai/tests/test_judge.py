@@ -1,12 +1,12 @@
 """Tests for Judge functionality."""
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, call
 
 import pytest
 from ldclient import Config, Context, LDClient
 from ldclient.integrations.test_data import TestData
 
-from ldai.judge import Judge
+from ldai.judge import Judge, _strip_legacy_judge_messages
 from ldai.judge.evaluation_schema_builder import EvaluationSchemaBuilder
 from ldai.models import (
     AIJudgeConfig,
@@ -107,8 +107,71 @@ def judge_config_without_key(tracker) -> AIJudgeConfig:
 
 @pytest.fixture
 def judge_config_without_messages(tracker) -> AIJudgeConfig:
-    """Create a judge config without messages."""
+    """Create a judge config without messages (None)."""
     return _make_judge_config(messages=None, tracker=tracker)
+
+
+class TestStripLegacyJudgeMessages:
+    """Tests for the _strip_legacy_judge_messages helper."""
+
+    def test_strips_assistant_message_with_message_history(self):
+        """Non-system messages containing {{message_history}} should be removed."""
+        messages = [
+            LDMessage(role='system', content='You are a judge.'),
+            LDMessage(role='assistant', content='Here is the history: {{message_history}}'),
+        ]
+        result = _strip_legacy_judge_messages(messages)
+        assert len(result) == 1
+        assert result[0].role == 'system'
+
+    def test_strips_user_message_with_response_to_evaluate(self):
+        """Non-system messages containing {{response_to_evaluate}} should be removed."""
+        messages = [
+            LDMessage(role='system', content='You are a judge.'),
+            LDMessage(role='user', content='Evaluate: {{response_to_evaluate}}'),
+        ]
+        result = _strip_legacy_judge_messages(messages)
+        assert len(result) == 1
+        assert result[0].role == 'system'
+
+    def test_strips_all_legacy_messages(self):
+        """All non-system template messages should be stripped from a typical legacy config."""
+        messages = [
+            LDMessage(role='system', content='You are a judge.'),
+            LDMessage(role='assistant', content='{{message_history}}'),
+            LDMessage(role='user', content='{{response_to_evaluate}}'),
+        ]
+        result = _strip_legacy_judge_messages(messages)
+        assert len(result) == 1
+        assert result[0].role == 'system'
+
+    def test_does_not_strip_system_message_containing_template_vars(self):
+        """System messages are never stripped, even if they contain template variable names."""
+        messages = [
+            LDMessage(role='system', content='Judge using {{message_history}} and {{response_to_evaluate}}.'),
+        ]
+        result = _strip_legacy_judge_messages(messages)
+        assert len(result) == 1
+        assert result[0].role == 'system'
+
+    def test_does_not_strip_non_template_messages(self):
+        """Non-system messages without template variables are left untouched."""
+        messages = [
+            LDMessage(role='system', content='You are a judge.'),
+            LDMessage(role='user', content='This is a regular message.'),
+        ]
+        result = _strip_legacy_judge_messages(messages)
+        assert len(result) == 2
+
+    def test_returns_empty_list_for_empty_input(self):
+        """An empty input list should return an empty list."""
+        assert _strip_legacy_judge_messages([]) == []
+
+    def test_new_style_config_system_only_unchanged(self):
+        """A new-style config with only a system message passes through unchanged."""
+        messages = [LDMessage(role='system', content='You are a judge.')]
+        result = _strip_legacy_judge_messages(messages)
+        assert result == messages
 
 
 class TestJudgeInitialization:
@@ -160,18 +223,104 @@ class TestJudgeEvaluate:
         mock_runner.run.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_evaluate_returns_failure_when_messages_missing(
-        self, judge_config_without_messages: AIJudgeConfig, mock_runner
+    async def test_evaluate_succeeds_when_messages_is_none(
+        self, judge_config_without_messages: AIJudgeConfig, tracker: LDAIConfigTracker, mock_runner
     ):
-        """Evaluate should return a failed JudgeResult when messages are missing."""
-        judge = Judge(judge_config_without_messages, mock_runner)
+        """Evaluate should proceed (not error early) when messages is None."""
+        mock_response = RunnerResult(
+            content='',
+            metrics=LDAIMetrics(success=True),
+            parsed={'score': 0.7, 'reasoning': 'Acceptable response.'},
+        )
+        mock_runner.run.return_value = mock_response
+        tracker.track_metrics_of_async = AsyncMock(return_value=mock_response)
+
+        config = _make_judge_config(messages=None, tracker=tracker)
+        judge = Judge(config, mock_runner)
 
         result = await judge.evaluate("input text", "output text")
 
         assert isinstance(result, JudgeResult)
-        assert result.success is False
-        assert result.sampled is False
-        mock_runner.run.assert_not_called()
+        assert result.sampled is True
+
+    @pytest.mark.asyncio
+    async def test_evaluate_passes_string_input_to_runner(
+        self, judge_config_with_key: AIJudgeConfig, tracker: LDAIConfigTracker, mock_runner
+    ):
+        """runner.run() should receive the formatted string, NOT a message list."""
+        mock_response = RunnerResult(
+            content='',
+            metrics=LDAIMetrics(success=True),
+            parsed={'score': 0.85, 'reasoning': 'Good answer.'},
+        )
+        mock_runner.run.return_value = mock_response
+        tracker.track_metrics_of_async = AsyncMock(
+            side_effect=lambda _metric_fn, fn: fn()
+        )
+
+        judge = Judge(judge_config_with_key, mock_runner)
+        await judge.evaluate("What is AI?", "AI is artificial intelligence.")
+
+        mock_runner.run.assert_called_once()
+        call_args = mock_runner.run.call_args
+        input_arg = call_args[0][0] if call_args[0] else call_args[1].get('input')
+        assert isinstance(input_arg, str)
+        assert "MESSAGE HISTORY:\nWhat is AI?" in input_arg
+        assert "RESPONSE TO EVALUATE:\nAI is artificial intelligence." in input_arg
+
+    @pytest.mark.asyncio
+    async def test_evaluate_string_input_format(
+        self, judge_config_with_key: AIJudgeConfig, tracker: LDAIConfigTracker, mock_runner
+    ):
+        """runner.run() should receive the exact expected string format."""
+        mock_response = RunnerResult(
+            content='',
+            metrics=LDAIMetrics(success=True),
+            parsed={'score': 0.9, 'reasoning': 'Correct.'},
+        )
+        mock_runner.run.return_value = mock_response
+        tracker.track_metrics_of_async = AsyncMock(
+            side_effect=lambda _metric_fn, fn: fn()
+        )
+
+        judge = Judge(judge_config_with_key, mock_runner)
+        await judge.evaluate("hello", "world")
+
+        call_args = mock_runner.run.call_args
+        input_arg = call_args[0][0] if call_args[0] else call_args[1].get('input')
+        expected = "MESSAGE HISTORY:\nhello\n\nRESPONSE TO EVALUATE:\nworld"
+        assert input_arg == expected
+
+    @pytest.mark.asyncio
+    async def test_evaluate_legacy_config_strips_template_messages(
+        self, tracker: LDAIConfigTracker, mock_runner
+    ):
+        """Legacy config with assistant/user template messages: runner still gets string input."""
+        legacy_messages = [
+            LDMessage(role='system', content='You are a strict judge.'),
+            LDMessage(role='assistant', content='{{message_history}}'),
+            LDMessage(role='user', content='Evaluate: {{response_to_evaluate}}'),
+        ]
+        config = _make_judge_config(messages=legacy_messages, tracker=tracker)
+
+        mock_response = RunnerResult(
+            content='',
+            metrics=LDAIMetrics(success=True),
+            parsed={'score': 0.75, 'reasoning': 'Mostly relevant.'},
+        )
+        mock_runner.run.return_value = mock_response
+        tracker.track_metrics_of_async = AsyncMock(
+            side_effect=lambda _metric_fn, fn: fn()
+        )
+
+        judge = Judge(config, mock_runner)
+        await judge.evaluate("input", "output")
+
+        call_args = mock_runner.run.call_args
+        input_arg = call_args[0][0] if call_args[0] else call_args[1].get('input')
+        assert isinstance(input_arg, str)
+        assert "MESSAGE HISTORY:\ninput" in input_arg
+        assert "RESPONSE TO EVALUATE:\noutput" in input_arg
 
     @pytest.mark.asyncio
     async def test_evaluate_success_with_valid_response(
