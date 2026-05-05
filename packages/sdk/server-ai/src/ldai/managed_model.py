@@ -75,6 +75,8 @@ class ManagedModel:
         async def _run_and_track(eval_task: asyncio.Task) -> List[JudgeResult]:
             results = await eval_task
             for r in results:
+                if not r.sampled:
+                    continue
                 if r.success:
                     try:
                         tracker.track_judge_result(r)
