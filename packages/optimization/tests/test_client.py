@@ -10,7 +10,8 @@ from ldai.models import LDMessage, ModelConfig
 from ldai.tracker import TokenUsage
 from ldclient import Context
 
-from ldai_optimizer.client import OptimizationClient, _compute_validation_count, _find_model_config, _judge_passed
+from ldai_optimizer.client import OptimizationClient, _compute_validation_count, _find_model_config
+from ldai_optimizer.util import judge_passed
 from ldai_optimizer.dataclasses import (
     AIJudgeCallConfig,
     GroundTruthOptimizationOptions,
@@ -4410,24 +4411,24 @@ class TestAutoCommitInOptimizeFromConfig:
 
 
 # ---------------------------------------------------------------------------
-# _judge_passed helper
+# judge_passed helper
 # ---------------------------------------------------------------------------
 
 
 class TestJudgePassed:
     def test_standard_judge_passes_at_or_above_threshold(self):
-        assert _judge_passed(0.8, 0.8, is_inverted=False) is True
-        assert _judge_passed(1.0, 0.8, is_inverted=False) is True
+        assert judge_passed(0.8, 0.8, is_inverted=False) is True
+        assert judge_passed(1.0, 0.8, is_inverted=False) is True
 
     def test_standard_judge_fails_below_threshold(self):
-        assert _judge_passed(0.5, 0.8, is_inverted=False) is False
+        assert judge_passed(0.5, 0.8, is_inverted=False) is False
 
     def test_inverted_judge_passes_at_or_below_threshold(self):
-        assert _judge_passed(0.1, 0.3, is_inverted=True) is True
-        assert _judge_passed(0.3, 0.3, is_inverted=True) is True
+        assert judge_passed(0.1, 0.3, is_inverted=True) is True
+        assert judge_passed(0.3, 0.3, is_inverted=True) is True
 
     def test_inverted_judge_fails_above_threshold(self):
-        assert _judge_passed(0.8, 0.3, is_inverted=True) is False
+        assert judge_passed(0.8, 0.3, is_inverted=True) is False
 
 
 # ---------------------------------------------------------------------------

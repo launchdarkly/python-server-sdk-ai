@@ -60,6 +60,7 @@ from ldai_optimizer.util import (
     extract_json_from_response,
     generate_slug,
     interpolate_variables,
+    judge_passed,
     restore_variable_placeholders,
     validate_variation_response,
 )
@@ -141,16 +142,6 @@ _OPTIMIZATION_STATUS_MAP: Dict[str, Dict[str, str]] = {
     "failure": {"status": "FAILED", "activity": "COMPLETED"},
 }
 
-
-def _judge_passed(score: float, threshold: float, is_inverted: bool) -> bool:
-    """Return True when a judge score meets its threshold.
-
-    For standard judges (higher is better) the score must reach the threshold
-    from below: ``score >= threshold``.  For inverted judges (lower is better,
-    e.g. toxicity) the score must stay at or below the threshold:
-    ``score <= threshold``.
-    """
-    return score <= threshold if is_inverted else score >= threshold
 
 
 class OptimizationClient:
@@ -481,7 +472,7 @@ class OptimizationClient:
                     if optimization_judge.threshold is not None
                     else 1.0
                 )
-                passed = _judge_passed(result.score, threshold, optimization_judge.is_inverted)
+                passed = judge_passed(result.score, threshold, optimization_judge.is_inverted)
                 logger.debug(
                     "[Iteration %d] -> Judge '%s' scored %.3f (threshold=%.3f, inverted=%s) -> %s%s",
                     iteration,
@@ -1868,7 +1859,7 @@ class OptimizationClient:
                 if optimization_judge.threshold is not None
                 else 1.0
             )
-            if not _judge_passed(result.score, threshold, optimization_judge.is_inverted):
+            if not judge_passed(result.score, threshold, optimization_judge.is_inverted):
                 return False
 
         return True
