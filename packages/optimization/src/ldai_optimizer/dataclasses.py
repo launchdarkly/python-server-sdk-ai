@@ -196,6 +196,7 @@ class OptimizationJudge:
     threshold: float
     judge_key: Optional[str] = None
     acceptance_statement: Optional[str] = None
+    is_inverted: bool = False
 
 
 @dataclass

@@ -285,7 +285,10 @@ def variation_prompt_feedback(
             if optimization_judge:
                 score = result.score
                 if optimization_judge.threshold is not None:
-                    passed = score >= optimization_judge.threshold
+                    if optimization_judge.is_inverted:
+                        passed = score <= optimization_judge.threshold
+                    else:
+                        passed = score >= optimization_judge.threshold
                     status = "PASSED" if passed else "FAILED"
                     feedback_line = (
                         f"- {judge_key}: Score {score:.3f}"

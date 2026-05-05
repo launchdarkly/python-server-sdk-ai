@@ -142,6 +142,17 @@ _OPTIMIZATION_STATUS_MAP: Dict[str, Dict[str, str]] = {
 }
 
 
+def _judge_passed(score: float, threshold: float, is_inverted: bool) -> bool:
+    """Return True when a judge score meets its threshold.
+
+    For standard judges (higher is better) the score must reach the threshold
+    from below: ``score >= threshold``.  For inverted judges (lower is better,
+    e.g. toxicity) the score must stay at or below the threshold:
+    ``score <= threshold``.
+    """
+    return score <= threshold if is_inverted else score >= threshold
+
+
 class OptimizationClient:
     _options: OptimizationOptions
     _ldClient: LDAIClient
@@ -470,13 +481,14 @@ class OptimizationClient:
                     if optimization_judge.threshold is not None
                     else 1.0
                 )
-                passed = result.score >= threshold
+                passed = _judge_passed(result.score, threshold, optimization_judge.is_inverted)
                 logger.debug(
-                    "[Iteration %d] -> Judge '%s' scored %.3f (threshold=%.3f) -> %s%s",
+                    "[Iteration %d] -> Judge '%s' scored %.3f (threshold=%.3f, inverted=%s) -> %s%s",
                     iteration,
                     judge_key,
                     result.score,
                     threshold,
+                    optimization_judge.is_inverted,
                     "PASSED" if passed else "FAILED",
                     f" | {result.rationale}" if result.rationale else "",
                 )
@@ -1492,9 +1504,13 @@ class OptimizationClient:
             )
 
         for judge in config["judges"]:
-            judges[judge["key"]] = OptimizationJudge(
+            judge_key = judge["key"]
+            ai_config = api_client.get_ai_config(options.project_key, judge_key)
+            is_inverted = bool(ai_config.get("isInverted", False)) if ai_config else False
+            judges[judge_key] = OptimizationJudge(
                 threshold=float(judge.get("threshold", 0.95)),
-                judge_key=judge["key"],
+                judge_key=judge_key,
+                is_inverted=is_inverted,
             )
 
         raw_ground_truth: List[str] = config.get("groundTruthResponses") or []
@@ -1852,7 +1868,7 @@ class OptimizationClient:
                 if optimization_judge.threshold is not None
                 else 1.0
             )
-            if result.score < threshold:
+            if not _judge_passed(result.score, threshold, optimization_judge.is_inverted):
                 return False
 
         return True
