@@ -192,4 +192,4 @@ class RunnerFactory:
         """
         if util.find_spec(package_name) is None:
             pypi_name = _PYPI_PACKAGE_NAMES.get(package_name, package_name)
-            raise ImportError(f"Package '{pypi_name}' not found. Run: pip install {pypi_name}")
+            raise ImportError(f"Package '{pypi_name}' not found. Make sure it is installed.")

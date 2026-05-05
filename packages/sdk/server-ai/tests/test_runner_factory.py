@@ -16,7 +16,7 @@ class TestPkgExists:
             with pytest.raises(ImportError) as exc_info:
                 RunnerFactory._pkg_exists('ldai_openai')
         assert 'launchdarkly-server-sdk-ai-openai' in str(exc_info.value)
-        assert 'pip install launchdarkly-server-sdk-ai-openai' in str(exc_info.value)
+        assert 'pip install' not in str(exc_info.value)
 
     def test_raises_import_error_with_pypi_name_for_langchain(self):
         with patch('ldai.providers.runner_factory.util') as mock_util:
@@ -24,7 +24,7 @@ class TestPkgExists:
             with pytest.raises(ImportError) as exc_info:
                 RunnerFactory._pkg_exists('ldai_langchain')
         assert 'launchdarkly-server-sdk-ai-langchain' in str(exc_info.value)
-        assert 'pip install launchdarkly-server-sdk-ai-langchain' in str(exc_info.value)
+        assert 'pip install' not in str(exc_info.value)
 
     def test_raises_import_error_with_module_name_when_no_mapping(self):
         """Unknown module names fall back to the module name itself."""
@@ -74,11 +74,11 @@ class TestGetProviderFactory:
         assert 'launchdarkly-server-sdk-ai-langchain' in warning_text
         assert 'ldai_langchain' not in warning_text
 
-    def test_warning_does_not_contain_make_sure_text(self):
-        """The old boilerplate text should be replaced by actionable pip install instructions."""
+    def test_warning_does_not_reference_pip(self):
+        """Warning should be package-manager agnostic — no pip install command."""
         with patch('ldai.providers.runner_factory.util') as mock_util, \
              patch('ldai.providers.runner_factory.log') as mock_log:
             mock_util.find_spec.return_value = None
             RunnerFactory._get_provider_factory('openai')
         warning_text = mock_log.warning.call_args[0][0]
-        assert 'Make sure the corresponding package is installed' not in warning_text
+        assert 'pip install' not in warning_text
