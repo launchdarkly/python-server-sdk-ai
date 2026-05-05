@@ -33,8 +33,7 @@ class OpenAIModelRunner(Runner):
         self._client = client
         self._model_name = model_name
         self._parameters = parameters
-        self._config_messages: List[LDMessage] = list(config_messages or [])
-        self._history: List[LDMessage] = []
+        self._history: List[LDMessage] = list(config_messages or [])
 
     async def run(
         self,
@@ -44,9 +43,9 @@ class OpenAIModelRunner(Runner):
         """
         Run the OpenAI model with the given input.
 
-        Prepends config messages and accumulated conversation history before the
-        user message. On success, appends the user/assistant exchange to history
-        so subsequent calls include prior context.
+        Sends the full conversation history (seeded with config messages at
+        construction time) plus the new user message. On success, appends the
+        user/assistant exchange to history so subsequent calls include prior context.
 
         :param input: A string prompt
         :param output_type: Optional JSON schema dict requesting structured output.
@@ -56,7 +55,7 @@ class OpenAIModelRunner(Runner):
             ``raw`` and (when ``output_type`` is set) ``parsed``.
         """
         user_message = LDMessage(role='user', content=input)
-        messages = self._config_messages + self._history + [user_message]
+        messages = self._history + [user_message]
 
         if output_type is not None:
             result = await self._run_structured(messages, output_type)

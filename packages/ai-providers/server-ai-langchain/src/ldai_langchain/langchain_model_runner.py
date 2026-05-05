@@ -27,8 +27,9 @@ class LangChainModelRunner(Runner):
 
     def __init__(self, llm: BaseChatModel, config_messages: Optional[List[LDMessage]] = None):
         self._llm = llm
-        self._config_messages: List[LDMessage] = list(config_messages or [])
-        self._chat_history = InMemoryChatMessageHistory()
+        self._chat_history = InMemoryChatMessageHistory(
+            messages=convert_messages_to_langchain(config_messages or [])
+        )
 
     def get_llm(self) -> BaseChatModel:
         """
@@ -46,10 +47,10 @@ class LangChainModelRunner(Runner):
         """
         Run the LangChain model with the given input.
 
-        Prepends config messages and accumulated conversation history (stored as
-        native LangChain messages via InMemoryChatMessageHistory) before the user
-        message. On success, appends the exchange to chat history so subsequent
-        calls include prior context.
+        Sends the full chat history (seeded with config messages at construction
+        time via InMemoryChatMessageHistory) plus the new user message. On
+        success, appends the user/assistant exchange so subsequent calls include
+        prior context.
 
         :param input: A string prompt
         :param output_type: Optional JSON schema dict requesting structured output.
@@ -58,11 +59,7 @@ class LangChainModelRunner(Runner):
         :return: :class:`RunnerResult` containing ``content``, ``metrics``,
             ``raw`` and (when ``output_type`` is set) ``parsed``.
         """
-        langchain_messages = (
-            convert_messages_to_langchain(self._config_messages)
-            + self._chat_history.messages
-            + [HumanMessage(content=input)]
-        )
+        langchain_messages = self._chat_history.messages + [HumanMessage(content=input)]
 
         if output_type is not None:
             result = await self._run_structured(langchain_messages, output_type)
