@@ -4,8 +4,6 @@ import pytest
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from ldai import LDMessage
-
 from ldai_openai import OpenAIModelRunner, OpenAIRunnerFactory, get_ai_metrics_from_response, get_ai_usage_from_response
 
 
@@ -143,8 +141,7 @@ class TestRunCompletion:
         mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
 
         provider = OpenAIModelRunner(mock_client, 'gpt-3.5-turbo', {})
-        messages = [LDMessage(role='user', content='Hello!')]
-        result = await provider.run(messages)
+        result = await provider.run('Hello!')
 
         mock_client.chat.completions.create.assert_called_once_with(
             model='gpt-3.5-turbo',
@@ -172,8 +169,7 @@ class TestRunCompletion:
         mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
 
         provider = OpenAIModelRunner(mock_client, 'gpt-3.5-turbo', {})
-        messages = [LDMessage(role='user', content='Hello!')]
-        result = await provider.run(messages)
+        result = await provider.run('Hello!')
 
         assert result.content == ''
         assert result.metrics.success is False
@@ -190,8 +186,7 @@ class TestRunCompletion:
         mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
 
         provider = OpenAIModelRunner(mock_client, 'gpt-3.5-turbo', {})
-        messages = [LDMessage(role='user', content='Hello!')]
-        result = await provider.run(messages)
+        result = await provider.run('Hello!')
 
         assert result.content == ''
         assert result.metrics.success is False
@@ -204,8 +199,7 @@ class TestRunCompletion:
         mock_client.chat.completions.create = AsyncMock(side_effect=Exception('API Error'))
 
         provider = OpenAIModelRunner(mock_client, 'gpt-3.5-turbo', {})
-        messages = [LDMessage(role='user', content='Hello!')]
-        result = await provider.run(messages)
+        result = await provider.run('Hello!')
 
         assert result.content == ''
         assert result.metrics.success is False
@@ -234,7 +228,6 @@ class TestRunStructured:
         mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
 
         provider = OpenAIModelRunner(mock_client, 'gpt-3.5-turbo', {})
-        messages = [LDMessage(role='user', content='Tell me about a person')]
         response_structure = {
             'type': 'object',
             'properties': {
@@ -245,7 +238,7 @@ class TestRunStructured:
             'required': ['name', 'age', 'city'],
         }
 
-        result = await provider.run(messages, output_type=response_structure)
+        result = await provider.run('Tell me about a person', output_type=response_structure)
 
         assert result.parsed == {'name': 'John', 'age': 30, 'city': 'New York'}
         assert result.content == '{"name": "John", "age": 30, "city": "New York"}'
@@ -269,10 +262,9 @@ class TestRunStructured:
         mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
 
         provider = OpenAIModelRunner(mock_client, 'gpt-3.5-turbo', {})
-        messages = [LDMessage(role='user', content='Tell me about a person')]
         response_structure = {'type': 'object'}
 
-        result = await provider.run(messages, output_type=response_structure)
+        result = await provider.run('Tell me about a person', output_type=response_structure)
 
         assert result.parsed is None
         assert result.content == ''
@@ -293,10 +285,9 @@ class TestRunStructured:
         mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
 
         provider = OpenAIModelRunner(mock_client, 'gpt-3.5-turbo', {})
-        messages = [LDMessage(role='user', content='Tell me about a person')]
         response_structure = {'type': 'object'}
 
-        result = await provider.run(messages, output_type=response_structure)
+        result = await provider.run('Tell me about a person', output_type=response_structure)
 
         assert result.parsed is None
         assert result.content == 'invalid json content'
@@ -312,10 +303,9 @@ class TestRunStructured:
         mock_client.chat.completions.create = AsyncMock(side_effect=Exception('API Error'))
 
         provider = OpenAIModelRunner(mock_client, 'gpt-3.5-turbo', {})
-        messages = [LDMessage(role='user', content='Tell me about a person')]
         response_structure = {'type': 'object'}
 
-        result = await provider.run(messages, output_type=response_structure)
+        result = await provider.run('Tell me about a person', output_type=response_structure)
 
         assert result.parsed is None
         assert result.content == ''
