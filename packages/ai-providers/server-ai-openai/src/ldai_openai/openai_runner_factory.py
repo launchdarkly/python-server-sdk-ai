@@ -100,7 +100,8 @@ class OpenAIRunnerFactory(AIProvider):
         tool_defs = parameters.pop('tools', None) or []
         if tool_defs:
             parameters['tools'] = normalize_tool_types(tool_defs)
-        return OpenAIModelRunner(self._client, model_name, parameters)
+        config_messages = list(getattr(config, 'messages', None) or [])
+        return OpenAIModelRunner(self._client, model_name, parameters, config_messages)
 
     def get_client(self) -> AsyncOpenAI:
         """

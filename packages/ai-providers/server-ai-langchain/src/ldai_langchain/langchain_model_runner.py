@@ -24,8 +24,9 @@ class LangChainModelRunner(Runner):
     :meth:`run`.
     """
 
-    def __init__(self, llm: BaseChatModel):
+    def __init__(self, llm: BaseChatModel, config_messages: Optional[List[LDMessage]] = None):
         self._llm = llm
+        self._config_messages: List[LDMessage] = list(config_messages or [])
 
     def get_llm(self) -> BaseChatModel:
         """
@@ -43,6 +44,9 @@ class LangChainModelRunner(Runner):
         """
         Run the LangChain model with the given input.
 
+        Prepends any config messages (system prompt, instructions, etc.) stored
+        at construction time before the user message.
+
         :param input: A string prompt
         :param output_type: Optional JSON schema dict requesting structured output.
             When provided, ``parsed`` on the returned :class:`RunnerResult` is
@@ -50,7 +54,7 @@ class LangChainModelRunner(Runner):
         :return: :class:`RunnerResult` containing ``content``, ``metrics``,
             ``raw`` and (when ``output_type`` is set) ``parsed``.
         """
-        messages = [LDMessage(role='user', content=input)]
+        messages = self._config_messages + [LDMessage(role='user', content=input)]
 
         if output_type is not None:
             return await self._run_structured(messages, output_type)

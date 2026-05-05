@@ -43,12 +43,9 @@ class ManagedModel:
         user_message = LDMessage(role='user', content=prompt)
         self._messages.append(user_message)
 
-        config_messages = self._ai_config.messages or []
-        all_messages = config_messages + self._messages
-
         result: RunnerResult = await tracker.track_metrics_of_async(
             lambda r: r.metrics,
-            lambda: self._model_runner.run(all_messages),
+            lambda: self._model_runner.run(prompt),
         )
 
         assistant_message = LDMessage(role='assistant', content=result.content)

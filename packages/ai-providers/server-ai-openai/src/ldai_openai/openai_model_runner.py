@@ -28,10 +28,12 @@ class OpenAIModelRunner(Runner):
         client: AsyncOpenAI,
         model_name: str,
         parameters: Dict[str, Any],
+        config_messages: Optional[List[LDMessage]] = None,
     ):
         self._client = client
         self._model_name = model_name
         self._parameters = parameters
+        self._config_messages: List[LDMessage] = list(config_messages or [])
 
     async def run(
         self,
@@ -41,6 +43,9 @@ class OpenAIModelRunner(Runner):
         """
         Run the OpenAI model with the given input.
 
+        Prepends any config messages (system prompt, instructions, etc.) stored
+        at construction time before the user message.
+
         :param input: A string prompt
         :param output_type: Optional JSON schema dict requesting structured output.
             When provided, ``parsed`` on the returned :class:`RunnerResult` is
@@ -48,7 +53,7 @@ class OpenAIModelRunner(Runner):
         :return: :class:`RunnerResult` containing ``content``, ``metrics``,
             ``raw`` and (when ``output_type`` is set) ``parsed``.
         """
-        messages = [LDMessage(role='user', content=input)]
+        messages = self._config_messages + [LDMessage(role='user', content=input)]
 
         if output_type is not None:
             return await self._run_structured(messages, output_type)
