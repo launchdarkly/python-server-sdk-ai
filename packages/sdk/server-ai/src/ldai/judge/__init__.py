@@ -160,19 +160,6 @@ class Judge:
         return self._model_runner
 
     def _build_evaluation_input(self, input_text: str, output_text: str) -> str:
-        """
-        Build the string input for the judge runner.
-
-        Legacy messages (assistant/user messages containing ``{{message_history}}``
-        or ``{{response_to_evaluate}}``) are stripped from the config; the runner
-        was already created from the judge AI config (which carries the system
-        message), so only the plain-text evaluation payload is needed here.
-
-        :param input_text: The input text (message history)
-        :param output_text: The output text to evaluate
-        :return: Formatted evaluation input string
-        """
-        _strip_legacy_judge_messages(self._ai_config.messages or [])
         return f"MESSAGE HISTORY:\n{input_text}\n\nRESPONSE TO EVALUATE:\n{output_text}"
 
     def _parse_evaluation_response(self, data: Dict[str, Any]) -> Optional[Tuple[float, str]]:

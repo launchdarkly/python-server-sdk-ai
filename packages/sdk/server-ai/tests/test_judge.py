@@ -292,10 +292,14 @@ class TestJudgeEvaluate:
         assert input_arg == expected
 
     @pytest.mark.asyncio
-    async def test_evaluate_legacy_config_strips_template_messages(
+    async def test_evaluate_legacy_config_passes_string_input_to_runner(
         self, tracker: LDAIConfigTracker, mock_runner
     ):
-        """Legacy config with assistant/user template messages: runner still gets string input."""
+        """
+        Judge built directly with legacy messages (bypassing the client) still passes
+        a formatted string to the runner.  Legacy message stripping is the client's
+        responsibility; the Judge itself does not strip.
+        """
         legacy_messages = [
             LDMessage(role='system', content='You are a strict judge.'),
             LDMessage(role='assistant', content='{{message_history}}'),
