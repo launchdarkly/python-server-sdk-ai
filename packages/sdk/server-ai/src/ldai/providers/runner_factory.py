@@ -13,6 +13,12 @@ T = TypeVar('T')
 # Multi-provider packages should be last in the list.
 SUPPORTED_AI_PROVIDERS = ('openai', 'langchain')
 
+# Mapping from internal Python module name to the pip-installable PyPI package name.
+_PYPI_PACKAGE_NAMES = {
+    'ldai_openai': 'launchdarkly-server-sdk-ai-openai',
+    'ldai_langchain': 'launchdarkly-server-sdk-ai-langchain',
+}
+
 
 class RunnerFactory:
     """
@@ -51,10 +57,7 @@ class RunnerFactory:
             )
             return None
         except ImportError as error:
-            log.warning(
-                f"Could not load provider '{provider_type}': {error}. "
-                f"Make sure the corresponding package is installed."
-            )
+            log.warning(f"Could not load provider '{provider_type}': {error}")
             return None
 
     @staticmethod
@@ -188,4 +191,5 @@ class RunnerFactory:
         :param package_name: Name of the package to check
         """
         if util.find_spec(package_name) is None:
-            raise ImportError(f"Package '{package_name}' not found")
+            pypi_name = _PYPI_PACKAGE_NAMES.get(package_name, package_name)
+            raise ImportError(f"Package '{pypi_name}' not found. Run: pip install {pypi_name}")
