@@ -3,7 +3,6 @@ from ldai.providers.ai_provider import AIProvider
 from ldai.providers.runner import Runner
 from ldai.providers.runner_factory import RunnerFactory
 from ldai.providers.types import (
-    AgentGraphResult,
     AgentGraphRunnerResult,
     GraphMetrics,
     GraphMetricSummary,
@@ -17,7 +16,6 @@ from ldai.providers.types import (
 
 __all__ = [
     'AIProvider',
-    'AgentGraphResult',
     'AgentGraphRunner',
     'AgentGraphRunnerResult',
     'GraphMetrics',
