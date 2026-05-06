@@ -7,6 +7,7 @@ from ldai_optimizer.dataclasses import (
     OptimizationContext,
     OptimizationJudge,
 )
+from ldai_optimizer.util import judge_passed
 
 _DURATION_KEYWORDS = re.compile(
     r"\b(fast|faster|quickly|quick|latency|low-latency|duration|response\s+time|"
@@ -285,7 +286,7 @@ def variation_prompt_feedback(
             if optimization_judge:
                 score = result.score
                 if optimization_judge.threshold is not None:
-                    passed = score >= optimization_judge.threshold
+                    passed = judge_passed(score, optimization_judge.threshold, optimization_judge.is_inverted)
                     status = "PASSED" if passed else "FAILED"
                     feedback_line = (
                         f"- {judge_key}: Score {score:.3f}"

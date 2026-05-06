@@ -11,6 +11,7 @@ from ldai.tracker import TokenUsage
 from ldclient import Context
 
 from ldai_optimizer.client import OptimizationClient, _compute_validation_count, _find_model_config
+from ldai_optimizer.util import judge_passed
 from ldai_optimizer.dataclasses import (
     AIJudgeCallConfig,
     GroundTruthOptimizationOptions,
@@ -28,6 +29,7 @@ from ldai_optimizer.prompts import (
     _acceptance_criteria_implies_duration_optimization,
     build_new_variation_prompt,
     variation_prompt_acceptance_criteria,
+    variation_prompt_feedback,
     variation_prompt_improvement_instructions,
     variation_prompt_overfit_warning,
     variation_prompt_preamble,
@@ -1847,6 +1849,8 @@ def _make_mock_api_client() -> MagicMock:
     mock.post_agent_optimization_result = MagicMock(return_value="result-uuid-789")
     mock.patch_agent_optimization_result = MagicMock()
     mock.get_model_configs = MagicMock(return_value=[])
+    # Default: AI Configs do not have isInverted set
+    mock.get_ai_config = MagicMock(return_value={})
     return mock
 
 
@@ -4404,3 +4408,251 @@ class TestAutoCommitInOptimizeFromConfig:
             assert opt_key_arg == "my-optimization", (
                 f"Expected string key 'my-optimization', got '{opt_key_arg}'"
             )
+
+
+# ---------------------------------------------------------------------------
+# judge_passed helper
+# ---------------------------------------------------------------------------
+
+
+class TestJudgePassed:
+    def test_standard_judge_passes_at_or_above_threshold(self):
+        assert judge_passed(0.8, 0.8, is_inverted=False) is True
+        assert judge_passed(1.0, 0.8, is_inverted=False) is True
+
+    def test_standard_judge_fails_below_threshold(self):
+        assert judge_passed(0.5, 0.8, is_inverted=False) is False
+
+    def test_inverted_judge_passes_at_or_below_threshold(self):
+        assert judge_passed(0.1, 0.3, is_inverted=True) is True
+        assert judge_passed(0.3, 0.3, is_inverted=True) is True
+
+    def test_inverted_judge_fails_above_threshold(self):
+        assert judge_passed(0.8, 0.3, is_inverted=True) is False
+
+
+# ---------------------------------------------------------------------------
+# _evaluate_response with inverted judges
+# ---------------------------------------------------------------------------
+
+
+class TestEvaluateResponseInvertedJudges:
+    def setup_method(self):
+        self.client = _make_client()
+
+    def _ctx_with_scores(self, scores: Dict[str, JudgeResult]) -> OptimizationContext:
+        return OptimizationContext(
+            scores=scores,
+            completion_response="Some response.",
+            current_instructions="Do X.",
+            current_parameters={},
+            current_variables={},
+            iteration=1,
+        )
+
+    def test_inverted_judge_passes_when_score_below_threshold(self):
+        self.client._options = _make_options(
+            judges={"toxicity": OptimizationJudge(threshold=0.3, acceptance_statement="Low toxicity.", is_inverted=True)}
+        )
+        ctx = self._ctx_with_scores({"toxicity": JudgeResult(score=0.1)})
+        assert self.client._evaluate_response(ctx) is True
+
+    def test_inverted_judge_passes_at_exact_threshold(self):
+        self.client._options = _make_options(
+            judges={"toxicity": OptimizationJudge(threshold=0.3, acceptance_statement="Low toxicity.", is_inverted=True)}
+        )
+        ctx = self._ctx_with_scores({"toxicity": JudgeResult(score=0.3)})
+        assert self.client._evaluate_response(ctx) is True
+
+    def test_inverted_judge_fails_when_score_above_threshold(self):
+        self.client._options = _make_options(
+            judges={"toxicity": OptimizationJudge(threshold=0.3, acceptance_statement="Low toxicity.", is_inverted=True)}
+        )
+        ctx = self._ctx_with_scores({"toxicity": JudgeResult(score=0.8)})
+        assert self.client._evaluate_response(ctx) is False
+
+    def test_mixed_judges_all_must_pass(self):
+        """A standard judge and an inverted judge must both pass for overall pass."""
+        self.client._options = _make_options(
+            judges={
+                "relevance": OptimizationJudge(threshold=0.8, acceptance_statement="Relevant.", is_inverted=False),
+                "toxicity": OptimizationJudge(threshold=0.3, acceptance_statement="Low toxicity.", is_inverted=True),
+            }
+        )
+        # Both pass: relevance high, toxicity low
+        ctx = self._ctx_with_scores({
+            "relevance": JudgeResult(score=0.9),
+            "toxicity": JudgeResult(score=0.1),
+        })
+        assert self.client._evaluate_response(ctx) is True
+
+    def test_mixed_judges_fails_when_inverted_judge_too_high(self):
+        self.client._options = _make_options(
+            judges={
+                "relevance": OptimizationJudge(threshold=0.8, acceptance_statement="Relevant.", is_inverted=False),
+                "toxicity": OptimizationJudge(threshold=0.3, acceptance_statement="Low toxicity.", is_inverted=True),
+            }
+        )
+        # Relevance passes but toxicity fails (score too high)
+        ctx = self._ctx_with_scores({
+            "relevance": JudgeResult(score=0.9),
+            "toxicity": JudgeResult(score=0.8),
+        })
+        assert self.client._evaluate_response(ctx) is False
+
+    def test_mixed_judges_fails_when_standard_judge_too_low(self):
+        self.client._options = _make_options(
+            judges={
+                "relevance": OptimizationJudge(threshold=0.8, acceptance_statement="Relevant.", is_inverted=False),
+                "toxicity": OptimizationJudge(threshold=0.3, acceptance_statement="Low toxicity.", is_inverted=True),
+            }
+        )
+        # Toxicity passes but relevance fails (score too low)
+        ctx = self._ctx_with_scores({
+            "relevance": JudgeResult(score=0.5),
+            "toxicity": JudgeResult(score=0.1),
+        })
+        assert self.client._evaluate_response(ctx) is False
+
+
+# ---------------------------------------------------------------------------
+# _build_options_from_config reads isInverted via get_ai_config REST call
+# ---------------------------------------------------------------------------
+
+
+class TestBuildOptionsFromConfigIsInverted:
+    def setup_method(self):
+        self.client = _make_client()
+        self.client._agent_key = "my-agent"
+        self.client._initialize_class_members_from_config(_make_agent_config())
+        self.client._options = _make_options()
+        self.api_client = _make_mock_api_client()
+
+    def _build(self, config=None, options=None) -> OptimizationOptions:
+        return self.client._build_options_from_config(
+            config or dict(_API_CONFIG),
+            options or _make_from_config_options(),
+            self.api_client,
+            optimization_key="opt-key-123",
+            run_id="run-uuid-456",
+            model_configs=[],
+        )
+
+    def test_is_inverted_true_when_ai_config_returns_isInverted(self):
+        """is_inverted is set from the AI Config REST API response for each judge."""
+        self.api_client.get_ai_config.return_value = {"isInverted": True}
+        config = dict(_API_CONFIG, acceptanceStatements=[], judges=[
+            {"key": "toxicity", "threshold": 0.3},
+        ])
+        result = self._build(config=config)
+        assert result.judges["toxicity"].is_inverted is True
+
+    def test_is_inverted_false_when_ai_config_has_no_isInverted(self):
+        self.api_client.get_ai_config.return_value = {}
+        config = dict(_API_CONFIG, acceptanceStatements=[], judges=[
+            {"key": "relevance", "threshold": 0.8},
+        ])
+        result = self._build(config=config)
+        assert result.judges["relevance"].is_inverted is False
+
+    def test_is_inverted_false_when_ai_config_has_isInverted_false(self):
+        self.api_client.get_ai_config.return_value = {"isInverted": False}
+        config = dict(_API_CONFIG, acceptanceStatements=[], judges=[
+            {"key": "relevance", "threshold": 0.8},
+        ])
+        result = self._build(config=config)
+        assert result.judges["relevance"].is_inverted is False
+
+    def test_get_ai_config_called_once_per_judge(self):
+        config = dict(_API_CONFIG, acceptanceStatements=[], judges=[
+            {"key": "toxicity", "threshold": 0.3},
+            {"key": "relevance", "threshold": 0.8},
+        ])
+        self._build(config=config)
+        assert self.api_client.get_ai_config.call_count == 2
+
+    def test_acceptance_statements_skip_get_ai_config(self):
+        """Acceptance statement judges are not backed by AI Configs."""
+        config = dict(_API_CONFIG, judges=[], acceptanceStatements=[
+            {"statement": "Be accurate.", "threshold": 0.9},
+        ])
+        self._build(config=config)
+        self.api_client.get_ai_config.assert_not_called()
+
+    def test_raises_when_get_ai_config_fails(self):
+        """A failing get_ai_config call propagates — the build should not silently ignore it."""
+        self.api_client.get_ai_config.side_effect = Exception("API error")
+        config = dict(_API_CONFIG, acceptanceStatements=[], judges=[
+            {"key": "toxicity", "threshold": 0.3},
+        ])
+        with pytest.raises(Exception, match="API error"):
+            self._build(config=config)
+
+    def test_per_judge_isInverted_mixed(self):
+        """Different judges can have different isInverted values."""
+        def _get_ai_config_side_effect(project_key, config_key):
+            return {"isInverted": True} if config_key == "toxicity" else {"isInverted": False}
+
+        self.api_client.get_ai_config.side_effect = _get_ai_config_side_effect
+        config = dict(_API_CONFIG, acceptanceStatements=[], judges=[
+            {"key": "toxicity", "threshold": 0.3},
+            {"key": "relevance", "threshold": 0.8},
+        ])
+        result = self._build(config=config)
+        assert result.judges["toxicity"].is_inverted is True
+        assert result.judges["relevance"].is_inverted is False
+
+
+# ---------------------------------------------------------------------------
+# variation_prompt_feedback with inverted judges
+# ---------------------------------------------------------------------------
+
+
+class TestVariationPromptFeedbackInvertedJudges:
+    def _make_ctx(self, scores: Dict[str, JudgeResult], iteration: int = 1) -> OptimizationContext:
+        return OptimizationContext(
+            scores=scores,
+            completion_response="Some response.",
+            current_instructions="Do X.",
+            current_parameters={},
+            current_variables={},
+            iteration=iteration,
+        )
+
+    def test_inverted_judge_shows_passed_when_score_below_threshold(self):
+        ctx = self._make_ctx({"toxicity": JudgeResult(score=0.1, rationale="Very clean.")})
+        judges = {"toxicity": OptimizationJudge(threshold=0.3, acceptance_statement="Low toxicity.", is_inverted=True)}
+        result = variation_prompt_feedback([ctx], judges)
+        assert "PASSED" in result
+
+    def test_inverted_judge_shows_failed_when_score_above_threshold(self):
+        ctx = self._make_ctx({"toxicity": JudgeResult(score=0.8, rationale="Very toxic.")})
+        judges = {"toxicity": OptimizationJudge(threshold=0.3, acceptance_statement="Low toxicity.", is_inverted=True)}
+        result = variation_prompt_feedback([ctx], judges)
+        assert "FAILED" in result
+
+    def test_standard_judge_shows_passed_when_score_above_threshold(self):
+        ctx = self._make_ctx({"relevance": JudgeResult(score=0.9)})
+        judges = {"relevance": OptimizationJudge(threshold=0.8, acceptance_statement="Relevant.", is_inverted=False)}
+        result = variation_prompt_feedback([ctx], judges)
+        assert "PASSED" in result
+
+    def test_standard_judge_shows_failed_when_score_below_threshold(self):
+        ctx = self._make_ctx({"relevance": JudgeResult(score=0.5)})
+        judges = {"relevance": OptimizationJudge(threshold=0.8, acceptance_statement="Relevant.", is_inverted=False)}
+        result = variation_prompt_feedback([ctx], judges)
+        assert "FAILED" in result
+
+    def test_mixed_judges_feedback_reflects_correct_pass_fail(self):
+        ctx = self._make_ctx({
+            "relevance": JudgeResult(score=0.9),
+            "toxicity": JudgeResult(score=0.05),
+        })
+        judges = {
+            "relevance": OptimizationJudge(threshold=0.8, acceptance_statement="Relevant.", is_inverted=False),
+            "toxicity": OptimizationJudge(threshold=0.3, acceptance_statement="Low toxicity.", is_inverted=True),
+        }
+        result = variation_prompt_feedback([ctx], judges)
+        # Both should be PASSED — relevance high enough, toxicity low enough
+        assert result.count("PASSED") == 2
+        assert "FAILED" not in result

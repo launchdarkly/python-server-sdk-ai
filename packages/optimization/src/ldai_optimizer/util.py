@@ -303,3 +303,13 @@ def extract_json_from_response(response_str: str) -> Dict[str, Any]:
         )
 
     return response_data
+
+
+def judge_passed(score: float, threshold: float, is_inverted: bool) -> bool:
+    """Return True when a judge score meets its threshold.
+
+    For standard judges (higher is better) the score must reach the threshold:
+    ``score >= threshold``.  For inverted judges (lower is better, e.g. toxicity)
+    the score must stay at or below the threshold: ``score <= threshold``.
+    """
+    return score <= threshold if is_inverted else score >= threshold
