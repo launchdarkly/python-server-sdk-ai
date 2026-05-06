@@ -26,15 +26,17 @@ from ldai_optimizer.dataclasses import (
     ToolDefinition,
 )
 from ldai_optimizer.prompts import (
+    _acceptance_criteria_implies_cost_optimization,
     _acceptance_criteria_implies_duration_optimization,
     build_new_variation_prompt,
     variation_prompt_acceptance_criteria,
+    variation_prompt_cost_optimization,
     variation_prompt_feedback,
     variation_prompt_improvement_instructions,
     variation_prompt_overfit_warning,
     variation_prompt_preamble,
 )
-from ldai_optimizer.util import interpolate_variables
+from ldai_optimizer.util import estimate_cost, interpolate_variables
 from ldai_optimizer.util import (
     restore_variable_placeholders,
 )
@@ -233,6 +235,43 @@ class TestExtractAgentTools:
 # ---------------------------------------------------------------------------
 # _evaluate_response
 # ---------------------------------------------------------------------------
+
+
+class TestIsTokenLimitExceeded:
+    def _client_with_limit(self, limit):
+        client = _make_client()
+        client._options = _make_options(token_limit=limit)
+        return client
+
+    def test_no_limit_returns_false(self):
+        client = self._client_with_limit(None)
+        client._total_token_usage = 9999
+        assert client._is_token_limit_exceeded() is False
+
+    def test_zero_limit_treated_as_no_limit(self):
+        client = self._client_with_limit(0)
+        client._total_token_usage = 0
+        assert client._is_token_limit_exceeded() is False
+
+    def test_zero_limit_with_high_usage_returns_false(self):
+        client = self._client_with_limit(0)
+        client._total_token_usage = 100_000
+        assert client._is_token_limit_exceeded() is False
+
+    def test_positive_limit_not_yet_reached(self):
+        client = self._client_with_limit(1000)
+        client._total_token_usage = 999
+        assert client._is_token_limit_exceeded() is False
+
+    def test_positive_limit_exactly_reached(self):
+        client = self._client_with_limit(1000)
+        client._total_token_usage = 1000
+        assert client._is_token_limit_exceeded() is True
+
+    def test_positive_limit_exceeded(self):
+        client = self._client_with_limit(1000)
+        client._total_token_usage = 1001
+        assert client._is_token_limit_exceeded() is True
 
 
 class TestEvaluateResponse:
@@ -4656,3 +4695,378 @@ class TestVariationPromptFeedbackInvertedJudges:
         # Both should be PASSED — relevance high enough, toxicity low enough
         assert result.count("PASSED") == 2
         assert "FAILED" not in result
+
+
+# ---------------------------------------------------------------------------
+# estimate_cost helper
+# ---------------------------------------------------------------------------
+
+
+class TestEstimateCost:
+    def _usage(self, total=100, inp=60, out=40) -> TokenUsage:
+        return TokenUsage(total=total, input=inp, output=out)
+
+    def test_returns_none_when_usage_is_none(self):
+        assert estimate_cost(None, {"costPerInputToken": 0.001}) is None
+
+    def test_uses_pricing_when_available(self):
+        usage = self._usage(total=100, inp=60, out=40)
+        model_config = {"costPerInputToken": 0.001, "costPerOutputToken": 0.002}
+        cost = estimate_cost(usage, model_config)
+        assert cost == pytest.approx(60 * 0.001 + 40 * 0.002)
+
+    def test_uses_only_input_price_when_output_absent(self):
+        usage = self._usage(total=100, inp=60, out=40)
+        model_config = {"costPerInputToken": 0.001}
+        cost = estimate_cost(usage, model_config)
+        assert cost == pytest.approx(60 * 0.001)
+
+    def test_uses_only_output_price_when_input_absent(self):
+        usage = self._usage(total=100, inp=60, out=40)
+        model_config = {"costPerOutputToken": 0.002}
+        cost = estimate_cost(usage, model_config)
+        assert cost == pytest.approx(40 * 0.002)
+
+    def test_falls_back_to_total_token_count_when_no_pricing(self):
+        usage = self._usage(total=100)
+        cost = estimate_cost(usage, {})
+        assert cost == 100.0
+
+    def test_falls_back_to_total_token_count_when_model_config_none(self):
+        usage = self._usage(total=250)
+        cost = estimate_cost(usage, None)
+        assert cost == 250.0
+
+    def test_ignores_cached_input_token_price(self):
+        usage = self._usage(total=100, inp=60, out=40)
+        model_config = {
+            "costPerInputToken": 0.001,
+            "costPerOutputToken": 0.002,
+            "costPerCachedInputToken": 0.0005,
+        }
+        cost = estimate_cost(usage, model_config)
+        assert cost == pytest.approx(60 * 0.001 + 40 * 0.002)
+
+    def test_zero_usage_with_pricing_returns_zero(self):
+        usage = TokenUsage(total=0, input=0, output=0)
+        model_config = {"costPerInputToken": 0.001, "costPerOutputToken": 0.002}
+        assert estimate_cost(usage, model_config) == pytest.approx(0.0)
+
+
+# ---------------------------------------------------------------------------
+# _acceptance_criteria_implies_cost_optimization
+# ---------------------------------------------------------------------------
+
+
+class TestAcceptanceCriteriaImpliesCostOptimization:
+    def _judge(self, statement: str) -> Dict[str, OptimizationJudge]:
+        return {"j": OptimizationJudge(threshold=0.9, acceptance_statement=statement)}
+
+    def test_returns_false_when_judges_none(self):
+        assert _acceptance_criteria_implies_cost_optimization(None) is False
+
+    def test_returns_false_when_no_acceptance_statements(self):
+        judges = {"j": OptimizationJudge(threshold=0.9, judge_key="some-judge")}
+        assert _acceptance_criteria_implies_cost_optimization(judges) is False
+
+    def test_detects_cheap(self):
+        assert _acceptance_criteria_implies_cost_optimization(self._judge("Keep it cheap."))
+
+    def test_detects_cost(self):
+        assert _acceptance_criteria_implies_cost_optimization(self._judge("Reduce overall cost."))
+
+    def test_detects_costs_plural(self):
+        assert _acceptance_criteria_implies_cost_optimization(
+            self._judge("Keep the costs stable or lower them.")
+        )
+
+    def test_detects_budget(self):
+        assert _acceptance_criteria_implies_cost_optimization(self._judge("Stay within budget."))
+
+    def test_detects_tokens(self):
+        assert _acceptance_criteria_implies_cost_optimization(self._judge("Use fewer tokens."))
+
+    def test_detects_billing(self):
+        assert _acceptance_criteria_implies_cost_optimization(self._judge("Minimize billing."))
+
+    def test_detects_spend(self):
+        assert _acceptance_criteria_implies_cost_optimization(self._judge("Reduce spend on API calls."))
+
+    def test_case_insensitive(self):
+        assert _acceptance_criteria_implies_cost_optimization(self._judge("BUDGET FRIENDLY response"))
+
+    def test_no_match_on_unrelated_statement(self):
+        assert not _acceptance_criteria_implies_cost_optimization(
+            self._judge("Respond accurately and concisely.")
+        )
+
+    def test_multiple_judges_one_matches(self):
+        judges = {
+            "j1": OptimizationJudge(threshold=0.9, acceptance_statement="Be accurate."),
+            "j2": OptimizationJudge(threshold=0.9, acceptance_statement="Use fewer tokens."),
+        }
+        assert _acceptance_criteria_implies_cost_optimization(judges)
+
+
+# ---------------------------------------------------------------------------
+# _evaluate_cost
+# ---------------------------------------------------------------------------
+
+
+class TestEvaluateCost:
+    def setup_method(self):
+        self.client = _make_client()
+        self.client._agent_key = "test-agent"
+        self.client._initialize_class_members_from_config(_make_agent_config())
+        self.client._options = _make_options()
+
+    def _ctx(self, cost: float, iteration: int = 2) -> OptimizationContext:
+        return OptimizationContext(
+            scores={},
+            completion_response="ok",
+            current_instructions="inst",
+            current_parameters={},
+            current_variables={},
+            iteration=iteration,
+            estimated_cost_usd=cost,
+        )
+
+    def _seed_history(self, baseline_cost: float):
+        self.client._history = [self._ctx(baseline_cost, iteration=1)]
+
+    def test_passes_when_cost_improved_beyond_tolerance(self):
+        self._seed_history(0.010)
+        assert self.client._evaluate_cost(self._ctx(0.007)) is True
+
+    def test_fails_when_cost_not_improved_enough(self):
+        self._seed_history(0.010)
+        assert self.client._evaluate_cost(self._ctx(0.009)) is False
+
+    def test_passes_at_exact_tolerance_boundary(self):
+        self._seed_history(0.010)
+        # 0.010 * 0.80 = 0.008; must be strictly less than 0.008
+        assert self.client._evaluate_cost(self._ctx(0.0079)) is True
+        assert self.client._evaluate_cost(self._ctx(0.008)) is False
+
+    def test_skips_gracefully_when_history_empty(self):
+        self.client._history = []
+        assert self.client._evaluate_cost(self._ctx(0.005)) is True
+
+    def test_skips_gracefully_when_baseline_cost_none(self):
+        self.client._history = [self._ctx(None)]  # type: ignore[arg-type]
+        assert self.client._evaluate_cost(self._ctx(0.005)) is True
+
+    def test_skips_gracefully_when_candidate_cost_none(self):
+        self._seed_history(0.010)
+        ctx = self._ctx(None)  # type: ignore[arg-type]
+        assert self.client._evaluate_cost(ctx) is True
+
+    def test_works_with_token_count_proxy(self):
+        # When no pricing data, cost is raw token count — gate still compares numerically
+        self._seed_history(1000.0)
+        assert self.client._evaluate_cost(self._ctx(750.0)) is True
+        assert self.client._evaluate_cost(self._ctx(900.0)) is False
+
+
+# ---------------------------------------------------------------------------
+# variation_prompt_cost_optimization
+# ---------------------------------------------------------------------------
+
+
+class TestVariationPromptCostOptimization:
+    def test_section_header_present(self):
+        result = variation_prompt_cost_optimization(["gpt-4o", "gpt-4o-mini"])
+        assert "## Cost Optimization:" in result
+
+    def test_mentions_available_models(self):
+        result = variation_prompt_cost_optimization(["gpt-4o", "gpt-4o-mini"])
+        assert "gpt-4o" in result
+
+    def test_mentions_quality_primary(self):
+        result = variation_prompt_cost_optimization(["gpt-4o"])
+        assert "primary objective" in result.lower()
+
+    def test_mentions_token_reduction(self):
+        result = variation_prompt_cost_optimization(["gpt-4o"])
+        assert "token" in result.lower()
+
+
+class TestBuildNewVariationPromptCost:
+    def _make_history(self) -> list:
+        return [
+            OptimizationContext(
+                scores={},
+                completion_response="response",
+                current_instructions="instructions",
+                current_parameters={},
+                current_variables={},
+                iteration=1,
+            )
+        ]
+
+    def test_cost_section_absent_by_default(self):
+        result = build_new_variation_prompt(
+            self._make_history(), None, "gpt-4o", "inst", {}, ["gpt-4o"], [{}], "inst"
+        )
+        assert "Cost Optimization" not in result
+
+    def test_cost_section_included_when_flag_set(self):
+        result = build_new_variation_prompt(
+            self._make_history(), None, "gpt-4o", "inst", {}, ["gpt-4o"], [{}], "inst",
+            optimize_for_cost=True,
+        )
+        assert "Cost Optimization" in result
+
+    def test_duration_and_cost_sections_both_present(self):
+        result = build_new_variation_prompt(
+            self._make_history(), None, "gpt-4o", "inst", {}, ["gpt-4o"], [{}], "inst",
+            optimize_for_duration=True,
+            optimize_for_cost=True,
+        )
+        assert "Duration Optimization" in result
+        assert "Cost Optimization" in result
+
+
+# ---------------------------------------------------------------------------
+# variation_prompt_feedback shows estimated_cost_usd
+# ---------------------------------------------------------------------------
+
+
+class TestVariationPromptFeedbackCost:
+    def _make_ctx(self, cost: float | None, iteration: int = 1) -> OptimizationContext:
+        return OptimizationContext(
+            scores={"judge": JudgeResult(score=0.9)},
+            completion_response="ok",
+            current_instructions="inst",
+            current_parameters={},
+            current_variables={},
+            iteration=iteration,
+            estimated_cost_usd=cost,
+        )
+
+    def test_cost_shown_when_present(self):
+        ctx = self._make_ctx(0.001234)
+        judges = {"judge": OptimizationJudge(threshold=0.8, acceptance_statement="Be good.")}
+        result = variation_prompt_feedback([ctx], judges)
+        assert "Estimated agent cost: $0.001234" in result
+
+    def test_cost_omitted_when_none(self):
+        ctx = self._make_ctx(None)
+        judges = {"judge": OptimizationJudge(threshold=0.8, acceptance_statement="Be good.")}
+        result = variation_prompt_feedback([ctx], judges)
+        assert "Estimated agent cost" not in result
+
+    def test_cost_shown_per_iteration(self):
+        ctx1 = self._make_ctx(0.001, iteration=1)
+        ctx2 = self._make_ctx(0.0007, iteration=2)
+        judges = {"judge": OptimizationJudge(threshold=0.8, acceptance_statement="Be good.")}
+        result = variation_prompt_feedback([ctx1, ctx2], judges)
+        assert "$0.001000" in result
+        assert "$0.000700" in result
+
+
+# ---------------------------------------------------------------------------
+# _evaluate_acceptance_judge cost augmentation
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+class TestEvaluateAcceptanceJudgeCostAugmentation:
+    def setup_method(self):
+        self.mock_ldai = _make_ldai_client()
+        self.client = _make_client(self.mock_ldai)
+        agent_config = _make_agent_config()
+        self.client._agent_key = "test-agent"
+        self.client._agent_config = agent_config
+        self.client._initialize_class_members_from_config(agent_config)
+        handle_judge_call = AsyncMock(return_value=OptimizationResponse(output=JUDGE_PASS_RESPONSE))
+        self.client._options = _make_options(handle_judge_call=handle_judge_call)
+        self.client._model_configs = []
+
+    def _cost_judge(self) -> OptimizationJudge:
+        return OptimizationJudge(
+            threshold=0.9,
+            acceptance_statement="Use fewer tokens and keep costs low.",
+        )
+
+    async def test_cost_context_injected_into_instructions(self):
+        usage = TokenUsage(total=100, input=60, output=40)
+        captured: list = []
+
+        async def _capture_judge_call(judge_key, judge_config, ctx, is_judge):
+            captured.append(judge_config.instructions)
+            return OptimizationResponse(output=JUDGE_PASS_RESPONSE)
+
+        self.client._options = _make_options(handle_judge_call=_capture_judge_call)
+        await self.client._evaluate_acceptance_judge(
+            judge_key="cost-judge",
+            optimization_judge=self._cost_judge(),
+            completion_response="response",
+            iteration=1,
+            reasoning_history="",
+            user_input="question",
+            agent_usage=usage,
+        )
+        assert captured, "handle_judge_call was not called"
+        instructions = captured[0]
+        assert "60 input tokens" in instructions
+        assert "40 output tokens" in instructions
+
+    async def test_cost_context_not_injected_for_non_cost_judge(self):
+        usage = TokenUsage(total=100, input=60, output=40)
+        captured: list = []
+
+        async def _capture_judge_call(judge_key, judge_config, ctx, is_judge):
+            captured.append(judge_config.instructions)
+            return OptimizationResponse(output=JUDGE_PASS_RESPONSE)
+
+        self.client._options = _make_options(handle_judge_call=_capture_judge_call)
+        non_cost_judge = OptimizationJudge(
+            threshold=0.9,
+            acceptance_statement="Be accurate and concise.",
+        )
+        await self.client._evaluate_acceptance_judge(
+            judge_key="quality-judge",
+            optimization_judge=non_cost_judge,
+            completion_response="response",
+            iteration=1,
+            reasoning_history="",
+            user_input="question",
+            agent_usage=usage,
+        )
+        assert captured
+        instructions = captured[0]
+        # The cost-specific augmentation phrase should not appear
+        assert "cost/token-usage goal" not in instructions
+
+    async def test_baseline_cost_shown_when_history_present(self):
+        usage = TokenUsage(total=100, input=60, output=40)
+        captured: list = []
+
+        async def _capture_judge_call(judge_key, judge_config, ctx, is_judge):
+            captured.append(judge_config.instructions)
+            return OptimizationResponse(output=JUDGE_PASS_RESPONSE)
+
+        baseline_ctx = OptimizationContext(
+            scores={},
+            completion_response="",
+            current_instructions="",
+            current_parameters={},
+            current_variables={},
+            iteration=1,
+            estimated_cost_usd=500.0,
+        )
+        self.client._history = [baseline_ctx]
+        self.client._options = _make_options(handle_judge_call=_capture_judge_call)
+        await self.client._evaluate_acceptance_judge(
+            judge_key="cost-judge",
+            optimization_judge=self._cost_judge(),
+            completion_response="response",
+            iteration=2,
+            reasoning_history="",
+            user_input="question",
+            agent_usage=usage,
+        )
+        assert captured
+        instructions = captured[0]
+        assert "baseline" in instructions.lower()

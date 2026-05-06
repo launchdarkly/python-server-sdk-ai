@@ -5,7 +5,10 @@ import json
 import logging
 import random
 import re
-from typing import Any, Awaitable, Dict, List, Optional, Tuple, TypeVar, Union
+from typing import TYPE_CHECKING, Any, Awaitable, Dict, List, Optional, Tuple, TypeVar, Union
+
+if TYPE_CHECKING:
+    from ldai.tracker import TokenUsage
 
 from ldai_optimizer._slug_words import _ADJECTIVES, _NOUNS
 
@@ -313,3 +316,43 @@ def judge_passed(score: float, threshold: float, is_inverted: bool) -> bool:
     the score must stay at or below the threshold: ``score <= threshold``.
     """
     return score <= threshold if is_inverted else score >= threshold
+
+
+def estimate_cost(
+    usage: Optional["TokenUsage"],
+    model_config: Optional[Dict[str, Any]],
+) -> Optional[float]:
+    """Estimate the monetary cost of a single agent call.
+
+    Uses ``costPerInputToken`` and ``costPerOutputToken`` from the model config
+    when available.  If the model config has no pricing fields, falls back to
+    returning the raw total token count as a dimensionless proxy so the cost
+    gate can still operate comparatively.  Returns ``None`` only when ``usage``
+    itself is ``None``.
+
+    ``costPerCachedInputToken`` is intentionally ignored — the estimate uses
+    input/output tokens only, which is sufficient for relative comparison
+    across optimization iterations.
+
+    :param usage: Token usage from the agent call. When ``None``, returns ``None``.
+    :param model_config: Model config dict from ``get_model_configs()``, or ``None``.
+    :return: Estimated cost in USD, or raw total token count as proxy, or ``None``.
+    """
+    if usage is None:
+        return None
+
+    input_price = model_config.get("costPerInputToken") if model_config else None
+    output_price = model_config.get("costPerOutputToken") if model_config else None
+
+    if input_price is not None or output_price is not None:
+        cost = 0.0
+        if input_price is not None and usage.input is not None:
+            cost += usage.input * input_price
+        if output_price is not None and usage.output is not None:
+            cost += usage.output * output_price
+        return cost
+
+    logger.debug(
+        "No pricing data on model config for cost estimation; falling back to total token count"
+    )
+    return float(usage.total or 0)
