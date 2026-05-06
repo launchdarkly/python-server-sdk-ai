@@ -10,8 +10,8 @@ from ldai import LDAIClient, LDAIMetricSummary, ManagedAgentGraph, ManagedGraphR
 from ldai.providers import AgentGraphRunner, ToolRegistry
 from ldai.providers.types import (
     AgentGraphRunnerResult,
-    GraphMetrics,
-    GraphMetricSummary,
+    AIGraphMetrics,
+    AIGraphMetricSummary,
     LDAIMetrics,
 )
 from ldai.tracker import TokenUsage
@@ -28,19 +28,19 @@ class StubAgentGraphRunner(AgentGraphRunner):
         return AgentGraphRunnerResult(
             content=self._content,
             raw={"input": input},
-            metrics=GraphMetrics(success=True),
+            metrics=AIGraphMetrics(success=True),
         )
 
 
 class StubRunnerWithMetrics(AgentGraphRunner):
-    """Runner that returns AgentGraphRunnerResult with full GraphMetrics."""
+    """Runner that returns AgentGraphRunnerResult with full AIGraphMetrics."""
     def __init__(self, content: str = "new shape output"):
         self._content = content
 
     async def run(self, input) -> AgentGraphRunnerResult:
         return AgentGraphRunnerResult(
             content=self._content,
-            metrics=GraphMetrics(
+            metrics=AIGraphMetrics(
                 success=True,
                 path=["root", "specialist"],
                 duration_ms=42,
@@ -67,7 +67,7 @@ class StubRunnerWithMetrics(AgentGraphRunner):
 def _make_graph_tracker_mock(runner_result):
     """Create a mock graph tracker whose track_graph_metrics_of_async returns runner_result."""
     m = runner_result.metrics
-    summary = GraphMetricSummary(
+    summary = AIGraphMetricSummary(
         success=m.success,
         path=list(m.path),
         duration_ms=m.duration_ms,
@@ -104,7 +104,7 @@ def test_managed_agent_graph_get_runner():
 
 @pytest.mark.asyncio
 async def test_managed_agent_graph_run_surfaces_graph_metrics():
-    """GraphMetrics fields are reflected in GraphMetricSummary."""
+    """AIGraphMetrics fields are reflected in AIGraphMetricSummary."""
     runner = StubRunnerWithMetrics("final answer")
     runner_result = await runner.run("test input")
 
@@ -214,7 +214,7 @@ async def test_managed_agent_graph_failure_calls_track_graph_metrics():
             return AgentGraphRunnerResult(
                 content='',
                 raw=None,
-                metrics=GraphMetrics(success=False, duration_ms=5),
+                metrics=AIGraphMetrics(success=False, duration_ms=5),
             )
 
     failing_runner = FailingRunner()

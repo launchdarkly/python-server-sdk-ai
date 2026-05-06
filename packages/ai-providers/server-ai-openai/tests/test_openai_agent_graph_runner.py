@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, AsyncMock, patch
 from ldai.agent_graph import AgentGraphDefinition
 from ldai.models import AIAgentGraphConfig, AIAgentConfig, Edge, ModelConfig, ProviderConfig
 from ldai.providers import ToolRegistry
-from ldai.providers.types import AgentGraphRunnerResult, GraphMetrics
+from ldai.providers.types import AgentGraphRunnerResult, AIGraphMetrics
 from ldai_openai.openai_agent_graph_runner import OpenAIAgentGraphRunner
 from ldai_openai.openai_runner_factory import OpenAIRunnerFactory
 from ldai.evaluator import Evaluator
@@ -84,7 +84,7 @@ async def test_openai_agent_graph_runner_run_raises_when_agents_not_installed():
 
 @pytest.mark.asyncio
 async def test_openai_agent_graph_runner_run_failure_returns_metrics():
-    """On import failure, returned GraphMetrics has success=False (no tracker needed)."""
+    """On import failure, returned AIGraphMetrics has success=False (no tracker needed)."""
     graph = _make_graph()
     runner = OpenAIAgentGraphRunner(graph, {})
 
@@ -130,7 +130,7 @@ async def test_openai_agent_graph_runner_run_failure_marks_node_not_success():
 
 @pytest.mark.asyncio
 async def test_openai_agent_graph_runner_run_success():
-    """Successful run returns AgentGraphRunnerResult with populated GraphMetrics."""
+    """Successful run returns AgentGraphRunnerResult with populated AIGraphMetrics."""
     graph = _make_graph()
 
     mock_result = MagicMock()
@@ -169,7 +169,7 @@ async def test_openai_agent_graph_runner_run_success():
 
     assert isinstance(result, AgentGraphRunnerResult)
     assert result.content == "agent answer"
-    assert isinstance(result.metrics, GraphMetrics)
+    assert isinstance(result.metrics, AIGraphMetrics)
     assert result.metrics.success is True
     assert result.metrics.duration_ms is not None
     assert 'root-agent' in result.metrics.path

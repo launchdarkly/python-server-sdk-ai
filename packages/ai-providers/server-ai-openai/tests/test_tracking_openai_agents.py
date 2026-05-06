@@ -6,7 +6,7 @@ and a crafted RunResult to verify that the correct LD events are emitted
 with the correct payloads — without making real API calls.
 
 Tracking events are now emitted by ManagedAgentGraph._flush_graph_tracking()
-from the GraphMetrics returned by the runner, rather than directly inside the
+from the AIGraphMetrics returned by the runner, rather than directly inside the
 runner. These tests exercise the full pipeline through ManagedAgentGraph.run().
 """
 

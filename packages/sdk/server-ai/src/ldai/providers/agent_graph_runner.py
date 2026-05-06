@@ -23,6 +23,6 @@ class AgentGraphRunner(Protocol):
         Run the agent graph with the given input.
 
         :param input: The input to the agent graph (string prompt or structured input)
-        :return: AgentGraphRunnerResult containing the content, raw response, and GraphMetrics
+        :return: AgentGraphRunnerResult containing the content, raw response, and AIGraphMetrics
         """
         ...
