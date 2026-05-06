@@ -10,7 +10,7 @@ All notable changes to the LaunchDarkly Python AI package will be documented in 
 * StructuredResponse replaced by RunnerResult with new "parsed" property
 * AgentResult replaced by RunnerResult and Managed Result
 * Removed ModelRunner and AgentRunner protocols
-* Removed invoke_method, invoke_structured_model from AIProvider base class.
+* Removed invoke_model, invoke_structured_model from AIProvider base class.
 * ModelResponse was replaced by RunnerResult
 * Add ManagedResult, RunnerResult, and Runner protocol; rename invoke() to run() ([#148](https://github.com/launchdarkly/python-server-sdk-ai/issues/148))
 * Swap track_metrics_of parameter order to match spec ([#144](https://github.com/launchdarkly/python-server-sdk-ai/issues/144))
@@ -36,7 +36,7 @@ All notable changes to the LaunchDarkly Python AI package will be documented in 
 * ModelResponse was replaced by RunnerResult ([fbb0b4b](https://github.com/launchdarkly/python-server-sdk-ai/commit/fbb0b4b45090144e3cb14d3966ed46a2884518fb))
 * parse model.parameters.tools as list ([#160](https://github.com/launchdarkly/python-server-sdk-ai/issues/160)) ([fb53e99](https://github.com/launchdarkly/python-server-sdk-ai/commit/fb53e99ea66634ee79867494535a28d3eac37646))
 * reference correct PyPI package names in provider load error messages ([#164](https://github.com/launchdarkly/python-server-sdk-ai/issues/164)) ([48761c9](https://github.com/launchdarkly/python-server-sdk-ai/commit/48761c998d58aa8ca2f8bbbe8a886e395d3a431a))
-* Removed invoke_method, invoke_structured_model from AIProvider base class. ([fbb0b4b](https://github.com/launchdarkly/python-server-sdk-ai/commit/fbb0b4b45090144e3cb14d3966ed46a2884518fb))
+* Removed invoke_model, invoke_structured_model from AIProvider base class. ([fbb0b4b](https://github.com/launchdarkly/python-server-sdk-ai/commit/fbb0b4b45090144e3cb14d3966ed46a2884518fb))
 * Removed ModelRunner and AgentRunner protocols ([fbb0b4b](https://github.com/launchdarkly/python-server-sdk-ai/commit/fbb0b4b45090144e3cb14d3966ed46a2884518fb))
 * Replace done_callback with coroutine chain for judge tracking ([#147](https://github.com/launchdarkly/python-server-sdk-ai/issues/147)) ([1e1f36b](https://github.com/launchdarkly/python-server-sdk-ai/commit/1e1f36b08ba28dafa4eb7b1dc8e192ef6a0891ad))
 * StructuredResponse replaced by RunnerResult with new "parsed" property ([fbb0b4b](https://github.com/launchdarkly/python-server-sdk-ai/commit/fbb0b4b45090144e3cb14d3966ed46a2884518fb))

@@ -5,6 +5,11 @@ All notable changes to the LaunchDarkly Python AI LangChain provider package wil
 ## [0.6.0](https://github.com/launchdarkly/python-server-sdk-ai/compare/launchdarkly-server-sdk-ai-langchain-0.5.0...launchdarkly-server-sdk-ai-langchain-0.6.0) (2026-05-05)
 
 
+### ⚠ BREAKING CHANGES
+
+* `LangChainModelRunner.invoke_model()` and `invoke_structured_model()` have been removed. Use the unified `run(input, output_type=...)` method instead, which returns `RunnerResult` in place of `ModelResponse` / `StructuredResponse`.
+
+
 ### Features
 
 * Add judge evaluation support to agent graphs ([#142](https://github.com/launchdarkly/python-server-sdk-ai/issues/142)) ([3d5a6a9](https://github.com/launchdarkly/python-server-sdk-ai/commit/3d5a6a91a87c7475a83a7e440cd4b71337cfd56f))

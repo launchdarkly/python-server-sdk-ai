@@ -5,6 +5,11 @@ All notable changes to the LaunchDarkly Python AI OpenAI provider package will b
 ## [0.5.0](https://github.com/launchdarkly/python-server-sdk-ai/compare/launchdarkly-server-sdk-ai-openai-0.4.0...launchdarkly-server-sdk-ai-openai-0.5.0) (2026-05-05)
 
 
+### ⚠ BREAKING CHANGES
+
+* `OpenAIModelRunner` no longer exposes `invoke_model()` or `invoke_structured_model()`. It now implements the unified `Runner` protocol — use `run(input: str)` instead. The return type is `RunnerResult` (replacing `ModelResponse` / `StructuredResponse`). ([#149](https://github.com/launchdarkly/python-server-sdk-ai/issues/149))
+
+
 ### Features
 
 * Add judge evaluation support to agent graphs ([#142](https://github.com/launchdarkly/python-server-sdk-ai/issues/142)) ([3d5a6a9](https://github.com/launchdarkly/python-server-sdk-ai/commit/3d5a6a91a87c7475a83a7e440cd4b71337cfd56f))
