@@ -156,4 +156,4 @@ class OpenAIAgentRunner(Runner):
             "frequency_penalty", "presence_penalty",
         }
         kwargs = {k: v for k, v in self._parameters.items() if k in known}
-        return ModelSettings(**kwargs) if kwargs else None
+        return ModelSettings(**kwargs)
