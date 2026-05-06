@@ -204,20 +204,3 @@ class JudgeResult:
         if self.error_message is not None:
             result['errorMessage'] = self.error_message
         return result
-
-
-@dataclass
-class AgentGraphResult:
-    """Contains the result of an agent graph run."""
-
-    output: str
-    """The agent graph's final output content."""
-
-    raw: Any
-    """The provider-native response object from the graph run."""
-
-    metrics: LDAIMetrics
-    """Metrics recorded during the graph run."""
-
-    evaluations: Optional[List[JudgeResult]] = None
-    """Optional list of judge evaluation results produced for the graph run."""
