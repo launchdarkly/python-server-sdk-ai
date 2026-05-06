@@ -1,7 +1,6 @@
 import pytest
 
 from ldai.providers import (
-    AgentGraphResult,
     AgentGraphRunner,
     AgentGraphRunnerResult,
     ToolRegistry,
@@ -78,6 +77,5 @@ def test_tool_registry_is_dict_of_callables():
 def test_top_level_exports():
     import ldai
     assert hasattr(ldai, 'AgentGraphRunner')
-    assert hasattr(ldai, 'AgentGraphResult')
     assert hasattr(ldai, 'RunnerResult')
     assert hasattr(ldai, 'ToolRegistry')

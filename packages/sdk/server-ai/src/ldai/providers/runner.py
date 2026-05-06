@@ -16,13 +16,13 @@ class Runner(Protocol):
 
     async def run(
         self,
-        input: Any,
+        input: str,
         output_type: Optional[Dict[str, Any]] = None,
     ) -> RunnerResult:
         """
-        Execute the runner with the given input.
+        Execute the runner with the given input string.
 
-        :param input: The input to the runner.
+        :param input: The string input to the runner.
         :param output_type: Optional JSON schema for structured output.
         :return: RunnerResult containing content, metrics, raw, and parsed fields.
         """

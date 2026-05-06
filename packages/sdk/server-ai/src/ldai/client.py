@@ -9,7 +9,7 @@ from ldclient.client import LDClient
 from ldai import log
 from ldai.agent_graph import AgentGraphDefinition
 from ldai.evaluator import Evaluator
-from ldai.judge import Judge
+from ldai.judge import Judge, _strip_legacy_judge_messages
 from ldai.managed_agent import ManagedAgent
 from ldai.managed_agent_graph import ManagedAgentGraph
 from ldai.managed_model import ManagedModel
@@ -53,30 +53,24 @@ _DISABLED_AGENT_DEFAULT = AIAgentConfigDefault.disabled()
 _DISABLED_JUDGE_DEFAULT = AIJudgeConfigDefault.disabled()
 
 
-def _parse_tools(tools_data: Optional[Dict[str, Any]]) -> Optional[Dict[str, LDTool]]:
-    """Parse the root-level tools map from a flag variation dict."""
-    if not isinstance(tools_data, dict):
-        if tools_data is not None:
-            log.warning('Skipping tools: expected a dict, got %s', type(tools_data).__name__)
-        return None
-    result: Dict[str, LDTool] = {}
-    for tool_name, tool_dict in tools_data.items():
-        if not isinstance(tool_dict, dict):
-            log.warning('Skipping tool "%s": expected a dict, got %s', tool_name, type(tool_dict).__name__)
-            continue
-        result[tool_name] = LDTool(
-            name=tool_dict.get('name', tool_name),
-            description=tool_dict.get('description'),
-            type=tool_dict.get('type'),
-            parameters=tool_dict.get('parameters'),
-            custom_parameters=tool_dict.get('customParameters'),
-        )
-    return result or None
-
-
 def _resolve_tools(variation: Dict[str, Any]) -> Optional[Dict[str, LDTool]]:
     if 'tools' in variation:
-        return _parse_tools(variation['tools'])
+        tools_data = variation['tools']
+        if not isinstance(tools_data, dict):
+            return None
+        tools: Dict[str, LDTool] = {}
+        for tool_name, tool_dict in tools_data.items():
+            if isinstance(tool_dict, dict):
+                tools[tool_name] = LDTool(
+                    name=str(tool_dict.get('name', tool_name)),
+                    description=tool_dict.get('description'),
+                    type=tool_dict.get('type'),
+                    parameters=tool_dict.get('parameters'),
+                    custom_parameters=tool_dict.get('customParameters'),
+                )
+            else:
+                log.warning('Skipping tool "%s": expected a dict, got %s', tool_name, type(tool_dict).__name__)
+        return tools or None
 
     model = variation.get('model')
     if not isinstance(model, dict):
@@ -84,13 +78,27 @@ def _resolve_tools(variation: Dict[str, Any]) -> Optional[Dict[str, LDTool]]:
     parameters = model.get('parameters')
     if not isinstance(parameters, dict):
         return None
-    tools_data = parameters.get('tools')
-    if not isinstance(tools_data, dict):
-        if tools_data is not None:
-            log.warning('Skipping model.parameters.tools: expected a dict, got %s', type(tools_data).__name__)
+    tools_list = parameters.get('tools')
+    if not isinstance(tools_list, list):
         return None
 
-    return _parse_tools(tools_data)
+    tools = {}
+    for item in tools_list:
+        if not isinstance(item, dict):
+            log.warning('Skipping tool entry: expected a dict, got %s', type(item).__name__)
+            continue
+        if not item.get('name'):
+            log.warning('Skipping tool entry: missing name')
+            continue
+        tool_name = str(item['name'])
+        tools[tool_name] = LDTool(
+            name=tool_name,
+            description=item.get('description'),
+            type=item.get('type'),
+            parameters=item.get('parameters'),
+            custom_parameters=item.get('customParameters'),
+        )
+    return tools or None
 
 
 class LDAIClient:
@@ -228,6 +236,10 @@ class LDAIClient:
             return None
 
         evaluation_metric_key = _extract_evaluation_metric_key(variation)
+
+        # strip legacy judge template messages before creating config
+        if messages:
+            messages = _strip_legacy_judge_messages(messages)
 
         config = AIJudgeConfig(
             key=key,

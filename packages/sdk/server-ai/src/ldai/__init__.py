@@ -1,4 +1,4 @@
-__version__ = "0.18.0"  # x-release-please-version
+__version__ = "0.19.0"  # x-release-please-version
 
 from ldclient import log
 
@@ -32,7 +32,6 @@ from ldai.models import (  # Deprecated aliases for backward compatibility
     ProviderConfig,
 )
 from ldai.providers import (
-    AgentGraphResult,
     AgentGraphRunner,
     AgentGraphRunnerResult,
     GraphMetrics,
@@ -50,7 +49,6 @@ __all__ = [
     'LDAIClient',
     'Evaluator',
     'AgentGraphRunner',
-    'AgentGraphResult',
     'AgentGraphRunnerResult',
     'GraphMetrics',
     'GraphMetricSummary',

@@ -33,7 +33,7 @@ class LangChainAgentRunner(Runner):
 
     async def run(
         self,
-        input: Any,
+        input: str,
         output_type: Optional[Dict[str, Any]] = None,
     ) -> RunnerResult:
         """
@@ -42,7 +42,7 @@ class LangChainAgentRunner(Runner):
         Delegates to the compiled LangChain agent, which handles
         the tool-calling loop internally.
 
-        :param input: The user prompt or input to the agent
+        :param input: The user prompt string to the agent
         :param output_type: Reserved for future structured output support;
             currently ignored.
         :return: :class:`RunnerResult` with ``content``, ``raw`` response, and

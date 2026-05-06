@@ -1,10 +1,9 @@
 """Tests for LangChain Provider."""
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock
 
+import pytest
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
-
 from ldai import LDMessage
 from ldai.evaluator import Evaluator
 
@@ -234,8 +233,7 @@ class TestRunCompletion:
         mock_llm.ainvoke = AsyncMock(return_value=mock_response)
         provider = LangChainModelRunner(mock_llm)
 
-        messages = [LDMessage(role='user', content='Hello')]
-        result = await provider.run(messages)
+        result = await provider.run('Hello')
 
         assert result.metrics.success is True
         assert result.content == 'Test response'
@@ -247,8 +245,7 @@ class TestRunCompletion:
         mock_llm.ainvoke = AsyncMock(return_value=mock_response)
         provider = LangChainModelRunner(mock_llm)
 
-        messages = [LDMessage(role='user', content='Hello')]
-        result = await provider.run(messages)
+        result = await provider.run('Hello')
 
         assert result.metrics.success is False
         assert result.content == ''
@@ -260,11 +257,63 @@ class TestRunCompletion:
         mock_llm.ainvoke = AsyncMock(side_effect=error)
         provider = LangChainModelRunner(mock_llm)
 
-        messages = [LDMessage(role='user', content='Hello')]
-        result = await provider.run(messages)
+        result = await provider.run('Hello')
 
         assert result.metrics.success is False
         assert result.content == ''
+
+    @pytest.mark.asyncio
+    async def test_accumulates_history_across_successful_calls(self, mock_llm):
+        """Should include prior exchange in messages on subsequent calls."""
+        mock_llm.ainvoke = AsyncMock(side_effect=[
+            AIMessage(content='First response'),
+            AIMessage(content='Second response'),
+        ])
+        provider = LangChainModelRunner(mock_llm)
+
+        await provider.run('First question')
+        await provider.run('Second question')
+
+        second_call_messages = mock_llm.ainvoke.call_args_list[1][0][0]
+        roles = [type(m).__name__ for m in second_call_messages]
+        assert roles == ['HumanMessage', 'AIMessage', 'HumanMessage']
+        assert second_call_messages[0].content == 'First question'
+        assert second_call_messages[1].content == 'First response'
+        assert second_call_messages[2].content == 'Second question'
+
+    @pytest.mark.asyncio
+    async def test_does_not_accumulate_history_on_failed_call(self, mock_llm):
+        """Should not add to history when the call fails."""
+        mock_llm.ainvoke = AsyncMock(side_effect=Exception('Model error'))
+        provider = LangChainModelRunner(mock_llm)
+
+        await provider.run('Hello')
+
+        mock_llm.ainvoke = AsyncMock(return_value=AIMessage(content='Recovery'))
+        await provider.run('Try again')
+
+        second_call_messages = mock_llm.ainvoke.call_args_list[0][0][0]
+        assert len(second_call_messages) == 1
+        assert second_call_messages[0].content == 'Try again'
+
+    @pytest.mark.asyncio
+    async def test_prepends_config_messages_before_history(self, mock_llm):
+        """Should send config messages before history on every call."""
+        mock_llm.ainvoke = AsyncMock(side_effect=[
+            AIMessage(content='Answer 1'),
+            AIMessage(content='Answer 2'),
+        ])
+        config_messages = [LDMessage(role='system', content='You are helpful.')]
+        provider = LangChainModelRunner(mock_llm, config_messages=config_messages)
+
+        await provider.run('Q1')
+        await provider.run('Q2')
+
+        second_call_messages = mock_llm.ainvoke.call_args_list[1][0][0]
+        assert second_call_messages[0].content == 'You are helpful.'
+        assert second_call_messages[1].content == 'Q1'
+        assert second_call_messages[2].content == 'Answer 1'
+        assert second_call_messages[3].content == 'Q2'
 
 
 class TestRunStructured:
@@ -285,9 +334,8 @@ class TestRunStructured:
         mock_llm.with_structured_output = MagicMock(return_value=mock_structured_llm)
         provider = LangChainModelRunner(mock_llm)
 
-        messages = [LDMessage(role='user', content='Hello')]
         response_structure = {'type': 'object', 'properties': {}}
-        result = await provider.run(messages, output_type=response_structure)
+        result = await provider.run('Hello', output_type=response_structure)
 
         assert result.metrics.success is True
         assert result.parsed == parsed_data
@@ -301,9 +349,8 @@ class TestRunStructured:
         mock_llm.with_structured_output = MagicMock(return_value=mock_structured_llm)
         provider = LangChainModelRunner(mock_llm)
 
-        messages = [LDMessage(role='user', content='Hello')]
         response_structure = {'type': 'object', 'properties': {}}
-        result = await provider.run(messages, output_type=response_structure)
+        result = await provider.run('Hello', output_type=response_structure)
 
         assert result.metrics.success is False
         assert result.parsed is None
@@ -404,6 +451,7 @@ class TestCreateAgent:
     def test_creates_agent_runner_with_instructions_and_tool_definitions(self):
         """Should create LangChainAgentRunner wrapping a compiled graph."""
         from unittest.mock import patch
+
         from ldai_langchain import LangChainAgentRunner
 
         mock_ai_config = MagicMock()
@@ -436,6 +484,7 @@ class TestCreateAgent:
     def test_creates_agent_runner_with_no_tools(self):
         """Should create LangChainAgentRunner with no tool definitions."""
         from unittest.mock import patch
+
         from ldai_langchain import LangChainAgentRunner
 
         mock_ai_config = MagicMock()
@@ -522,6 +571,7 @@ class TestBuildTools:
 
     def test_registers_sync_callable_as_structured_tool_func(self):
         from ldai.models import AIAgentConfig, ModelConfig, ProviderConfig
+
         from ldai_langchain.langchain_helper import build_structured_tools
 
         def sync_tool(x: str = '') -> str:
@@ -546,6 +596,7 @@ class TestBuildTools:
 
     def test_registers_async_callable_as_structured_tool_coroutine(self):
         from ldai.models import AIAgentConfig, ModelConfig, ProviderConfig
+
         from ldai_langchain.langchain_helper import build_structured_tools
 
         async def async_tool(x: str = '') -> str:
