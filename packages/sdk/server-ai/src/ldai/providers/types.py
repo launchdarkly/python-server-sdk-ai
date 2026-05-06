@@ -204,4 +204,3 @@ class JudgeResult:
         if self.error_message is not None:
             result['errorMessage'] = self.error_message
         return result
-

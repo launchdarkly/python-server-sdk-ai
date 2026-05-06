@@ -78,25 +78,6 @@ class ManagedModel:
 
         return asyncio.create_task(_run_and_track(evaluator_task))
 
-    def get_messages(self, include_config_messages: bool = False) -> List[LDMessage]:
-        """
-        Get all messages in the conversation history.
-
-        :param include_config_messages: When True, prepends config messages.
-        :return: List of conversation messages.
-        """
-        if include_config_messages:
-            return (self._ai_config.messages or []) + self._messages
-        return list(self._messages)
-
-    def append_messages(self, messages: List[LDMessage]) -> None:
-        """
-        Append messages to the conversation history without invoking the model.
-
-        :param messages: Messages to append.
-        """
-        self._messages.extend(messages)
-
     def get_model_runner(self) -> Runner:
         """
         Return the underlying runner for advanced use.
