@@ -18,7 +18,7 @@ _DURATION_KEYWORDS = re.compile(
 
 _COST_KEYWORDS = re.compile(
     r"\b(cheap|cheaper|cheapest|costs?|costly|expensive|budget|affordable|"
-    r"tokens?|spend|spending|economical|cost-effective|frugal|"
+    r"spend|spending|economical|cost-effective|frugal|"
     r"price|pricing|bill|billing)\b",
     re.IGNORECASE,
 )

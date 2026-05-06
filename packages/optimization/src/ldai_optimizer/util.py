@@ -322,21 +322,21 @@ def estimate_cost(
     usage: Optional["TokenUsage"],
     model_config: Optional[Dict[str, Any]],
 ) -> Optional[float]:
-    """Estimate the monetary cost of a single agent call.
+    """Estimate the monetary cost of a single agent call in USD.
 
-    Uses ``costPerInputToken`` and ``costPerOutputToken`` from the model config
-    when available.  If the model config has no pricing fields, falls back to
-    returning the raw total token count as a dimensionless proxy so the cost
-    gate can still operate comparatively.  Returns ``None`` only when ``usage``
-    itself is ``None``.
+    Uses ``costPerInputToken`` and ``costPerOutputToken`` from the model config.
+    Returns ``None`` when either ``usage`` is ``None`` or no pricing fields are
+    present on the model config — ensuring the return value is always in USD or
+    absent, never a raw token count. This prevents unit-mismatch bugs when
+    comparing costs across iterations where the model (and its pricing
+    availability) may differ.
 
     ``costPerCachedInputToken`` is intentionally ignored — the estimate uses
-    input/output tokens only, which is sufficient for relative comparison
-    across optimization iterations.
+    input/output tokens only.
 
     :param usage: Token usage from the agent call. When ``None``, returns ``None``.
     :param model_config: Model config dict from ``get_model_configs()``, or ``None``.
-    :return: Estimated cost in USD, or raw total token count as proxy, or ``None``.
+    :return: Estimated cost in USD, or ``None`` if usage or pricing data is absent.
     """
     if usage is None:
         return None
@@ -344,15 +344,12 @@ def estimate_cost(
     input_price = model_config.get("costPerInputToken") if model_config else None
     output_price = model_config.get("costPerOutputToken") if model_config else None
 
-    if input_price is not None or output_price is not None:
-        cost = 0.0
-        if input_price is not None and usage.input is not None:
-            cost += usage.input * input_price
-        if output_price is not None and usage.output is not None:
-            cost += usage.output * output_price
-        return cost
+    if input_price is None and output_price is None:
+        return None
 
-    logger.debug(
-        "No pricing data on model config for cost estimation; falling back to total token count"
-    )
-    return float(usage.total or 0)
+    cost = 0.0
+    if input_price is not None and usage.input is not None:
+        cost += usage.input * input_price
+    if output_price is not None and usage.output is not None:
+        cost += usage.output * output_price
+    return cost

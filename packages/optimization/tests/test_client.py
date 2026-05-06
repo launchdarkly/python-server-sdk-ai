@@ -535,7 +535,7 @@ class TestEvaluateAcceptanceJudge:
         )
         _, config, _, _ = self.handle_judge_call.call_args.args
         assert "1500ms" in config.instructions
-        assert "mention the duration" in config.instructions
+        assert "state the duration" in config.instructions
 
     async def test_duration_context_includes_baseline_comparison_when_history_present(self):
         """When history[0] has a duration, the judge instructions include a baseline comparison."""
@@ -1842,11 +1842,11 @@ class TestRestoreVariablePlaceholders:
 
         with patch("ldai_optimizer.client.logger") as mock_logger:
             await client._generate_new_variation(iteration=1, variables={})
-            warning_calls = [
-                call for call in mock_logger.warning.call_args_list
+            debug_calls = [
+                call for call in mock_logger.debug.call_args_list
                 if "user-123" in str(call) or "business" in str(call)
             ]
-            assert len(warning_calls) >= 1
+            assert len(debug_calls) >= 1
 
         assert "{{user_id}}" in client._current_instructions
         assert "user-123" not in client._current_instructions
@@ -4727,15 +4727,13 @@ class TestEstimateCost:
         cost = estimate_cost(usage, model_config)
         assert cost == pytest.approx(40 * 0.002)
 
-    def test_falls_back_to_total_token_count_when_no_pricing(self):
+    def test_returns_none_when_no_pricing_in_config(self):
         usage = self._usage(total=100)
-        cost = estimate_cost(usage, {})
-        assert cost == 100.0
+        assert estimate_cost(usage, {}) is None
 
-    def test_falls_back_to_total_token_count_when_model_config_none(self):
+    def test_returns_none_when_model_config_none(self):
         usage = self._usage(total=250)
-        cost = estimate_cost(usage, None)
-        assert cost == 250.0
+        assert estimate_cost(usage, None) is None
 
     def test_ignores_cached_input_token_price(self):
         usage = self._usage(total=100, inp=60, out=40)
@@ -4783,8 +4781,8 @@ class TestAcceptanceCriteriaImpliesCostOptimization:
     def test_detects_budget(self):
         assert _acceptance_criteria_implies_cost_optimization(self._judge("Stay within budget."))
 
-    def test_detects_tokens(self):
-        assert _acceptance_criteria_implies_cost_optimization(self._judge("Use fewer tokens."))
+    def test_does_not_detect_token_to_avoid_false_positives(self):
+        assert not _acceptance_criteria_implies_cost_optimization(self._judge("Generate a valid authentication token."))
 
     def test_detects_billing(self):
         assert _acceptance_criteria_implies_cost_optimization(self._judge("Minimize billing."))
@@ -4803,7 +4801,7 @@ class TestAcceptanceCriteriaImpliesCostOptimization:
     def test_multiple_judges_one_matches(self):
         judges = {
             "j1": OptimizationJudge(threshold=0.9, acceptance_statement="Be accurate."),
-            "j2": OptimizationJudge(threshold=0.9, acceptance_statement="Use fewer tokens."),
+            "j2": OptimizationJudge(threshold=0.9, acceptance_statement="Keep costs low."),
         }
         assert _acceptance_criteria_implies_cost_optimization(judges)
 
@@ -4861,11 +4859,11 @@ class TestEvaluateCost:
         ctx = self._ctx(None)  # type: ignore[arg-type]
         assert self.client._evaluate_cost(ctx) is True
 
-    def test_works_with_token_count_proxy(self):
-        # When no pricing data, cost is raw token count — gate still compares numerically
-        self._seed_history(1000.0)
-        assert self.client._evaluate_cost(self._ctx(750.0)) is True
-        assert self.client._evaluate_cost(self._ctx(900.0)) is False
+    def test_skips_gracefully_when_units_differ_across_model_switch(self):
+        # If baseline was captured with pricing (USD) but candidate has no pricing,
+        # candidate cost is None and the gate skips rather than comparing incompatible units.
+        self._seed_history(0.010)
+        assert self.client._evaluate_cost(self._ctx(None)) is True
 
 
 # ---------------------------------------------------------------------------
@@ -4986,10 +4984,18 @@ class TestEvaluateAcceptanceJudgeCostAugmentation:
     def _cost_judge(self) -> OptimizationJudge:
         return OptimizationJudge(
             threshold=0.9,
-            acceptance_statement="Use fewer tokens and keep costs low.",
+            acceptance_statement="Keep costs low and stay within budget.",
         )
 
+    def _set_pricing(self):
+        """Give the client a model config with pricing so estimate_cost returns USD."""
+        self.client._current_model = "gpt-4o"
+        self.client._model_configs = [
+            {"id": "gpt-4o", "costPerInputToken": 0.000005, "costPerOutputToken": 0.000015}
+        ]
+
     async def test_cost_context_injected_into_instructions(self):
+        self._set_pricing()
         usage = TokenUsage(total=100, input=60, output=40)
         captured: list = []
 
@@ -5040,6 +5046,7 @@ class TestEvaluateAcceptanceJudgeCostAugmentation:
         assert "cost/token-usage goal" not in instructions
 
     async def test_baseline_cost_shown_when_history_present(self):
+        self._set_pricing()
         usage = TokenUsage(total=100, input=60, output=40)
         captured: list = []
 

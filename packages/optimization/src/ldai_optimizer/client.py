@@ -791,13 +791,6 @@ class OptimizationClient:
                 else None
             )
             if current_cost is not None:
-                has_pricing = (
-                    _find_model_config(self._current_model or "", self._model_configs) or {}
-                ).get("costPerInputToken") is not None
-                if has_pricing:
-                    cost_str = f"${current_cost:.6f}"
-                else:
-                    cost_str = f"{int(current_cost)} tokens"
                 instructions += (
                     f"\n\nThe acceptance criteria for this judge includes a cost/token-usage goal. "
                 )
@@ -805,20 +798,14 @@ class OptimizationClient:
                     instructions += (
                         f"The agent's response used {agent_usage.input} input tokens "
                         f"and {agent_usage.output} output tokens "
-                        f"(estimated cost: {cost_str}). "
+                        f"(estimated cost: ${current_cost:.6f}). "
                     )
                 if baseline_cost is not None:
                     delta = current_cost - baseline_cost
                     direction = "less" if delta < 0 else "more"
-                    if has_pricing:
-                        baseline_str = f"${baseline_cost:.6f}"
-                        delta_str = f"${abs(delta):.6f}"
-                    else:
-                        baseline_str = f"{int(baseline_cost)} tokens"
-                        delta_str = f"{int(abs(delta))} tokens"
                     instructions += (
-                        f"The baseline cost (first iteration) was {baseline_str}. "
-                        f"This response cost {delta_str} {direction} than the baseline. "
+                        f"The baseline cost (first iteration) was ${baseline_cost:.6f}. "
+                        f"This response cost ${abs(delta):.6f} {direction} than the baseline. "
                     )
                 instructions += (
                     "In your rationale, state the token usage and cost, and any change from baseline. "
