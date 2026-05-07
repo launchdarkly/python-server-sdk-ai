@@ -215,9 +215,27 @@ class LDAIClient:
         default: AIJudgeConfigDefault,
         variables: Optional[Dict[str, Any]] = None,
     ) -> AIJudgeConfig:
+        if variables is not None:
+            if variables.get('message_history') is not None:
+                log.warning(
+                    "The variable 'message_history' is reserved by the judge and will be ignored."
+                )
+            if variables.get('response_to_evaluate') is not None:
+                log.warning(
+                    "The variable 'response_to_evaluate' is reserved by the judge and will be ignored."
+                )
+
+        # Re-inject the reserved variables as their literal placeholders so they
+        # survive Mustache interpolation in ``__evaluate``.  Without this, legacy
+        # templates like ``{{message_history}}`` get rendered to empty strings and
+        # ``_strip_legacy_judge_messages`` below cannot detect them.
+        extended_variables = dict(variables) if variables else {}
+        extended_variables['message_history'] = '{{message_history}}'
+        extended_variables['response_to_evaluate'] = '{{response_to_evaluate}}'
+
         (model, provider, messages, instructions,
          tracker_factory, enabled, judge_configuration, variation) = self.__evaluate(
-            key, context, default.to_dict(), variables
+            key, context, default.to_dict(), extended_variables
         )
 
         def _extract_evaluation_metric_key(variation: Dict[str, Any]) -> Optional[str]:
@@ -336,12 +354,8 @@ class LDAIClient:
         when materializing judges referenced by an AI config's judge configuration.
         """
         try:
-            extended_variables = dict(variables) if variables else {}
-            extended_variables['message_history'] = '{{message_history}}'
-            extended_variables['response_to_evaluate'] = '{{response_to_evaluate}}'
-
             judge_config = self._judge_config(
-                key, context, default or _DISABLED_JUDGE_DEFAULT, extended_variables
+                key, context, default or _DISABLED_JUDGE_DEFAULT, variables
             )
 
             if not judge_config.enabled:

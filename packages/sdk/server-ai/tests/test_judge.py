@@ -1,11 +1,12 @@
 """Tests for Judge functionality."""
 
-from unittest.mock import AsyncMock, MagicMock, call
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 from ldclient import Config, Context, LDClient
 from ldclient.integrations.test_data import TestData
 
+from ldai import LDAIClient
 from ldai.judge import Judge, _strip_legacy_judge_messages
 from ldai.judge.evaluation_schema_builder import EvaluationSchemaBuilder
 from ldai.models import (
@@ -541,6 +542,137 @@ class TestJudgeEvaluateMessages:
         assert result is not None
         assert result.success is True
         assert tracker.track_metrics_of_async.called
+
+
+class TestJudgeConfigStripsLegacyMessages:
+    """Tests for ``LDAIClient.judge_config()`` legacy-message stripping.
+
+    Both ``LDAIClient.judge_config()`` (the direct public API) and
+    ``LDAIClient.create_judge()`` (the wrapper API) reach the same internal
+    ``_judge_config()`` method.  ``_judge_config()`` is responsible for
+    injecting ``message_history``/``response_to_evaluate`` markers so they
+    survive Mustache rendering, then stripping any legacy template messages
+    before returning the config.
+    """
+
+    @pytest.fixture
+    def context(self) -> Context:
+        return Context.create('user-key')
+
+    def _make_client(self, td: TestData) -> LDAIClient:
+        config = Config('sdk-key', update_processor_class=td, send_events=False)
+        return LDAIClient(LDClient(config=config))
+
+    def test_judge_config_strips_legacy_messages_from_returned_config(self, context):
+        """Calling ``judge_config()`` directly (no variables) still strips legacy messages.
+
+        This is the regression for the bug where legacy messages leaked through
+        the public ``judge_config()`` entry point because reserved-variable
+        markers were only injected in ``_create_judge_instance``.
+        """
+        td = TestData.data_source()
+        td.update(
+            td.flag('legacy-judge')
+            .variations({
+                'model': {'name': 'gpt-4'},
+                'provider': {'name': 'openai'},
+                'messages': [
+                    {'role': 'system', 'content': 'You are a judge.'},
+                    {'role': 'assistant', 'content': '{{message_history}}'},
+                    {'role': 'user', 'content': 'Evaluate: {{response_to_evaluate}}'},
+                ],
+                'evaluationMetricKey': '$ld:ai:judge:relevance',
+                '_ldMeta': {'enabled': True, 'variationKey': 'judge-v1', 'version': 1},
+            })
+            .variation_for_all(0)
+        )
+        client = self._make_client(td)
+
+        result = client.judge_config('legacy-judge', context)
+
+        assert result.enabled is True
+        assert result.messages is not None
+        assert len(result.messages) == 1
+        assert result.messages[0].role == 'system'
+        assert result.messages[0].content == 'You are a judge.'
+
+    def test_judge_config_passes_user_variables_to_template(self, context):
+        """User variables are still interpolated into the system message."""
+        td = TestData.data_source()
+        td.update(
+            td.flag('parametric-judge')
+            .variations({
+                'model': {'name': 'gpt-4'},
+                'provider': {'name': 'openai'},
+                'messages': [
+                    {'role': 'system', 'content': 'You are a {{tone}} judge.'},
+                ],
+                'evaluationMetricKey': '$ld:ai:judge:relevance',
+                '_ldMeta': {'enabled': True, 'variationKey': 'judge-v1', 'version': 1},
+            })
+            .variation_for_all(0)
+        )
+        client = self._make_client(td)
+
+        result = client.judge_config(
+            'parametric-judge', context, variables={'tone': 'strict'}
+        )
+
+        assert result.messages is not None
+        assert result.messages[0].content == 'You are a strict judge.'
+
+    def test_judge_config_warns_on_reserved_variables(self, context):
+        """``_judge_config`` warns when callers pass reserved variable names."""
+        td = TestData.data_source()
+        td.update(
+            td.flag('judge-config')
+            .variations({
+                'model': {'name': 'gpt-4'},
+                'provider': {'name': 'openai'},
+                'messages': [{'role': 'system', 'content': 'You are a judge.'}],
+                'evaluationMetricKey': '$ld:ai:judge:relevance',
+                '_ldMeta': {'enabled': True, 'variationKey': 'judge-v1', 'version': 1},
+            })
+            .variation_for_all(0)
+        )
+        client = self._make_client(td)
+
+        with patch('ldai.client.log') as mock_log:
+            client.judge_config(
+                'judge-config',
+                context,
+                variables={
+                    'message_history': 'should be ignored',
+                    'response_to_evaluate': 'should be ignored',
+                },
+            )
+
+        warning_messages = [c.args[0] for c in mock_log.warning.call_args_list]
+        assert any("'message_history' is reserved" in m for m in warning_messages)
+        assert any("'response_to_evaluate' is reserved" in m for m in warning_messages)
+
+    def test_judge_config_does_not_warn_without_reserved_variables(self, context):
+        """No warnings should be emitted when callers pass non-reserved variables."""
+        td = TestData.data_source()
+        td.update(
+            td.flag('judge-config')
+            .variations({
+                'model': {'name': 'gpt-4'},
+                'provider': {'name': 'openai'},
+                'messages': [{'role': 'system', 'content': 'You are a judge.'}],
+                'evaluationMetricKey': '$ld:ai:judge:relevance',
+                '_ldMeta': {'enabled': True, 'variationKey': 'judge-v1', 'version': 1},
+            })
+            .variation_for_all(0)
+        )
+        client = self._make_client(td)
+
+        with patch('ldai.client.log') as mock_log:
+            client.judge_config('judge-config', context, variables={'tone': 'strict'})
+
+        warning_messages = [c.args[0] for c in mock_log.warning.call_args_list]
+        assert not any("'message_history' is reserved" in m for m in warning_messages)
+        assert not any("'response_to_evaluate' is reserved" in m for m in warning_messages)
 
 
 class TestEvaluationSchemaBuilder:
