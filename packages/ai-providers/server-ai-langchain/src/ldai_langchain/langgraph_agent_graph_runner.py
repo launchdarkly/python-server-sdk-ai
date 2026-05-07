@@ -274,7 +274,7 @@ class LangGraphAgentGraphRunner(AgentGraphRunner):
         compiled = agent_builder.compile()
         return compiled, fn_name_to_config_key, node_keys
 
-    async def run(self, input: Any) -> AgentGraphRunnerResult:
+    async def run(self, input: str) -> AgentGraphRunnerResult:
         """
         Run the agent graph with the given input.
 
@@ -295,7 +295,7 @@ class LangGraphAgentGraphRunner(AgentGraphRunner):
             handler = LDMetricsCallbackHandler(self._node_keys, self._fn_name_to_config_key)
 
             result = await self._compiled.ainvoke(  # type: ignore[call-overload]
-                {'messages': [HumanMessage(content=str(input))]},
+                {'messages': [HumanMessage(content=input)]},
                 config={'callbacks': [handler], 'recursion_limit': 25},
             )
 

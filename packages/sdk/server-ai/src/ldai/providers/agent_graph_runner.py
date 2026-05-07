@@ -1,4 +1,4 @@
-from typing import Any, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 from ldai.providers.types import AgentGraphRunnerResult
 
@@ -18,11 +18,11 @@ class AgentGraphRunner(Protocol):
     the caller just passes input.
     """
 
-    async def run(self, input: Any) -> AgentGraphRunnerResult:
+    async def run(self, input: str) -> AgentGraphRunnerResult:
         """
         Run the agent graph with the given input.
 
-        :param input: The input to the agent graph (string prompt or structured input)
+        :param input: The string prompt to send to the agent graph
         :return: AgentGraphRunnerResult containing the content, raw response, and AIGraphMetrics
         """
         ...

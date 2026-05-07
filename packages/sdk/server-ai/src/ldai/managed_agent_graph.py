@@ -1,6 +1,6 @@
 """ManagedAgentGraph — LaunchDarkly managed wrapper for agent graph execution."""
 
-from typing import Any, Dict
+from typing import Dict
 
 from ldai.agent_graph import AgentGraphDefinition
 from ldai.providers import AgentGraphRunner
@@ -38,14 +38,14 @@ class ManagedAgentGraph:
         self._graph = graph
         self._runner = runner
 
-    async def run(self, input: Any) -> ManagedGraphResult:
+    async def run(self, input: str) -> ManagedGraphResult:
         """
         Run the agent graph with the given input.
 
         Delegates to the underlying AgentGraphRunner, then drives all
         LaunchDarkly tracking from ``result.metrics``.
 
-        :param input: The input prompt or structured input for the graph
+        :param input: The user input prompt to process through the graph.
         :return: ManagedGraphResult containing the content, metric summary,
             and raw response.
         """
