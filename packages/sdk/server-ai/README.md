@@ -181,7 +181,7 @@ async def main():
     def map_custom_provider_metrics(response):
         return LDAIMetrics(
             success=True,
-            usage=TokenUsage(
+            tokens=TokenUsage(
                 total=response.usage.get('total_tokens', 0) if response.usage else 0,
                 input=response.usage.get('prompt_tokens', 0) if response.usage else 0,
                 output=response.usage.get('completion_tokens', 0) if response.usage else 0,

@@ -142,11 +142,11 @@ class LDMetricsCallbackHandler(BaseCallbackHandler):
         metrics = self._node_metrics.get(node_key)
         if metrics is None:
             return
-        existing = metrics.usage
+        existing = metrics.tokens
         if existing is None:
-            metrics.usage = usage
+            metrics.tokens = usage
         else:
-            metrics.usage = TokenUsage(
+            metrics.tokens = TokenUsage(
                 total=existing.total + usage.total,
                 input=existing.input + usage.input,
                 output=existing.output + usage.output,

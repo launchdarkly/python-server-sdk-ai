@@ -126,7 +126,7 @@ model = await ai_client.create_model("ai-config-key", context)
 if model:
     result = await model.run("Explain feature flags.")
     # Metrics are tracked automatically; access them via result.metrics
-    print(result.metrics.usage)
+    print(result.metrics.tokens)
 ```
 
 ### Static Utility Methods
@@ -155,7 +155,7 @@ from ldai_langchain.langchain_helper import get_ai_metrics_from_response
 # After getting a response from LangChain
 metrics = get_ai_metrics_from_response(ai_message)
 print(f"Success: {metrics.success}")
-print(f"Tokens used: {metrics.usage.total if metrics.usage else 'N/A'}")
+print(f"Tokens used: {metrics.tokens.total if metrics.tokens else 'N/A'}")
 ```
 
 #### Provider Name Mapping

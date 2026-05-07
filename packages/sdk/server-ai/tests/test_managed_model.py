@@ -16,7 +16,7 @@ from ldai.tracker import LDAIConfigTracker, LDAIMetricSummary
 def _make_runner_result(content: str = 'response text') -> RunnerResult:
     return RunnerResult(
         content=content,
-        metrics=LDAIMetrics(success=True, usage=None),
+        metrics=LDAIMetrics(success=True, tokens=None),
     )
 
 

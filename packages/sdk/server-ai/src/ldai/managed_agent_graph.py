@@ -82,8 +82,8 @@ class ManagedAgentGraph:
                 continue
             node_tracker = node.get_config().create_tracker()
 
-            if node_ldai_metrics.usage is not None:
-                node_tracker.track_tokens(node_ldai_metrics.usage)
+            if node_ldai_metrics.tokens is not None:
+                node_tracker.track_tokens(node_ldai_metrics.tokens)
             if node_ldai_metrics.duration_ms is not None:
                 node_tracker.track_duration(node_ldai_metrics.duration_ms)
             if node_ldai_metrics.tool_calls:

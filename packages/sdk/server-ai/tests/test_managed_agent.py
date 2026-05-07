@@ -30,7 +30,7 @@ def _make_noop_evaluator_config() -> MagicMock:
         return_value=RunnerResult(
             content="Test response",
             raw=None,
-            metrics=LDAIMetrics(success=True, usage=None),
+            metrics=LDAIMetrics(success=True, tokens=None),
         )
     )
     mock_tracker.get_summary = MagicMock(return_value=_make_summary(True))
@@ -85,7 +85,7 @@ class TestManagedAgentRun:
         mock_runner.run = AsyncMock(
             return_value=RunnerResult(
                 content="Test response",
-                metrics=LDAIMetrics(success=True, usage=None),
+                metrics=LDAIMetrics(success=True, tokens=None),
                 raw=None,
             )
         )
@@ -110,7 +110,7 @@ class TestManagedAgentRun:
         fresh_tracker.track_metrics_of_async = AsyncMock(
             return_value=RunnerResult(
                 content="Fresh tracker response",
-                metrics=LDAIMetrics(success=True, usage=None),
+                metrics=LDAIMetrics(success=True, tokens=None),
                 raw=None,
             )
         )
@@ -340,7 +340,7 @@ class TestLDAIClientCreateAgent:
 
         mock_runner = MagicMock()
         mock_runner.run = AsyncMock(
-            return_value=RunnerResult(content="Hello!", metrics=LDAIMetrics(success=True, usage=None), raw=None)
+            return_value=RunnerResult(content="Hello!", metrics=LDAIMetrics(success=True, tokens=None), raw=None)
         )
 
         original = rf.RunnerFactory.create_agent

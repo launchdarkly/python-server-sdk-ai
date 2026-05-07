@@ -148,7 +148,7 @@ def test_on_llm_end_accumulates_tokens():
     result = _llm_result(total=15, prompt=10, completion=5)
     handler.on_llm_end(result, run_id=uuid4(), parent_run_id=node_run_id)
 
-    usage = handler.node_metrics['root-agent'].usage
+    usage = handler.node_metrics['root-agent'].tokens
     assert usage is not None
     assert usage.total == 15
     assert usage.input == 10
@@ -166,7 +166,7 @@ def test_on_llm_end_accumulates_across_multiple_calls():
     handler.on_llm_end(result1, run_id=uuid4(), parent_run_id=node_run_id)
     handler.on_llm_end(result2, run_id=uuid4(), parent_run_id=node_run_id)
 
-    usage = handler.node_metrics['root-agent'].usage
+    usage = handler.node_metrics['root-agent'].tokens
     assert usage.total == 16
     assert usage.input == 11
     assert usage.output == 5
@@ -203,7 +203,7 @@ def test_on_llm_end_camel_case_token_keys():
     )
     handler.on_llm_end(result, run_id=uuid4(), parent_run_id=node_run_id)
 
-    usage = handler.node_metrics['root-agent'].usage
+    usage = handler.node_metrics['root-agent'].tokens
     assert usage is not None
     assert usage.total == 20
     assert usage.input == 12
@@ -279,10 +279,10 @@ def test_node_metrics_includes_tokens():
 
     assert 'root-agent' in metrics
     node = metrics['root-agent']
-    assert node.usage is not None
-    assert node.usage.total == 15
-    assert node.usage.input == 10
-    assert node.usage.output == 5
+    assert node.tokens is not None
+    assert node.tokens.total == 15
+    assert node.tokens.input == 10
+    assert node.tokens.output == 5
 
 
 def test_node_metrics_includes_duration():
@@ -339,8 +339,8 @@ def test_node_metrics_multiple_nodes():
 
     assert 'root-agent' in metrics
     assert 'child-agent' in metrics
-    assert metrics['root-agent'].usage.total == 15
-    assert metrics['child-agent'].usage.total == 5
+    assert metrics['root-agent'].tokens.total == 15
+    assert metrics['child-agent'].tokens.total == 5
 
 
 def test_node_metrics_no_tool_calls_returns_none():
@@ -364,7 +364,7 @@ def test_node_metrics_no_usage_returns_none():
 
     metrics = handler.node_metrics
 
-    assert metrics['root-agent'].usage is None
+    assert metrics['root-agent'].tokens is None
 
 
 # ---------------------------------------------------------------------------

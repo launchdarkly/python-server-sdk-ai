@@ -269,10 +269,10 @@ async def test_tracks_node_and_graph_tokens_on_success():
     node_metrics = handler.node_metrics
     assert 'root-agent' in node_metrics
     node = node_metrics['root-agent']
-    assert node.usage is not None
-    assert node.usage.total == 15
-    assert node.usage.input == 10
-    assert node.usage.output == 5
+    assert node.tokens is not None
+    assert node.tokens.total == 15
+    assert node.tokens.input == 10
+    assert node.tokens.output == 5
     assert node.success is True
     assert node.duration_ms is not None
 
@@ -495,8 +495,8 @@ async def test_multi_node_tracks_per_node_tokens_and_path():
     node_metrics = handler.node_metrics
 
     # Per-node token usage is keyed by node key
-    assert node_metrics['root-agent'].usage.total == 15
-    assert node_metrics['child-agent'].usage.total == 5
+    assert node_metrics['root-agent'].tokens.total == 15
+    assert node_metrics['child-agent'].tokens.total == 5
 
     # Graph-level total from the real runner run
     ev = _events(mock_ld_client)

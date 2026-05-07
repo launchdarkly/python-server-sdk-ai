@@ -87,10 +87,10 @@ class TestGetAIMetricsFromResponse:
         """Should create metrics with success=True and token usage."""
         result = get_ai_metrics_from_response(_make_completions_response(total=100, prompt=50, completion=50))
         assert result.success is True
-        assert result.usage is not None
-        assert result.usage.total == 100
-        assert result.usage.input == 50
-        assert result.usage.output == 50
+        assert result.tokens is not None
+        assert result.tokens.total == 100
+        assert result.tokens.input == 50
+        assert result.tokens.output == 50
 
     def test_creates_metrics_with_success_true_and_no_usage_when_usage_missing(self):
         """Should create metrics with success=True and no usage when usage is missing."""
@@ -101,7 +101,7 @@ class TestGetAIMetricsFromResponse:
         result = get_ai_metrics_from_response(mock_response)
 
         assert result.success is True
-        assert result.usage is None
+        assert result.tokens is None
 
     def test_handles_partial_usage_data(self):
         """Should handle partial usage data."""
@@ -112,10 +112,10 @@ class TestGetAIMetricsFromResponse:
         result = get_ai_metrics_from_response(mock_response)
 
         assert result.success is True
-        assert result.usage is not None
-        assert result.usage.total == 0
-        assert result.usage.input == 30
-        assert result.usage.output == 0
+        assert result.tokens is not None
+        assert result.tokens.total == 0
+        assert result.tokens.input == 30
+        assert result.tokens.output == 0
 
 
 class TestRunCompletion:
@@ -150,10 +150,10 @@ class TestRunCompletion:
 
         assert result.content == 'Hello! How can I help you today?'
         assert result.metrics.success is True
-        assert result.metrics.usage is not None
-        assert result.metrics.usage.total == 25
-        assert result.metrics.usage.input == 10
-        assert result.metrics.usage.output == 15
+        assert result.metrics.tokens is not None
+        assert result.metrics.tokens.total == 25
+        assert result.metrics.tokens.input == 10
+        assert result.metrics.tokens.output == 15
 
     @pytest.mark.asyncio
     async def test_returns_unsuccessful_response_when_no_content(self, mock_client):
@@ -298,10 +298,10 @@ class TestRunStructured:
         assert result.parsed == {'name': 'John', 'age': 30, 'city': 'New York'}
         assert result.content == '{"name": "John", "age": 30, "city": "New York"}'
         assert result.metrics.success is True
-        assert result.metrics.usage is not None
-        assert result.metrics.usage.total == 30
-        assert result.metrics.usage.input == 20
-        assert result.metrics.usage.output == 10
+        assert result.metrics.tokens is not None
+        assert result.metrics.tokens.total == 30
+        assert result.metrics.tokens.input == 20
+        assert result.metrics.tokens.output == 10
 
     @pytest.mark.asyncio
     async def test_returns_unsuccessful_when_no_content_in_structured_response(self, mock_client):
@@ -347,8 +347,8 @@ class TestRunStructured:
         assert result.parsed is None
         assert result.content == 'invalid json content'
         assert result.metrics.success is False
-        assert result.metrics.usage is not None
-        assert result.metrics.usage.total == 15
+        assert result.metrics.tokens is not None
+        assert result.metrics.tokens.total == 15
 
     @pytest.mark.asyncio
     async def test_returns_unsuccessful_response_when_exception_thrown(self, mock_client):
@@ -521,8 +521,8 @@ class TestOpenAIAgentRunner:
 
         assert result.content == "The answer is 42."
         assert result.metrics.success is True
-        assert result.metrics.usage is not None
-        assert result.metrics.usage.total == 15
+        assert result.metrics.tokens is not None
+        assert result.metrics.tokens.total == 15
 
     @pytest.mark.asyncio
     async def test_executes_tool_calls_and_returns_final_response(self):
@@ -546,7 +546,7 @@ class TestOpenAIAgentRunner:
 
         assert result.content == "It is sunny in Paris."
         assert result.metrics.success is True
-        assert result.metrics.usage.total == 43
+        assert result.metrics.tokens.total == 43
 
     @pytest.mark.asyncio
     async def test_returns_failure_when_exception_thrown(self):

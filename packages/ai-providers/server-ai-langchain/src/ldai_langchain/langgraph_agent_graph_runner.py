@@ -313,7 +313,7 @@ class LangGraphAgentGraphRunner(AgentGraphRunner):
                     success=True,
                     path=handler.path,
                     duration_ms=duration_ms,
-                    usage=total_usage if (total_usage is not None and total_usage.total > 0) else None,
+                    tokens=total_usage if (total_usage is not None and total_usage.total > 0) else None,
                     node_metrics=node_metrics,
                 ),
             )

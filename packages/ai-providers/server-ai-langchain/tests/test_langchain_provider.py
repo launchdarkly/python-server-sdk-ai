@@ -95,10 +95,10 @@ class TestGetAIMetricsFromResponse:
         result = get_ai_metrics_from_response(mock_response)
 
         assert result.success is True
-        assert result.usage is not None
-        assert result.usage.total == 100
-        assert result.usage.input == 50
-        assert result.usage.output == 50
+        assert result.tokens is not None
+        assert result.tokens.total == 100
+        assert result.tokens.input == 50
+        assert result.tokens.output == 50
 
     def test_creates_metrics_with_snake_case_token_usage(self):
         """Should create metrics with snake_case token usage keys."""
@@ -114,10 +114,10 @@ class TestGetAIMetricsFromResponse:
         result = get_ai_metrics_from_response(mock_response)
 
         assert result.success is True
-        assert result.usage is not None
-        assert result.usage.total == 150
-        assert result.usage.input == 75
-        assert result.usage.output == 75
+        assert result.tokens is not None
+        assert result.tokens.total == 150
+        assert result.tokens.input == 75
+        assert result.tokens.output == 75
 
     def test_creates_metrics_with_success_true_and_no_usage_when_metadata_missing(self):
         """Should create metrics with success=True and no usage when metadata is missing."""
@@ -126,7 +126,7 @@ class TestGetAIMetricsFromResponse:
         result = get_ai_metrics_from_response(mock_response)
 
         assert result.success is True
-        assert result.usage is None
+        assert result.tokens is None
 
     def test_usage_metadata_preferred_over_response_metadata(self):
         """usage_metadata should be used when it has non-zero counts."""
@@ -355,7 +355,7 @@ class TestRunStructured:
         assert result.metrics.success is False
         assert result.parsed is None
         assert result.raw is None
-        assert result.metrics.usage is None
+        assert result.metrics.tokens is None
 
 
 class TestGetToolCallsFromResponse:
@@ -546,10 +546,10 @@ class TestLangChainAgentRunner:
 
         assert result.content == "final answer"
         assert result.metrics.success is True
-        assert result.metrics.usage is not None
-        assert result.metrics.usage.total == 30
-        assert result.metrics.usage.input == 18
-        assert result.metrics.usage.output == 12
+        assert result.metrics.tokens is not None
+        assert result.metrics.tokens.total == 30
+        assert result.metrics.tokens.input == 18
+        assert result.metrics.tokens.output == 12
 
     @pytest.mark.asyncio
     async def test_returns_failure_when_exception_thrown(self):
