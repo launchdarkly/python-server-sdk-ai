@@ -155,7 +155,7 @@ def test_uses_default_on_invalid_flag(ldai_client: LDAIClient):
     )
     variables = {'name': 'World'}
 
-    config = ldai_client.config('missing-flag', context, default, variables)
+    config = ldai_client.completion_config('missing-flag', context, default, variables)
 
     assert config.messages is not None
     assert len(config.messages) > 0
@@ -177,7 +177,7 @@ def test_model_config_interpolation(ldai_client: LDAIClient):
     )
     variables = {'name': 'World'}
 
-    config = ldai_client.config('model-config', context, default, variables)
+    config = ldai_client.completion_config('model-config', context, default, variables)
 
     assert config.messages is not None
     assert len(config.messages) > 0
@@ -194,7 +194,7 @@ def test_model_config_no_variables(ldai_client: LDAIClient):
     context = Context.create('user-key')
     default = AICompletionConfigDefault(enabled=True, model=ModelConfig('fake-model'), messages=[])
 
-    config = ldai_client.config('model-config', context, default, {})
+    config = ldai_client.completion_config('model-config', context, default, {})
 
     assert config.messages is not None
     assert len(config.messages) > 0
@@ -212,7 +212,7 @@ def test_provider_config_handling(ldai_client: LDAIClient):
     default = AICompletionConfigDefault(enabled=True, model=ModelConfig('fake-model'), messages=[])
     variables = {'name': 'World'}
 
-    config = ldai_client.config('model-config', context, default, variables)
+    config = ldai_client.completion_config('model-config', context, default, variables)
 
     assert config.provider is not None
     assert config.provider.name == 'fakeProvider'
@@ -223,7 +223,7 @@ def test_context_interpolation(ldai_client: LDAIClient):
     default = AICompletionConfigDefault(enabled=True, model=ModelConfig('fake-model'), messages=[])
     variables = {'name': 'World'}
 
-    config = ldai_client.config(
+    config = ldai_client.completion_config(
         'ctx-interpolation', context, default, variables
     )
 
@@ -246,7 +246,7 @@ def test_multi_context_interpolation(ldai_client: LDAIClient):
     default = AICompletionConfigDefault(enabled=True, model=ModelConfig('fake-model'), messages=[])
     variables = {'name': 'World'}
 
-    config = ldai_client.config(
+    config = ldai_client.completion_config(
         'multi-ctx-interpolation', context, default, variables
     )
 
@@ -267,7 +267,7 @@ def test_model_config_multiple(ldai_client: LDAIClient):
     default = AICompletionConfigDefault(enabled=True, model=ModelConfig('fake-model'), messages=[])
     variables = {'name': 'World', 'day': 'Monday'}
 
-    config = ldai_client.config(
+    config = ldai_client.completion_config(
         'multiple-messages', context, default, variables
     )
 
@@ -287,7 +287,7 @@ def test_model_config_disabled(ldai_client: LDAIClient):
     context = Context.create('user-key')
     default = AICompletionConfigDefault(enabled=False, model=ModelConfig('fake-model'), messages=[])
 
-    config = ldai_client.config('off-config', context, default, {})
+    config = ldai_client.completion_config('off-config', context, default, {})
 
     assert config.model is not None
     assert config.enabled is False
@@ -300,7 +300,7 @@ def test_model_initial_config_disabled(ldai_client: LDAIClient):
     context = Context.create('user-key')
     default = AICompletionConfigDefault(enabled=False, model=ModelConfig('fake-model'), messages=[])
 
-    config = ldai_client.config('initial-config-disabled', context, default, {})
+    config = ldai_client.completion_config('initial-config-disabled', context, default, {})
 
     assert config.enabled is False
     assert config.model is None
@@ -312,7 +312,7 @@ def test_model_initial_config_enabled(ldai_client: LDAIClient):
     context = Context.create('user-key')
     default = AICompletionConfigDefault(enabled=False, model=ModelConfig('fake-model'), messages=[])
 
-    config = ldai_client.config('initial-config-enabled', context, default, {})
+    config = ldai_client.completion_config('initial-config-enabled', context, default, {})
 
     assert config.enabled is True
     assert config.model is None
@@ -320,7 +320,7 @@ def test_model_initial_config_enabled(ldai_client: LDAIClient):
     assert config.provider is None
 
 
-def test_config_method_tracking(ldai_client: LDAIClient):
+def test_completion_config_method_tracking(ldai_client: LDAIClient):
     from unittest.mock import Mock
 
     mock_client = Mock()
@@ -335,7 +335,7 @@ def test_config_method_tracking(ldai_client: LDAIClient):
     context = Context.create('user-key')
     default = AICompletionConfigDefault(enabled=False, model=ModelConfig('fake-model'), messages=[])
 
-    config = client.config('test-config-key', context, default)
+    client.completion_config('test-config-key', context, default)
 
     mock_client.track.assert_any_call(
         '$ld:ai:usage:completion-config',

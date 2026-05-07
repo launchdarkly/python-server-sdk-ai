@@ -3,14 +3,13 @@ __version__ = "0.19.0"  # x-release-please-version
 from ldclient import log
 
 from ldai.agent_graph import AgentGraphDefinition
-from ldai.chat import Chat  # Deprecated — use ManagedModel
 from ldai.client import LDAIClient
 from ldai.evaluator import Evaluator
 from ldai.judge import Judge
 from ldai.managed_agent import ManagedAgent
 from ldai.managed_agent_graph import ManagedAgentGraph
 from ldai.managed_model import ManagedModel
-from ldai.models import (  # Deprecated aliases for backward compatibility
+from ldai.models import (
     AIAgentConfig,
     AIAgentConfigDefault,
     AIAgentConfigRequest,
@@ -18,14 +17,10 @@ from ldai.models import (  # Deprecated aliases for backward compatibility
     AIAgents,
     AICompletionConfig,
     AICompletionConfigDefault,
-    AIConfig,
     AIJudgeConfig,
     AIJudgeConfigDefault,
     Edge,
     JudgeConfiguration,
-    LDAIAgent,
-    LDAIAgentConfig,
-    LDAIAgentDefaults,
     LDMessage,
     LDTool,
     ModelConfig,
@@ -81,10 +76,4 @@ __all__ = [
     'ModelConfig',
     'ProviderConfig',
     'log',
-    # Deprecated exports
-    'AIConfig',
-    'Chat',
-    'LDAIAgent',
-    'LDAIAgentConfig',
-    'LDAIAgentDefaults',
 ]

@@ -1,4 +1,3 @@
-import warnings
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Literal, Optional, Union
 
@@ -424,22 +423,3 @@ class AIAgentGraphConfig:
     root_config_key: str
     edges: List[Edge]
     enabled: bool = True
-
-
-# ============================================================================
-# Deprecated Type Aliases for Backward Compatibility
-# ============================================================================
-
-# Note: AIConfig is now defined above as a base class (line 169).
-# For backward compatibility, code should migrate to:
-# - Use AICompletionConfigDefault for default/input values
-# - Use AICompletionConfig for return values
-
-# Deprecated: Use AIAgentConfigDefault instead
-LDAIAgentDefaults = AIAgentConfigDefault
-
-# Deprecated: Use AIAgentConfigRequest instead
-LDAIAgentConfig = AIAgentConfigRequest
-
-# Deprecated: Use AIAgentConfig instead (note: this was the old return type)
-LDAIAgent = AIAgentConfig

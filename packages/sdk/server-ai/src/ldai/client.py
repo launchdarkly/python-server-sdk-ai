@@ -1,5 +1,4 @@
 import uuid
-import warnings
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import chevron
@@ -186,27 +185,6 @@ class LDAIClient:
         return self._completion_config(
             key, context, default or _DISABLED_COMPLETION_DEFAULT, variables, default_ai_provider
         )
-
-    def config(
-        self,
-        key: str,
-        context: Context,
-        default: Optional[AICompletionConfigDefault] = None,
-        variables: Optional[Dict[str, Any]] = None,
-    ) -> AICompletionConfig:
-        """
-        Get the value of a model configuration.
-
-        .. deprecated:: Use :meth:`completion_config` instead. This method will be removed in a future version.
-
-        :param key: The key of the model configuration.
-        :param context: The context to evaluate the model configuration in.
-        :param default: The default value of the model configuration.
-        :param variables: Additional variables for the model configuration.
-        :return: The value of the model configuration along with a tracker used for gathering metrics.
-        """
-        warnings.warn("config() is deprecated, use completion_config() instead", DeprecationWarning, stacklevel=2)
-        return self.completion_config(key, context, default, variables)
 
     def _judge_config(
         self,
@@ -455,20 +433,6 @@ class LDAIClient:
 
         return ManagedModel(config, runner)
 
-    async def create_chat(
-        self,
-        key: str,
-        context: Context,
-        default: Optional[AICompletionConfigDefault] = None,
-        variables: Optional[Dict[str, Any]] = None,
-        default_ai_provider: Optional[str] = None,
-    ) -> Optional[ManagedModel]:
-        """
-        .. deprecated:: Use :meth:`create_model` instead. This method will be removed in a future version.
-        """
-        warnings.warn("create_chat() is deprecated, use create_model() instead", DeprecationWarning, stacklevel=2)
-        return await self.create_model(key, context, default, variables, default_ai_provider)
-
     async def create_agent(
         self,
         key: str,
@@ -577,23 +541,6 @@ class LDAIClient:
         return self.__evaluate_agent(
             key, context, default or _DISABLED_AGENT_DEFAULT, variables
         )
-
-    def agent(
-        self,
-        config: AIAgentConfigRequest,
-        context: Context,
-    ) -> AIAgentConfig:
-        """
-        Retrieve a single AI Config agent.
-
-        .. deprecated:: Use :meth:`agent_config` instead. This method will be removed in a future version.
-
-        :param config: The agent configuration to use.
-        :param context: The context to evaluate the agent configuration in.
-        :return: Configured AIAgentConfig instance.
-        """
-        warnings.warn("agent() is deprecated, use agent_config() instead", DeprecationWarning, stacklevel=2)
-        return self.agent_config(config.key, context, config.default, config.variables)
 
     def agent_configs(
         self,
@@ -826,23 +773,6 @@ class LDAIClient:
             return None
 
         return ManagedAgentGraph(graph, runner)
-
-    def agents(
-        self,
-        agent_configs: List[AIAgentConfigRequest],
-        context: Context,
-    ) -> AIAgents:
-        """
-        Retrieve multiple AI agent configurations.
-
-        .. deprecated:: Use :meth:`agent_configs` instead. This method will be removed in a future version.
-
-        :param agent_configs: List of agent configurations to retrieve.
-        :param context: The context to evaluate the agent configurations in.
-        :return: Dictionary mapping agent keys to their AIAgentConfig configurations.
-        """
-        warnings.warn("agents() is deprecated, use agent_configs() instead", DeprecationWarning, stacklevel=2)
-        return self.agent_configs(agent_configs, context)
 
     def __evaluate(
         self,
