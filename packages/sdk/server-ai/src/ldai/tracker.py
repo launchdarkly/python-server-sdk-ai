@@ -49,7 +49,7 @@ class LDAIMetricSummary:
         self._duration_ms: Optional[int] = None
         self._success: Optional[bool] = None
         self._feedback: Optional[Dict[str, FeedbackKind]] = None
-        self._usage: Optional[TokenUsage] = None
+        self._tokens: Optional[TokenUsage] = None
         self._time_to_first_token: Optional[int] = None
         self._tool_calls: List[str] = []
         self._resumption_token: Optional[str] = None
@@ -81,8 +81,8 @@ class LDAIMetricSummary:
         return self._feedback
 
     @property
-    def usage(self) -> Optional[TokenUsage]:
-        return self._usage
+    def tokens(self) -> Optional[TokenUsage]:
+        return self._tokens
 
     @property
     def time_to_first_token(self) -> Optional[int]:
@@ -305,8 +305,8 @@ class LDAIConfigTracker:
             self.track_success()
         else:
             self.track_error()
-        if metrics.usage:
-            self.track_tokens(metrics.usage)
+        if metrics.tokens:
+            self.track_tokens(metrics.tokens)
         if metrics.tool_calls is not None:
             self.track_tool_calls(metrics.tool_calls)
 
@@ -533,10 +533,10 @@ class LDAIConfigTracker:
 
         :param tokens: Token usage data from either custom, OpenAI, or Bedrock sources.
         """
-        if self._summary.usage is not None:
+        if self._summary.tokens is not None:
             log.warning("Tokens have already been tracked for this execution. %s", self.__get_track_data())
             return
-        self._summary._usage = tokens
+        self._summary._tokens = tokens
         td = self.__get_track_data()
         if tokens.total > 0:
             self._ld_client.track(
@@ -731,10 +731,10 @@ class AIGraphTracker:
         """
         if tokens is None or tokens.total <= 0:
             return
-        if self._summary.usage is not None:
+        if self._summary.tokens is not None:
             log.warning("Token usage has already been tracked for this graph execution. %s", self.__get_track_data())
             return
-        self._summary.usage = tokens
+        self._summary.tokens = tokens
         self._ld_client.track(
             "$ld:ai:graph:total_tokens",
             self._context,
@@ -840,8 +840,8 @@ class AIGraphTracker:
             self.track_invocation_failure()
         if metrics.path:
             self.track_path(metrics.path)
-        if metrics.usage is not None:
-            self.track_total_tokens(metrics.usage)
+        if metrics.tokens is not None:
+            self.track_total_tokens(metrics.tokens)
 
     def track_graph_metrics_of(
         self,

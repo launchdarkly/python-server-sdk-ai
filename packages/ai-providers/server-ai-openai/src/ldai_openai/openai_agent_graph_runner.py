@@ -103,7 +103,7 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
                     success=True,
                     path=path,
                     duration_ms=duration_ms,
-                    usage=token_usage,
+                    tokens=token_usage,
                     node_metrics=self._node_metrics,
                 ),
             )
@@ -243,7 +243,7 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
             src_metrics.success = True
             src_metrics.duration_ms = int(duration_ms)
             try:
-                src_metrics.usage = extract_usage_from_request_entry(
+                src_metrics.tokens = extract_usage_from_request_entry(
                     run_ctx.usage.request_usage_entries[-1]
                 )
             except Exception:
@@ -265,7 +265,7 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
         metrics.duration_ms = int((now_ns - state.last_handoff_ns) // 1_000_000)
 
         try:
-            metrics.usage = extract_usage_from_request_entry(
+            metrics.tokens = extract_usage_from_request_entry(
                 result.context_wrapper.usage.request_usage_entries[-1]
             )
         except Exception:

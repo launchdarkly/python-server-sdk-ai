@@ -44,16 +44,16 @@ class StubRunnerWithMetrics(AgentGraphRunner):
                 success=True,
                 path=["root", "specialist"],
                 duration_ms=42,
-                usage=TokenUsage(total=10, input=5, output=5),
+                tokens=TokenUsage(total=10, input=5, output=5),
                 node_metrics={
                     "root": LDAIMetrics(
                         success=True,
-                        usage=TokenUsage(total=5, input=3, output=2),
+                        tokens=TokenUsage(total=5, input=3, output=2),
                         duration_ms=20,
                     ),
                     "specialist": LDAIMetrics(
                         success=True,
-                        usage=TokenUsage(total=5, input=2, output=3),
+                        tokens=TokenUsage(total=5, input=2, output=3),
                         duration_ms=22,
                     ),
                 },
@@ -71,7 +71,7 @@ def _make_graph_tracker_mock(runner_result):
         success=m.success,
         path=list(m.path),
         duration_ms=m.duration_ms,
-        usage=m.usage,
+        tokens=m.tokens,
     )
     mock_tracker = MagicMock()
     mock_tracker.track_graph_metrics_of_async = AsyncMock(return_value=runner_result)
@@ -120,8 +120,8 @@ async def test_managed_agent_graph_run_surfaces_graph_metrics():
     assert result.metrics.success is True
     assert result.metrics.path == ["root", "specialist"]
     assert result.metrics.duration_ms == 42
-    assert result.metrics.usage is not None
-    assert result.metrics.usage.total == 10
+    assert result.metrics.tokens is not None
+    assert result.metrics.tokens.total == 10
 
 
 @pytest.mark.asyncio

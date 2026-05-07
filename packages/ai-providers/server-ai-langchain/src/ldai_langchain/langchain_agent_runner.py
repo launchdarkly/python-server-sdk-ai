@@ -59,7 +59,7 @@ class LangChainAgentRunner(Runner):
                 content=output,
                 metrics=LDAIMetrics(
                     success=True,
-                    usage=sum_token_usage_from_messages(messages),
+                    tokens=sum_token_usage_from_messages(messages),
                     tool_calls=tool_calls if tool_calls else None,
                 ),
                 raw=result,
@@ -68,7 +68,7 @@ class LangChainAgentRunner(Runner):
             log.warning(f"LangChain agent run failed: {error}")
             return RunnerResult(
                 content="",
-                metrics=LDAIMetrics(success=False, usage=None),
+                metrics=LDAIMetrics(success=False, tokens=None),
             )
 
     def get_agent(self) -> Any:

@@ -79,7 +79,7 @@ class OpenAIModelRunner(Runner):
                 log.warning('OpenAI response has no content available')
                 return RunnerResult(
                     content='',
-                    metrics=LDAIMetrics(success=False, usage=metrics.usage),
+                    metrics=LDAIMetrics(success=False, tokens=metrics.tokens),
                     raw=response,
                 )
 
@@ -88,7 +88,7 @@ class OpenAIModelRunner(Runner):
             log.warning(f'OpenAI model invocation failed: {error}')
             return RunnerResult(
                 content='',
-                metrics=LDAIMetrics(success=False, usage=None),
+                metrics=LDAIMetrics(success=False, tokens=None),
             )
 
     async def _run_structured(
@@ -118,7 +118,7 @@ class OpenAIModelRunner(Runner):
                 log.warning('OpenAI structured response has no content available')
                 return RunnerResult(
                     content='',
-                    metrics=LDAIMetrics(success=False, usage=metrics.usage),
+                    metrics=LDAIMetrics(success=False, tokens=metrics.tokens),
                     raw=response,
                 )
 
@@ -134,14 +134,14 @@ class OpenAIModelRunner(Runner):
                 log.warning(f'OpenAI structured response contains invalid JSON: {parse_error}')
                 return RunnerResult(
                     content=content,
-                    metrics=LDAIMetrics(success=False, usage=metrics.usage),
+                    metrics=LDAIMetrics(success=False, tokens=metrics.tokens),
                     raw=response,
                 )
         except Exception as error:
             log.warning(f'OpenAI structured model invocation failed: {error}')
             return RunnerResult(
                 content='',
-                metrics=LDAIMetrics(success=False, usage=None),
+                metrics=LDAIMetrics(success=False, tokens=None),
             )
 
     @staticmethod

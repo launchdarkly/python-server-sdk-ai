@@ -20,7 +20,7 @@ class LDAIMetrics:
     success: bool
     """Whether the invocation succeeded."""
 
-    usage: Optional[TokenUsage] = None
+    tokens: Optional[TokenUsage] = None
     """Optional token usage information."""
 
     tool_calls: Optional[List[str]] = None
@@ -36,11 +36,11 @@ class LDAIMetrics:
         result: Dict[str, Any] = {
             'success': self.success,
         }
-        if self.usage is not None:
-            result['usage'] = {
-                'total': self.usage.total,
-                'input': self.usage.input,
-                'output': self.usage.output,
+        if self.tokens is not None:
+            result['tokens'] = {
+                'total': self.tokens.total,
+                'input': self.tokens.input,
+                'output': self.tokens.output,
             }
         if self.tool_calls is not None:
             result['toolCalls'] = self.tool_calls
@@ -99,7 +99,7 @@ class AIGraphMetrics:
     duration_ms: Optional[int] = None
     """Wall-clock duration of the graph run in milliseconds."""
 
-    usage: Optional[TokenUsage] = None
+    tokens: Optional[TokenUsage] = None
     """Optional aggregate token usage information across all nodes in the graph run."""
 
     node_metrics: Dict[str, LDAIMetrics] = field(default_factory=dict)
@@ -119,7 +119,7 @@ class AIGraphMetricSummary:
     duration_ms: Optional[int] = None
     """Wall-clock duration of the graph run in milliseconds."""
 
-    usage: Optional[TokenUsage] = None
+    tokens: Optional[TokenUsage] = None
     """Optional aggregate token usage information across all nodes in the graph run."""
 
     node_metrics: Dict[str, LDAIMetricSummary] = field(default_factory=dict)

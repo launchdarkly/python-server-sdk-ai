@@ -72,7 +72,7 @@ class OpenAIAgentRunner(Runner):
             )
             return RunnerResult(
                 content="",
-                metrics=LDAIMetrics(success=False, usage=None),
+                metrics=LDAIMetrics(success=False, tokens=None),
             )
 
         try:
@@ -100,7 +100,7 @@ class OpenAIAgentRunner(Runner):
                 content=str(result.final_output),
                 metrics=LDAIMetrics(
                     success=True,
-                    usage=get_ai_usage_from_response(result),
+                    tokens=get_ai_usage_from_response(result),
                     tool_calls=tool_calls if tool_calls else None,
                 ),
                 raw=result,
@@ -109,7 +109,7 @@ class OpenAIAgentRunner(Runner):
             log.warning(f"OpenAI agent run failed: {error}")
             return RunnerResult(
                 content="",
-                metrics=LDAIMetrics(success=False, usage=None),
+                metrics=LDAIMetrics(success=False, tokens=None),
             )
 
     def _build_agent_tools(self) -> List[Any]:

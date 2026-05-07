@@ -82,7 +82,7 @@ class LangChainModelRunner(Runner):
                 )
                 return RunnerResult(
                     content='',
-                    metrics=LDAIMetrics(success=False, usage=metrics.usage),
+                    metrics=LDAIMetrics(success=False, tokens=metrics.tokens),
                     raw=response,
                 )
 
@@ -91,7 +91,7 @@ class LangChainModelRunner(Runner):
             log.warning(f'LangChain model invocation failed: {error}')
             return RunnerResult(
                 content='',
-                metrics=LDAIMetrics(success=False, usage=None),
+                metrics=LDAIMetrics(success=False, tokens=None),
             )
 
     async def _run_structured(
@@ -107,11 +107,11 @@ class LangChainModelRunner(Runner):
                 log.warning(f'Structured output did not return a dict. Got: {type(response)}')
                 return RunnerResult(
                     content='',
-                    metrics=LDAIMetrics(success=False, usage=None),
+                    metrics=LDAIMetrics(success=False, tokens=None),
                 )
 
             raw_response = response.get('raw')
-            usage = None
+            tokens = None
             raw_content = ''
             if raw_response is not None:
                 if hasattr(raw_response, 'content'):
@@ -122,20 +122,20 @@ class LangChainModelRunner(Runner):
                             f'Multimodal response not supported in structured mode. '
                             f'Content type: {type(raw_response.content)}, Content: {raw_response.content}'
                         )
-                usage = get_ai_usage_from_response(raw_response)
+                tokens = get_ai_usage_from_response(raw_response)
 
             if response.get('parsing_error'):
                 log.warning('LangChain structured model invocation had a parsing error')
                 return RunnerResult(
                     content=raw_content,
-                    metrics=LDAIMetrics(success=False, usage=usage),
+                    metrics=LDAIMetrics(success=False, tokens=tokens),
                     raw=raw_response,
                 )
 
             parsed = response.get('parsed') or {}
             return RunnerResult(
                 content=raw_content,
-                metrics=LDAIMetrics(success=True, usage=usage),
+                metrics=LDAIMetrics(success=True, tokens=tokens),
                 raw=raw_response,
                 parsed=parsed,
             )
@@ -143,5 +143,5 @@ class LangChainModelRunner(Runner):
             log.warning(f'LangChain structured model invocation failed: {error}')
             return RunnerResult(
                 content='',
-                metrics=LDAIMetrics(success=False, usage=None),
+                metrics=LDAIMetrics(success=False, tokens=None),
             )

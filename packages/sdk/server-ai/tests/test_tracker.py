@@ -52,7 +52,7 @@ def test_summary_starts_empty(client: LDClient):
     assert tracker.get_summary().duration is None
     assert tracker.get_summary().feedback is None
     assert tracker.get_summary().success is None
-    assert tracker.get_summary().usage is None
+    assert tracker.get_summary().tokens is None
 
 
 def test_tracks_duration(client: LDClient):
@@ -171,7 +171,7 @@ def test_tracks_token_usage(client: LDClient):
 
     client.track.assert_has_calls(calls)  # type: ignore
 
-    assert tracker.get_summary().usage == tokens
+    assert tracker.get_summary().tokens == tokens
 
 
 def test_tracks_bedrock_metrics(client: LDClient):
@@ -209,7 +209,7 @@ def test_tracks_bedrock_metrics(client: LDClient):
 
     assert tracker.get_summary().success is True
     assert tracker.get_summary().duration == 50
-    assert tracker.get_summary().usage == TokenUsage(330, 220, 110)
+    assert tracker.get_summary().tokens == TokenUsage(330, 220, 110)
 
 
 def test_tracks_bedrock_metrics_with_error(client: LDClient):
@@ -247,7 +247,7 @@ def test_tracks_bedrock_metrics_with_error(client: LDClient):
 
     assert tracker.get_summary().success is False
     assert tracker.get_summary().duration == 50
-    assert tracker.get_summary().usage == TokenUsage(330, 220, 110)
+    assert tracker.get_summary().tokens == TokenUsage(330, 220, 110)
 
 
 def test_tracks_openai_metrics(client: LDClient):
@@ -287,7 +287,7 @@ def test_tracks_openai_metrics(client: LDClient):
 
     client.track.assert_has_calls(calls, any_order=False)  # type: ignore
 
-    assert tracker.get_summary().usage == TokenUsage(330, 220, 110)
+    assert tracker.get_summary().tokens == TokenUsage(330, 220, 110)
 
 
 def test_tracks_openai_metrics_with_exception(client: LDClient):
@@ -316,7 +316,7 @@ def test_tracks_openai_metrics_with_exception(client: LDClient):
 
     client.track.assert_has_calls(calls, any_order=False)  # type: ignore
 
-    assert tracker.get_summary().usage is None
+    assert tracker.get_summary().tokens is None
 
 
 @pytest.mark.parametrize(
@@ -511,7 +511,7 @@ def test_config_tracker_track_metrics_of(client: LDClient):
         return "done"
 
     def extract(r):
-        return LDAIMetrics(success=True, usage=TokenUsage(5, 2, 3))
+        return LDAIMetrics(success=True, tokens=TokenUsage(5, 2, 3))
 
     out = tracker.track_metrics_of(extract, fn)
     assert out == "done"
@@ -533,7 +533,7 @@ async def test_config_tracker_track_metrics_of_async_passes_graph_key(client: LD
         return "ok"
 
     def extract(r):
-        return LDAIMetrics(success=True, usage=TokenUsage(5, 2, 3))
+        return LDAIMetrics(success=True, tokens=TokenUsage(5, 2, 3))
 
     await tracker.track_metrics_of_async(extract, fn)
     gk_td = {**_base_td(), "graphKey": "gg"}
@@ -579,7 +579,7 @@ def test_ai_graph_tracker_summary_starts_empty(client: LDClient):
     assert isinstance(s, AIGraphMetricSummary)
     assert s.success is None
     assert s.duration_ms is None
-    assert s.usage is None
+    assert s.tokens is None
     assert s.path == []
 
 
@@ -595,8 +595,8 @@ def test_ai_graph_tracker_summary_populated_by_tracking(client: LDClient):
     assert s.success is True
     assert s.duration_ms == 123
     assert s.path == ["a", "b", "c"]
-    assert s.usage is not None
-    assert s.usage.total == 50
+    assert s.tokens is not None
+    assert s.tokens.total == 50
 
 
 def test_ai_graph_tracker_summary_reflects_failure(client: LDClient):
@@ -653,7 +653,7 @@ def test_ai_graph_tracker_duplicate_tokens_is_ignored(client: LDClient):
     g.track_total_tokens(TokenUsage(99, 50, 49))
     token_calls = [c for c in client.track.mock_calls if c.args[0] == "$ld:ai:graph:total_tokens"]  # type: ignore
     assert len(token_calls) == 1
-    assert g.get_summary().usage.total == 10  # type: ignore
+    assert g.get_summary().tokens.total == 10  # type: ignore
 
 
 # --- track_graph_metrics_of / track_graph_metrics_of_async tests ---
@@ -670,7 +670,7 @@ def test_track_graph_metrics_of_tracks_success(client: LDClient):
         success=True,
         path=["a", "b"],
         duration_ms=100,
-        usage=TokenUsage(10, 6, 4),
+        tokens=TokenUsage(10, 6, 4),
     )
 
     returned = g.track_graph_metrics_of(lambda r: metrics, lambda: result_obj)
@@ -756,7 +756,7 @@ async def test_track_graph_metrics_of_async_tracks_success(client: LDClient):
         success=True,
         path=["x", "y"],
         duration_ms=50,
-        usage=TokenUsage(20, 12, 8),
+        tokens=TokenUsage(20, 12, 8),
     )
 
     async def fn():
@@ -833,7 +833,7 @@ def test_duplicate_track_tokens_is_ignored(client: LDClient):
 
     # 3 track calls for total/input/output from the first call only
     assert client.track.call_count == 3  # type: ignore
-    assert tracker.get_summary().usage == tokens1
+    assert tracker.get_summary().tokens == tokens1
 
 
 def test_duplicate_track_success_is_ignored(client: LDClient):
@@ -1157,13 +1157,13 @@ def test_client_create_tracker_fails_on_invalid_json():
 def test_ldai_metrics_to_dict_includes_tool_calls_and_duration_ms():
     metrics = LDAIMetrics(
         success=True,
-        usage=TokenUsage(total=10, input=4, output=6),
+        tokens=TokenUsage(total=10, input=4, output=6),
         tool_calls=["search", "lookup"],
         duration_ms=123,
     )
     d = metrics.to_dict()
     assert d["success"] is True
-    assert d["usage"] == {"total": 10, "input": 4, "output": 6}
+    assert d["tokens"] == {"total": 10, "input": 4, "output": 6}
     assert d["toolCalls"] == ["search", "lookup"]
     assert d["durationMs"] == 123
 
@@ -1265,7 +1265,7 @@ def test_track_metrics_of_skips_track_tool_calls_when_absent(client: LDClient):
         return "done"
 
     def extract(_r):
-        return LDAIMetrics(success=True, usage=None)
+        return LDAIMetrics(success=True, tokens=None)
 
     tracker.track_metrics_of(extract, fn)
     assert tracker.get_summary().tool_calls == []
