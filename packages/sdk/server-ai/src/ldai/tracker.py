@@ -13,7 +13,7 @@ from ldclient import Context, LDClient, Result
 from ldai import log
 
 if TYPE_CHECKING:
-    from ldai.providers.types import GraphMetrics, GraphMetricSummary, LDAIMetrics
+    from ldai.providers.types import AIGraphMetrics, AIGraphMetricSummary, LDAIMetrics
 
 
 class FeedbackKind(Enum):
@@ -615,7 +615,7 @@ class AIGraphTracker:
     """
     Tracks graph-level metrics for AI agent graph operations.
 
-    Maintains an internal :class:`~ldai.providers.types.GraphMetricSummary`
+    Maintains an internal :class:`~ldai.providers.types.AIGraphMetricSummary`
     that is updated as tracking methods are called. Retrieve it via
     :meth:`get_summary`.
     """
@@ -643,15 +643,15 @@ class AIGraphTracker:
         self._version = version
         self._context = context
 
-        from ldai.providers.types import GraphMetricSummary
-        self._summary = GraphMetricSummary()
+        from ldai.providers.types import AIGraphMetricSummary
+        self._summary = AIGraphMetricSummary()
 
     @property
     def graph_key(self) -> str:
         """Graph configuration key used in tracking payloads."""
         return self._graph_key
 
-    def get_summary(self) -> GraphMetricSummary:
+    def get_summary(self) -> AIGraphMetricSummary:
         """
         Get the current summary of graph-level metrics.
 
@@ -820,10 +820,10 @@ class AIGraphTracker:
     def _track_from_graph_metrics(
         self,
         result: Any,
-        metrics_extractor: Callable[[Any], Optional[GraphMetrics]],
+        metrics_extractor: Callable[[Any], Optional[AIGraphMetrics]],
         elapsed_ms: int,
     ) -> None:
-        metrics: Optional[GraphMetrics] = None
+        metrics: Optional[AIGraphMetrics] = None
         try:
             metrics = metrics_extractor(result)
         except Exception as exc:
@@ -845,24 +845,24 @@ class AIGraphTracker:
 
     def track_graph_metrics_of(
         self,
-        metrics_extractor: Callable[[Any], Optional[GraphMetrics]],
+        metrics_extractor: Callable[[Any], Optional[AIGraphMetrics]],
         func: Callable[[], Any],
     ) -> Any:
         """
         Track graph-level metrics for a synchronous graph operation.
 
-        Times the operation, extracts :class:`~ldai.providers.types.GraphMetrics`
+        Times the operation, extracts :class:`~ldai.providers.types.AIGraphMetrics`
         via the provided extractor, and fires graph-level tracking events
         (path, duration, success/failure, total tokens).
 
-        If the extracted ``GraphMetrics`` has a non-``None`` ``duration_ms``,
+        If the extracted ``AIGraphMetrics`` has a non-``None`` ``duration_ms``,
         that value is used instead of the wall-clock elapsed time.
 
         Node-level metrics are not tracked by this method.
 
         For async operations, use :meth:`track_graph_metrics_of_async`.
 
-        :param metrics_extractor: Function that extracts GraphMetrics from the result
+        :param metrics_extractor: Function that extracts AIGraphMetrics from the result
         :param func: Synchronous callable that runs the graph operation
         :return: The result of the operation
         """
@@ -881,7 +881,7 @@ class AIGraphTracker:
 
     async def track_graph_metrics_of_async(
         self,
-        metrics_extractor: Callable[[Any], Optional[GraphMetrics]],
+        metrics_extractor: Callable[[Any], Optional[AIGraphMetrics]],
         func: Callable[[], Any],
     ) -> Any:
         """
@@ -889,7 +889,7 @@ class AIGraphTracker:
 
         Same event semantics as :meth:`track_graph_metrics_of`.
 
-        :param metrics_extractor: Function that extracts GraphMetrics from the result
+        :param metrics_extractor: Function that extracts AIGraphMetrics from the result
         :param func: Async callable that runs the graph operation
         :return: The result of the operation
         """

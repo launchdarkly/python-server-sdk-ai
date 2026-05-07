@@ -5,7 +5,7 @@ from typing import Any, Dict, List
 from ldai import log
 from ldai.agent_graph import AgentGraphDefinition, AgentGraphNode
 from ldai.providers import AgentGraphRunner, ToolRegistry
-from ldai.providers.types import AgentGraphRunnerResult, GraphMetrics, LDAIMetrics
+from ldai.providers.types import AgentGraphRunnerResult, AIGraphMetrics, LDAIMetrics
 
 from ldai_openai.openai_helper import (
     extract_usage_from_request_entry,
@@ -72,7 +72,7 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
         Graph-level tracking events are emitted by the managed layer.
 
         :param input: The string prompt to send to the agent graph
-        :return: AgentGraphRunnerResult with the final content and GraphMetrics
+        :return: AgentGraphRunnerResult with the final content and AIGraphMetrics
         """
         self._node_metrics = {}
         path: List[str] = []
@@ -99,7 +99,7 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
             return AgentGraphRunnerResult(
                 content=str(result.final_output),
                 raw=result,
-                metrics=GraphMetrics(
+                metrics=AIGraphMetrics(
                     success=True,
                     path=path,
                     duration_ms=duration_ms,
@@ -119,7 +119,7 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
             return AgentGraphRunnerResult(
                 content='',
                 raw=None,
-                metrics=GraphMetrics(
+                metrics=AIGraphMetrics(
                     success=False,
                     path=path,
                     duration_ms=duration_ms,

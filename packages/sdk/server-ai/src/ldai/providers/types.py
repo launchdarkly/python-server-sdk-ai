@@ -87,7 +87,7 @@ class ManagedResult:
 
 
 @dataclass
-class GraphMetrics:
+class AIGraphMetrics:
     """Contains raw metrics from a single agent graph run."""
 
     success: bool
@@ -107,7 +107,7 @@ class GraphMetrics:
 
 
 @dataclass
-class GraphMetricSummary:
+class AIGraphMetricSummary:
     """Contains a summary of metrics for an agent graph run."""
 
     success: Optional[bool] = None
@@ -136,7 +136,7 @@ class ManagedGraphResult:
     content: str
     """The graph's final output content."""
 
-    metrics: GraphMetricSummary
+    metrics: AIGraphMetricSummary
     """Aggregated metric summary from the graph tracker for this run."""
 
     raw: Optional[Any] = None
@@ -153,7 +153,7 @@ class AgentGraphRunnerResult:
     content: str
     """The graph's final output content."""
 
-    metrics: GraphMetrics
+    metrics: AIGraphMetrics
     """Metrics from the graph run."""
 
     raw: Optional[Any] = None

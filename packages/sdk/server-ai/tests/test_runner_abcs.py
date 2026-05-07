@@ -5,7 +5,7 @@ from ldai.providers import (
     AgentGraphRunnerResult,
     ToolRegistry,
 )
-from ldai.providers.types import GraphMetrics, LDAIMetrics, RunnerResult
+from ldai.providers.types import AIGraphMetrics, LDAIMetrics, RunnerResult
 
 # --- Concrete test doubles ---
 
@@ -15,7 +15,7 @@ class ConcreteAgentGraphRunner:
         return AgentGraphRunnerResult(
             content=f"graph response to: {input}",
             raw={"raw": input},
-            metrics=GraphMetrics(success=True),
+            metrics=AIGraphMetrics(success=True),
         )
 
 
@@ -54,7 +54,7 @@ async def test_agent_graph_runner_run_returns_agent_graph_runner_result():
 
 @pytest.mark.asyncio
 async def test_agent_graph_runner_result_fields():
-    metrics = GraphMetrics(success=False)
+    metrics = AIGraphMetrics(success=False)
     result = AgentGraphRunnerResult(content="", raw=None, metrics=metrics)
     assert result.content == ""
     assert result.raw is None

@@ -5,7 +5,7 @@ import pytest
 from ldclient import Config, Context, LDClient
 from ldclient.integrations.test_data import TestData
 
-from ldai.providers.types import GraphMetrics, GraphMetricSummary, LDAIMetrics
+from ldai.providers.types import AIGraphMetrics, AIGraphMetricSummary, LDAIMetrics
 from ldai.tracker import AIGraphTracker, FeedbackKind, LDAIConfigTracker, TokenUsage
 
 
@@ -576,7 +576,7 @@ def test_ai_graph_tracker_summary_starts_empty(client: LDClient):
     context = Context.create("user-key")
     g = AIGraphTracker(client, "variation-key", "graph-key", 2, context)
     s = g.get_summary()
-    assert isinstance(s, GraphMetricSummary)
+    assert isinstance(s, AIGraphMetricSummary)
     assert s.success is None
     assert s.duration_ms is None
     assert s.usage is None
@@ -666,7 +666,7 @@ def test_track_graph_metrics_of_tracks_success(client: LDClient):
     g = AIGraphTracker(client, "variation-key", "graph-key", 2, context)
 
     result_obj = "done"
-    metrics = GraphMetrics(
+    metrics = AIGraphMetrics(
         success=True,
         path=["a", "b"],
         duration_ms=100,
@@ -688,7 +688,7 @@ def test_track_graph_metrics_of_tracks_failure(client: LDClient):
     context = Context.create("user-key")
     g = AIGraphTracker(client, "variation-key", "graph-key", 2, context)
 
-    metrics = GraphMetrics(success=False, duration_ms=5)
+    metrics = AIGraphMetrics(success=False, duration_ms=5)
 
     g.track_graph_metrics_of(lambda r: metrics, lambda: "done")
 
@@ -701,7 +701,7 @@ def test_track_graph_metrics_of_uses_wallclock_when_no_duration_ms(client: LDCli
     context = Context.create("user-key")
     g = AIGraphTracker(client, "variation-key", "graph-key", 2, context)
 
-    metrics = GraphMetrics(success=True, duration_ms=None)
+    metrics = AIGraphMetrics(success=True, duration_ms=None)
 
     g.track_graph_metrics_of(lambda r: metrics, lambda: "done")
 
@@ -739,7 +739,7 @@ def test_track_graph_metrics_of_skips_empty_path(client: LDClient):
     context = Context.create("user-key")
     g = AIGraphTracker(client, "variation-key", "graph-key", 2, context)
 
-    metrics = GraphMetrics(success=True)
+    metrics = AIGraphMetrics(success=True)
 
     g.track_graph_metrics_of(lambda r: metrics, lambda: "done")
 
@@ -752,7 +752,7 @@ async def test_track_graph_metrics_of_async_tracks_success(client: LDClient):
     context = Context.create("user-key")
     g = AIGraphTracker(client, "variation-key", "graph-key", 2, context)
 
-    metrics = GraphMetrics(
+    metrics = AIGraphMetrics(
         success=True,
         path=["x", "y"],
         duration_ms=50,

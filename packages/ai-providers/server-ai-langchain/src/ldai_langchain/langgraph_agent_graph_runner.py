@@ -6,7 +6,7 @@ from typing import Annotated, Any, Dict, List, Set, Tuple
 from ldai import log
 from ldai.agent_graph import AgentGraphDefinition, AgentGraphNode
 from ldai.providers import AgentGraphRunner, ToolRegistry
-from ldai.providers.types import AgentGraphRunnerResult, GraphMetrics
+from ldai.providers.types import AgentGraphRunnerResult, AIGraphMetrics
 
 from ldai_langchain.langchain_helper import (
     build_structured_tools,
@@ -281,10 +281,10 @@ class LangGraphAgentGraphRunner(AgentGraphRunner):
         Builds a LangGraph StateGraph from the AgentGraphDefinition, compiles
         it, and invokes it. Uses a LangChain callback handler to collect
         per-node metrics. Graph-level tracking events are emitted by the
-        managed layer from the returned GraphMetrics.
+        managed layer from the returned AIGraphMetrics.
 
         :param input: The string prompt to send to the agent graph
-        :return: AgentGraphRunnerResult with the final content and GraphMetrics
+        :return: AgentGraphRunnerResult with the final content and AIGraphMetrics
         """
         start_ns = time.perf_counter_ns()
 
@@ -309,7 +309,7 @@ class LangGraphAgentGraphRunner(AgentGraphRunner):
             return AgentGraphRunnerResult(
                 content=output,
                 raw=result,
-                metrics=GraphMetrics(
+                metrics=AIGraphMetrics(
                     success=True,
                     path=handler.path,
                     duration_ms=duration_ms,
@@ -330,7 +330,7 @@ class LangGraphAgentGraphRunner(AgentGraphRunner):
             return AgentGraphRunnerResult(
                 content='',
                 raw=None,
-                metrics=GraphMetrics(
+                metrics=AIGraphMetrics(
                     success=False,
                     duration_ms=duration_ms,
                 ),
