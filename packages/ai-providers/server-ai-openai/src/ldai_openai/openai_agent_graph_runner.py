@@ -63,7 +63,7 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
         self._tool_name_map: Dict[str, str] = {}
         self._node_metrics: Dict[str, LDAIMetrics] = {}
 
-    async def run(self, input: Any) -> AgentGraphRunnerResult:
+    async def run(self, input: str) -> AgentGraphRunnerResult:
         """
         Run the agent graph with the given input.
 
@@ -81,7 +81,6 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
         if root_key:
             path.append(root_key)
 
-        input_str = str(input)
         start_ns = time.perf_counter_ns()
         state = _RunState(last_handoff_ns=start_ns, last_node_key=root_key)
         try:
@@ -89,7 +88,7 @@ class OpenAIAgentGraphRunner(AgentGraphRunner):
             root_agent = self._build_agents(path, state)
             if root_key:
                 self._node_metrics[root_key] = LDAIMetrics(success=False)
-            result = await Runner.run(root_agent, input_str)
+            result = await Runner.run(root_agent, input)
             self._flush_final_segment(state, result)
             self._collect_tool_calls(result)
 
