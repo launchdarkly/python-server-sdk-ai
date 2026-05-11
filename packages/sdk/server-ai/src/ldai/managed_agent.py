@@ -4,10 +4,13 @@ import asyncio
 from typing import List
 
 from ldai import log
+from ldai._otel import run_span
 from ldai.models import AIAgentConfig
 from ldai.providers.runner import Runner
 from ldai.providers.types import JudgeResult, ManagedResult
 from ldai.tracker import LDAIConfigTracker
+
+_SPAN_NAME = "ld.ai.agent.run"
 
 
 class ManagedAgent:
@@ -39,20 +42,21 @@ class ManagedAgent:
         :return: ManagedResult containing the agent's output, metric summary,
             and an optional evaluations task
         """
-        tracker = self._ai_config.create_tracker()
-        result = await tracker.track_metrics_of_async(
-            lambda r: r.metrics,
-            lambda: self._agent_runner.run(input),
-        )
+        with run_span(_SPAN_NAME, self._ai_config.key):
+            tracker = self._ai_config.create_tracker()
+            result = await tracker.track_metrics_of_async(
+                lambda r: r.metrics,
+                lambda: self._agent_runner.run(input),
+            )
 
-        evaluations_task = self._track_judge_results(tracker, input, result.content)
+            evaluations_task = self._track_judge_results(tracker, input, result.content)
 
-        return ManagedResult(
-            content=result.content,
-            metrics=tracker.get_summary(),
-            raw=result.raw,
-            evaluations=evaluations_task,
-        )
+            return ManagedResult(
+                content=result.content,
+                metrics=tracker.get_summary(),
+                raw=result.raw,
+                evaluations=evaluations_task,
+            )
 
     def _track_judge_results(
         self,

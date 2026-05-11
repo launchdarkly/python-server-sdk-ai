@@ -24,6 +24,11 @@ dependencies = [
     "chevron==0.14.0",
 ]
 
+[project.optional-dependencies]
+otel = [
+    "opentelemetry-api>=1.0.0",
+]
+
 [project.urls]
 Homepage = "https://docs.launchdarkly.com/sdk/ai/python"
 Repository = "https://github.com/launchdarkly/python-server-sdk-ai"
@@ -38,6 +43,10 @@ dev = [
     "mypy==1.18.2",
     "pycodestyle>=2.12.1,<3.0.0",
     "isort>=5.13.2,<7.0.0",
+    # Used by tests/test_otel.py to exercise the OTel-enabled code path.
+    # Not a runtime dependency — see [project.optional-dependencies].otel.
+    "opentelemetry-api>=1.0.0",
+    "opentelemetry-sdk>=1.0.0",
 ]
 docs = [
     "sphinx>=6,<8",

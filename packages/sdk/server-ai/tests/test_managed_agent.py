@@ -25,6 +25,7 @@ def _make_summary(success: bool = True) -> LDAIMetricSummary:
 def _make_noop_evaluator_config() -> MagicMock:
     """Build a minimal mock AIAgentConfig with a noop evaluator and a mock tracker."""
     mock_config = MagicMock(spec=AIAgentConfig)
+    mock_config.key = "test-agent"
     mock_tracker = MagicMock(spec=LDAIConfigTracker)
     mock_tracker.track_metrics_of_async = AsyncMock(
         return_value=RunnerResult(
@@ -106,6 +107,7 @@ class TestManagedAgentRun:
     async def test_run_uses_create_tracker_for_fresh_tracker(self):
         """Should use create_tracker() factory for a fresh tracker per invocation."""
         mock_config = MagicMock(spec=AIAgentConfig)
+        mock_config.key = "test-agent"
         fresh_tracker = MagicMock(spec=LDAIConfigTracker)
         fresh_tracker.track_metrics_of_async = AsyncMock(
             return_value=RunnerResult(
@@ -163,6 +165,7 @@ class TestManagedAgentEvaluations:
         )
 
         mock_config = MagicMock(spec=AIAgentConfig)
+        mock_config.key = "test-agent"
         mock_tracker = MagicMock(spec=LDAIConfigTracker)
         mock_tracker.track_metrics_of_async = AsyncMock(
             return_value=RunnerResult(content="resp", raw=None, metrics=LDAIMetrics(success=True))
@@ -203,6 +206,7 @@ class TestManagedAgentEvaluations:
         )
 
         mock_config = MagicMock(spec=AIAgentConfig)
+        mock_config.key = "test-agent"
         mock_tracker = MagicMock(spec=LDAIConfigTracker)
         mock_tracker.track_metrics_of_async = AsyncMock(
             return_value=RunnerResult(content="resp", raw=None, metrics=LDAIMetrics(success=True))
@@ -239,6 +243,7 @@ class TestManagedAgentEvaluations:
         )
 
         mock_config = MagicMock(spec=AIAgentConfig)
+        mock_config.key = "test-agent"
         mock_tracker = MagicMock(spec=LDAIConfigTracker)
         mock_tracker.track_metrics_of_async = AsyncMock(
             return_value=RunnerResult(content="resp", raw=None, metrics=LDAIMetrics(success=True))
@@ -290,6 +295,7 @@ class TestManagedAgentEvaluations:
         )
 
         mock_config = MagicMock(spec=AIAgentConfig)
+        mock_config.key = "test-agent"
         mock_tracker = MagicMock(spec=LDAIConfigTracker)
         mock_tracker.track_metrics_of_async = AsyncMock(
             return_value=RunnerResult(content="resp", raw=None, metrics=LDAIMetrics(success=True))

@@ -2,6 +2,7 @@
 
 from typing import Dict
 
+from ldai._otel import run_span
 from ldai.agent_graph import AgentGraphDefinition
 from ldai.providers import AgentGraphRunner
 from ldai.providers.types import (
@@ -10,6 +11,8 @@ from ldai.providers.types import (
     ManagedGraphResult,
 )
 from ldai.tracker import LDAIMetricSummary
+
+_SPAN_NAME = "ld.ai.agent_graph.run"
 
 
 class ManagedAgentGraph:
@@ -49,21 +52,22 @@ class ManagedAgentGraph:
         :return: ManagedGraphResult containing the content, metric summary,
             and raw response.
         """
-        graph_tracker = self._graph.create_tracker()
-        result = await graph_tracker.track_graph_metrics_of_async(
-            lambda r: r.metrics,
-            lambda: self._runner.run(input),
-        )
+        with run_span(_SPAN_NAME, self._graph._agent_graph.key):
+            graph_tracker = self._graph.create_tracker()
+            result = await graph_tracker.track_graph_metrics_of_async(
+                lambda r: r.metrics,
+                lambda: self._runner.run(input),
+            )
 
-        summary = graph_tracker.get_summary()
-        summary.node_metrics = self._track_node_metrics(result.metrics.node_metrics)
+            summary = graph_tracker.get_summary()
+            summary.node_metrics = self._track_node_metrics(result.metrics.node_metrics)
 
-        return ManagedGraphResult(
-            content=result.content,
-            metrics=summary,
-            raw=result.raw,
-            evaluations=None,
-        )
+            return ManagedGraphResult(
+                content=result.content,
+                metrics=summary,
+                raw=result.raw,
+                evaluations=None,
+            )
 
     def _track_node_metrics(
         self, node_metrics: Dict[str, LDAIMetrics]
