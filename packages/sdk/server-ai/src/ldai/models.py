@@ -334,8 +334,6 @@ class AIJudgeConfigDefault(AIConfigDefault):
     Default Judge-specific AI Config with required evaluation metric key.
     """
     messages: Optional[List[LDMessage]] = None
-    # Deprecated: evaluation_metric_key is used instead
-    evaluation_metric_keys: Optional[List[str]] = None
     evaluation_metric_key: Optional[str] = None
 
     def to_dict(self) -> dict:
@@ -345,9 +343,6 @@ class AIJudgeConfigDefault(AIConfigDefault):
         result = self._base_to_dict()
         result['messages'] = [message.to_dict() for message in self.messages] if self.messages else None
         result['evaluationMetricKey'] = self.evaluation_metric_key
-        # Include deprecated evaluationMetricKeys for backward compatibility
-        if self.evaluation_metric_keys:
-            result['evaluationMetricKeys'] = self.evaluation_metric_keys
         return result
 
 
@@ -356,8 +351,6 @@ class AIJudgeConfig(AIConfig):
     """
     Judge-specific AI Config with required evaluation metric key.
     """
-    # Deprecated: evaluation_metric_key is used instead
-    evaluation_metric_keys: List[str] = field(default_factory=list)
     messages: Optional[List[LDMessage]] = None
     evaluation_metric_key: Optional[str] = None
 
