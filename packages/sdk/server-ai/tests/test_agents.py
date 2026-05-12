@@ -3,8 +3,8 @@ from ldclient import Config, Context, LDClient
 from ldclient.integrations.test_data import TestData
 
 from ldai import (
-    LDAIAgentConfig,
-    LDAIAgentDefaults,
+    AIAgentConfigDefault,
+    AIAgentConfigRequest,
     LDAIClient,
     ModelConfig,
     ProviderConfig,
@@ -140,9 +140,9 @@ def ldai_client(client: LDClient) -> LDAIClient:
 def test_single_agent_method(ldai_client: LDAIClient):
     """Test the single agent() method functionality."""
     context = Context.builder('user-key').set('expertise', 'advanced').build()
-    config = LDAIAgentConfig(
+    config = AIAgentConfigRequest(
         key='research-agent',
-        default=LDAIAgentDefaults(
+        default=AIAgentConfigDefault(
             enabled=False,
             model=ModelConfig('fallback-model'),
             instructions="Default instructions"
@@ -150,7 +150,7 @@ def test_single_agent_method(ldai_client: LDAIClient):
         variables={'topic': 'quantum computing'}
     )
 
-    agent = ldai_client.agent(config, context)
+    agent = ldai_client.agent_config(config.key, context, config.default, config.variables)
 
     assert agent.enabled is True
     assert agent.model is not None
@@ -169,9 +169,9 @@ def test_single_agent_method(ldai_client: LDAIClient):
 def test_single_agent_with_defaults(ldai_client: LDAIClient):
     """Test single agent method with non-existent flag using defaults."""
     context = Context.create('user-key')
-    config = LDAIAgentConfig(
+    config = AIAgentConfigRequest(
         key='non-existent-agent',
-        default=LDAIAgentDefaults(
+        default=AIAgentConfigDefault(
             enabled=True,
             model=ModelConfig('default-model', parameters={'temp': 0.8}),
             provider=ProviderConfig('default-provider'),
@@ -180,7 +180,7 @@ def test_single_agent_with_defaults(ldai_client: LDAIClient):
         variables={'task': 'general assistance'}
     )
 
-    agent = ldai_client.agent(config, context)
+    agent = ldai_client.agent_config(config.key, context, config.default, config.variables)
 
     assert agent.enabled is True
     assert agent.model is not None and agent.model.name == 'default-model'
@@ -191,22 +191,22 @@ def test_single_agent_with_defaults(ldai_client: LDAIClient):
 
 
 def test_agents_method_with_configs(ldai_client: LDAIClient):
-    """Test the new agents() method with LDAIAgentConfig objects."""
+    """Test the new agents() method with AIAgentConfigRequest objects."""
     context = Context.create('user-key')
 
     agent_configs = [
-        LDAIAgentConfig(
+        AIAgentConfigRequest(
             key='customer-support-agent',
-            default=LDAIAgentDefaults(
+            default=AIAgentConfigDefault(
                 enabled=False,
                 model=ModelConfig('fallback-model'),
                 instructions="Default support"
             ),
             variables={'company_name': 'Acme Corp'}
         ),
-        LDAIAgentConfig(
+        AIAgentConfigRequest(
             key='sales-assistant',
-            default=LDAIAgentDefaults(
+            default=AIAgentConfigDefault(
                 enabled=False,
                 model=ModelConfig('fallback-model'),
                 instructions="Default sales"
@@ -215,7 +215,7 @@ def test_agents_method_with_configs(ldai_client: LDAIClient):
         )
     ]
 
-    agents = ldai_client.agents(agent_configs, context)
+    agents = ldai_client.agent_configs(agent_configs, context)
 
     assert len(agents) == 2
     assert 'customer-support-agent' in agents
@@ -236,17 +236,17 @@ def test_agents_method_different_variables_per_agent(ldai_client: LDAIClient):
     context = Context.builder('user-key').name('Alice').build()
 
     agent_configs = [
-        LDAIAgentConfig(
+        AIAgentConfigRequest(
             key='personalized-agent',
-            default=LDAIAgentDefaults(
+            default=AIAgentConfigDefault(
                 enabled=True,
                 instructions="Default personal"
             ),
             variables={}  # Will use context only
         ),
-        LDAIAgentConfig(
+        AIAgentConfigRequest(
             key='customer-support-agent',
-            default=LDAIAgentDefaults(
+            default=AIAgentConfigDefault(
                 enabled=True,
                 instructions="Default support"
             ),
@@ -254,7 +254,7 @@ def test_agents_method_different_variables_per_agent(ldai_client: LDAIClient):
         )
     ]
 
-    agents = ldai_client.agents(agent_configs, context)
+    agents = ldai_client.agent_configs(agent_configs, context)
 
     personal_agent = agents['personalized-agent']
     assert personal_agent.instructions == 'Hello Alice! I am your personal assistant. Your user key is user-key.'
@@ -273,9 +273,9 @@ def test_agents_with_multi_context_interpolation(ldai_client: LDAIClient):
     context = Context.multi_builder().add(user_context).add(org_context).build()
 
     agent_configs = [
-        LDAIAgentConfig(
+        AIAgentConfigRequest(
             key='multi-context-agent',
-            default=LDAIAgentDefaults(
+            default=AIAgentConfigDefault(
                 enabled=True,
                 instructions="Default multi-context"
             ),
@@ -283,7 +283,7 @@ def test_agents_with_multi_context_interpolation(ldai_client: LDAIClient):
         )
     ]
 
-    agents = ldai_client.agents(agent_configs, context)
+    agents = ldai_client.agent_configs(agent_configs, context)
 
     agent = agents['multi-context-agent']
     assert agent.instructions == 'Welcome Alice from LaunchDarkly! Your organization tier is Enterprise.'
@@ -292,13 +292,13 @@ def test_agents_with_multi_context_interpolation(ldai_client: LDAIClient):
 def test_disabled_agent_single_method(ldai_client: LDAIClient):
     """Test that disabled agents are properly handled in single agent method."""
     context = Context.create('user-key')
-    config = LDAIAgentConfig(
+    config = AIAgentConfigRequest(
         key='disabled-agent',
-        default=LDAIAgentDefaults(enabled=False),
+        default=AIAgentConfigDefault(enabled=False),
         variables={}
     )
 
-    agent = ldai_client.agent(config, context)
+    agent = ldai_client.agent_config(config.key, context, config.default, config.variables)
 
     assert agent.enabled is False
     assert callable(agent.create_tracker)
@@ -309,14 +309,14 @@ def test_disabled_agent_multiple_method(ldai_client: LDAIClient):
     context = Context.create('user-key')
 
     agent_configs = [
-        LDAIAgentConfig(
+        AIAgentConfigRequest(
             key='disabled-agent',
-            default=LDAIAgentDefaults(enabled=False),
+            default=AIAgentConfigDefault(enabled=False),
             variables={}
         )
     ]
 
-    agents = ldai_client.agents(agent_configs, context)
+    agents = ldai_client.agent_configs(agent_configs, context)
 
     assert len(agents) == 1
     assert agents['disabled-agent'].enabled is False
@@ -325,16 +325,16 @@ def test_disabled_agent_multiple_method(ldai_client: LDAIClient):
 def test_agent_with_missing_metadata(ldai_client: LDAIClient):
     """Test agent handling when metadata is minimal or missing."""
     context = Context.create('user-key')
-    config = LDAIAgentConfig(
+    config = AIAgentConfigRequest(
         key='minimal-agent',
-        default=LDAIAgentDefaults(
+        default=AIAgentConfigDefault(
             enabled=False,
             model=ModelConfig('default-model'),
             instructions="Default instructions"
         )
     )
 
-    agent = ldai_client.agent(config, context)
+    agent = ldai_client.agent_config(config.key, context, config.default, config.variables)
 
     assert agent.enabled is True  # From flag
     assert agent.instructions == 'Minimal agent configuration.'
@@ -343,10 +343,10 @@ def test_agent_with_missing_metadata(ldai_client: LDAIClient):
 
 
 def test_agent_config_dataclass():
-    """Test the LDAIAgentConfig dataclass functionality."""
-    config = LDAIAgentConfig(
+    """Test the AIAgentConfigRequest dataclass functionality."""
+    config = AIAgentConfigRequest(
         key='test-agent',
-        default=LDAIAgentDefaults(
+        default=AIAgentConfigDefault(
             enabled=True,
             instructions="Test instructions"
         ),
@@ -359,9 +359,9 @@ def test_agent_config_dataclass():
     assert config.variables == {'key': 'value'}
 
     # Test with no variables
-    config_no_vars = LDAIAgentConfig(
+    config_no_vars = AIAgentConfigRequest(
         key='test-agent-2',
-        default=LDAIAgentDefaults(enabled=False)
+        default=AIAgentConfigDefault(enabled=False)
     )
 
     assert config_no_vars.key == 'test-agent-2'
@@ -382,10 +382,10 @@ def test_agents_request_without_default_uses_disabled(ldai_client: LDAIClient):
     context = Context.create('user-key')
 
     agent_requests = [
-        LDAIAgentConfig(key='missing-agent'),
+        AIAgentConfigRequest(key='missing-agent'),
     ]
 
-    agents = ldai_client.agents(agent_requests, context)
+    agents = ldai_client.agent_configs(agent_requests, context)
 
     assert 'missing-agent' in agents
     assert agents['missing-agent'].enabled is False

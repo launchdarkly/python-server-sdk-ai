@@ -1,4 +1,3 @@
-import warnings
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Literal, Optional, Union
 
@@ -335,8 +334,6 @@ class AIJudgeConfigDefault(AIConfigDefault):
     Default Judge-specific AI Config with required evaluation metric key.
     """
     messages: Optional[List[LDMessage]] = None
-    # Deprecated: evaluation_metric_key is used instead
-    evaluation_metric_keys: Optional[List[str]] = None
     evaluation_metric_key: Optional[str] = None
 
     def to_dict(self) -> dict:
@@ -346,9 +343,6 @@ class AIJudgeConfigDefault(AIConfigDefault):
         result = self._base_to_dict()
         result['messages'] = [message.to_dict() for message in self.messages] if self.messages else None
         result['evaluationMetricKey'] = self.evaluation_metric_key
-        # Include deprecated evaluationMetricKeys for backward compatibility
-        if self.evaluation_metric_keys:
-            result['evaluationMetricKeys'] = self.evaluation_metric_keys
         return result
 
 
@@ -357,8 +351,6 @@ class AIJudgeConfig(AIConfig):
     """
     Judge-specific AI Config with required evaluation metric key.
     """
-    # Deprecated: evaluation_metric_key is used instead
-    evaluation_metric_keys: List[str] = field(default_factory=list)
     messages: Optional[List[LDMessage]] = None
     evaluation_metric_key: Optional[str] = None
 
@@ -424,22 +416,3 @@ class AIAgentGraphConfig:
     root_config_key: str
     edges: List[Edge]
     enabled: bool = True
-
-
-# ============================================================================
-# Deprecated Type Aliases for Backward Compatibility
-# ============================================================================
-
-# Note: AIConfig is now defined above as a base class (line 169).
-# For backward compatibility, code should migrate to:
-# - Use AICompletionConfigDefault for default/input values
-# - Use AICompletionConfig for return values
-
-# Deprecated: Use AIAgentConfigDefault instead
-LDAIAgentDefaults = AIAgentConfigDefault
-
-# Deprecated: Use AIAgentConfigRequest instead
-LDAIAgentConfig = AIAgentConfigRequest
-
-# Deprecated: Use AIAgentConfig instead (note: this was the old return type)
-LDAIAgent = AIAgentConfig

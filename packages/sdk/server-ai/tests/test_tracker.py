@@ -49,7 +49,7 @@ def test_summary_starts_empty(client: LDClient):
         provider_name="fakeProvider", context=context,
     )
 
-    assert tracker.get_summary().duration is None
+    assert tracker.get_summary().duration_ms is None
     assert tracker.get_summary().feedback is None
     assert tracker.get_summary().success is None
     assert tracker.get_summary().tokens is None
@@ -72,7 +72,7 @@ def test_tracks_duration(client: LDClient):
         100,
     )
 
-    assert tracker.get_summary().duration == 100
+    assert tracker.get_summary().duration_ms == 100
 
 
 def test_tracks_duration_of(client: LDClient):
@@ -208,7 +208,7 @@ def test_tracks_bedrock_metrics(client: LDClient):
     client.track.assert_has_calls(calls)  # type: ignore
 
     assert tracker.get_summary().success is True
-    assert tracker.get_summary().duration == 50
+    assert tracker.get_summary().duration_ms == 50
     assert tracker.get_summary().tokens == TokenUsage(330, 220, 110)
 
 
@@ -246,77 +246,8 @@ def test_tracks_bedrock_metrics_with_error(client: LDClient):
     client.track.assert_has_calls(calls)  # type: ignore
 
     assert tracker.get_summary().success is False
-    assert tracker.get_summary().duration == 50
+    assert tracker.get_summary().duration_ms == 50
     assert tracker.get_summary().tokens == TokenUsage(330, 220, 110)
-
-
-def test_tracks_openai_metrics(client: LDClient):
-    context = Context.create("user-key")
-    tracker = LDAIConfigTracker(
-        ld_client=client, run_id="test-run-id", config_key="config-key",
-        variation_key="variation-key", version=3, model_name="fakeModel",
-        provider_name="fakeProvider", context=context,
-    )
-
-    class Result:
-        def __init__(self):
-            self.usage = Usage()
-
-    class Usage:
-        def to_dict(self):
-            return {
-                "total_tokens": 330,
-                "prompt_tokens": 220,
-                "completion_tokens": 110,
-            }
-
-    def get_result():
-        return Result()
-
-    with pytest.warns(DeprecationWarning, match="track_openai_metrics is deprecated"):
-        tracker.track_openai_metrics(get_result)
-
-    _otd = {"runId": ANY, "variationKey": "variation-key", "configKey": "config-key",
-            "version": 3, "modelName": "fakeModel", "providerName": "fakeProvider"}
-    calls = [
-        call("$ld:ai:generation:success", context, _otd, 1),
-        call("$ld:ai:tokens:total", context, _otd, 330),
-        call("$ld:ai:tokens:input", context, _otd, 220),
-        call("$ld:ai:tokens:output", context, _otd, 110),
-    ]
-
-    client.track.assert_has_calls(calls, any_order=False)  # type: ignore
-
-    assert tracker.get_summary().tokens == TokenUsage(330, 220, 110)
-
-
-def test_tracks_openai_metrics_with_exception(client: LDClient):
-    context = Context.create("user-key")
-    tracker = LDAIConfigTracker(
-        ld_client=client, run_id="test-run-id", config_key="config-key",
-        variation_key="variation-key", version=3, model_name="fakeModel",
-        provider_name="fakeProvider", context=context,
-    )
-
-    def raise_exception():
-        raise ValueError("Something went wrong")
-
-    with pytest.warns(DeprecationWarning, match="track_openai_metrics is deprecated"):
-        try:
-            tracker.track_openai_metrics(raise_exception)
-            assert False, "Should have thrown an exception"
-        except ValueError:
-            pass
-
-    _eetd = {"runId": ANY, "variationKey": "variation-key", "configKey": "config-key",
-             "version": 3, "modelName": "fakeModel", "providerName": "fakeProvider"}
-    calls = [
-        call("$ld:ai:generation:error", context, _eetd, 1),
-    ]
-
-    client.track.assert_has_calls(calls, any_order=False)  # type: ignore
-
-    assert tracker.get_summary().tokens is None
 
 
 @pytest.mark.parametrize(
@@ -802,7 +733,7 @@ def test_duplicate_track_duration_is_ignored(client: LDClient):
     tracker.track_duration(200)
 
     assert client.track.call_count == 1  # type: ignore
-    assert tracker.get_summary().duration == 100
+    assert tracker.get_summary().duration_ms == 100
 
 
 def test_duplicate_track_time_to_first_token_is_ignored(client: LDClient):

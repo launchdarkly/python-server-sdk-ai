@@ -3,7 +3,6 @@ from __future__ import annotations
 import base64
 import json
 import time
-import warnings
 from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Optional
@@ -57,19 +56,6 @@ class LDAIMetricSummary:
     @property
     def duration_ms(self) -> Optional[int]:
         """Duration of the AI operation in milliseconds."""
-        return self._duration_ms
-
-    @property
-    def duration(self) -> Optional[int]:
-        """
-        .. deprecated::
-            Use :attr:`duration_ms` instead.
-        """
-        warnings.warn(
-            "LDAIMetricSummary.duration is deprecated. Use duration_ms instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
         return self._duration_ms
 
     @property
@@ -463,48 +449,6 @@ class LDAIConfigTracker:
             "$ld:ai:generation:error", self._context, self.__get_track_data(), 1
         )
 
-    def track_openai_metrics(self, func):
-        """
-        Track OpenAI-specific operations.
-
-        .. deprecated:: Use :meth:`track_metrics_of` with ``get_ai_metrics_from_response``
-            from ``ldai_openai`` instead. This method will be removed in a future version.
-
-        This function will track the duration of the operation, the token
-        usage, and the success or error status.
-
-        If the provided function throws, then this method will also throw.
-
-        In the case the provided function throws, this function will record the
-        duration and an error.
-
-        A failed operation will not have any token usage data.
-
-        :param func: Function to track.
-        :return: Result of the tracked function.
-        """
-        warnings.warn(
-            "track_openai_metrics is deprecated. Use track_metrics_of with "
-            "get_ai_metrics_from_response from ldai_openai instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        start_ns = time.perf_counter_ns()
-        try:
-            result = func()
-            duration = (time.perf_counter_ns() - start_ns) // 1_000_000
-            self.track_duration(duration)
-            self.track_success()
-            if hasattr(result, "usage") and hasattr(result.usage, "to_dict"):
-                self.track_tokens(_openai_to_token_usage(result.usage.to_dict()))
-        except Exception:
-            duration = (time.perf_counter_ns() - start_ns) // 1_000_000
-            self.track_duration(duration)
-            self.track_error()
-            raise
-
-        return result
-
     def track_bedrock_converse_metrics(self, res: dict) -> dict:
         """
         Track AWS Bedrock conversation operations.
@@ -594,20 +538,6 @@ def _bedrock_to_token_usage(data: dict) -> TokenUsage:
         total=data.get("totalTokens", 0),
         input=data.get("inputTokens", 0),
         output=data.get("outputTokens", 0),
-    )
-
-
-def _openai_to_token_usage(data: dict) -> TokenUsage:
-    """
-    Convert an OpenAI usage dictionary to a TokenUsage object.
-
-    :param data: Dictionary containing OpenAI usage data.
-    :return: TokenUsage object containing usage data.
-    """
-    return TokenUsage(
-        total=data.get("total_tokens", 0),
-        input=data.get("prompt_tokens", 0),
-        output=data.get("completion_tokens", 0),
     )
 
 
