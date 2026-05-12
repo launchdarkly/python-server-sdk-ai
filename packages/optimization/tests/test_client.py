@@ -10,7 +10,13 @@ from ldai.models import LDMessage, ModelConfig
 from ldai.tracker import TokenUsage
 from ldclient import Context
 
-from ldai_optimizer.client import OptimizationClient, _compute_validation_count, _find_model_config
+from ldai_optimizer.client import (
+    OptimizationClient,
+    _MAX_STANDARD_HISTORY_LENGTH,
+    _compute_validation_count,
+    _find_model_config,
+    _trim_history,
+)
 from ldai_optimizer.util import judge_passed
 from ldai_optimizer.dataclasses import (
     AIJudgeCallConfig,
@@ -538,7 +544,7 @@ class TestEvaluateAcceptanceJudge:
         assert "state the duration" in config.instructions
 
     async def test_duration_context_includes_baseline_comparison_when_history_present(self):
-        """When history[0] has a duration, the judge instructions include a baseline comparison."""
+        """When a baseline duration is captured, the judge instructions include a baseline comparison."""
         self.client._history = [
             OptimizationContext(
                 scores={},
@@ -550,6 +556,7 @@ class TestEvaluateAcceptanceJudge:
                 duration_ms=2000.0,
             )
         ]
+        self.client._baseline_duration_ms = 2000.0
         judge = OptimizationJudge(
             threshold=0.8,
             acceptance_statement="Responses should have low latency.",
@@ -581,6 +588,7 @@ class TestEvaluateAcceptanceJudge:
                 duration_ms=1000.0,
             )
         ]
+        self.client._baseline_duration_ms = 1000.0
         judge = OptimizationJudge(
             threshold=0.8,
             acceptance_statement="The response must be fast.",
@@ -2686,7 +2694,12 @@ class TestTokenLimiting:
         assert len(results) == 1
 
     async def test_gt_stops_mid_batch_when_limit_exceeded_on_second_sample(self):
-        """Token limit exceeded on the second of two samples stops after that sample."""
+        """Token limit exceeded on the final sample of a batch — all passed — marks run successful.
+
+        With 2 samples and the budget exhausted after sample 2 (the last one), and
+        both samples passing their judges, the run should be marked succeeded rather
+        than failed, because the token limit was hit on the final successful iteration.
+        """
         agent_responses = [
             OptimizationResponse(output="Answer 1.", usage=TokenUsage(total=100, input=60, output=40)),
             OptimizationResponse(output="Answer 2.", usage=TokenUsage(total=200, input=120, output=80)),
@@ -2699,13 +2712,14 @@ class TestTokenLimiting:
         opts = _make_gt_options(
             handle_agent_call=handle_agent_call,
             handle_judge_call=handle_judge_call,
-            token_limit=250,  # 100 + 200 = 300 ≥ 250 → trip on second sample
+            token_limit=250,  # 100 + 200 = 300 ≥ 250 → trip on second (final) sample
             max_attempts=5,
         )
         results = await client.optimize_from_ground_truth_options("test-agent", opts)
-        assert client._last_run_succeeded is False
+        # All samples passed; token limit hit only after the final sample → success
+        assert client._last_run_succeeded is True
         assert handle_agent_call.call_count == 2
-        # Both samples processed so far are in the results
+        # Both samples are in the results
         assert len(results) == 2
 
     async def test_gt_on_failing_result_called_on_token_limit(self):
@@ -2810,6 +2824,300 @@ class TestTokenLimiting:
         )
         await client.optimize_from_options("test-agent", options2)
         assert client._last_run_succeeded is True
+
+
+# ---------------------------------------------------------------------------
+# History truncation
+# ---------------------------------------------------------------------------
+
+
+class TestHistoryTruncation:
+    """Tests that _trim_history and the optimizer correctly cap _history growth."""
+
+    def test_trim_history_no_op_when_under_limit(self):
+        ctx = OptimizationContext(
+            scores={}, completion_response="r", current_instructions="i",
+            current_parameters={}, current_variables={}, current_model="m", iteration=1,
+        )
+        history = [ctx, ctx, ctx]
+        assert _trim_history(history, 5) is history
+
+    def test_trim_history_keeps_most_recent_items(self):
+        """_trim_history is a pure tail slice — it keeps the most recent max_len items."""
+        ctxs = [
+            OptimizationContext(
+                scores={}, completion_response=str(i), current_instructions="i",
+                current_parameters={}, current_variables={}, current_model="m", iteration=i,
+            )
+            for i in range(10)
+        ]
+        result = _trim_history(ctxs, 4)
+        assert len(result) == 4
+        # The four MOST RECENT items are retained; the oldest are discarded.
+        assert result[0] is ctxs[6]
+        assert result[-1] is ctxs[-1]
+
+    def test_trim_history_max_len_1(self):
+        ctxs = [
+            OptimizationContext(
+                scores={}, completion_response=str(i), current_instructions="i",
+                current_parameters={}, current_variables={}, current_model="m", iteration=i,
+            )
+            for i in range(5)
+        ]
+        result = _trim_history(ctxs, 1)
+        assert len(result) == 1
+        assert result[0] is ctxs[-1]
+
+    @pytest.mark.asyncio
+    async def test_gt_history_trimmed_to_n_after_each_attempt(self):
+        """After each GT attempt _history must not exceed n (sample count)."""
+        mock_ldai = _make_ldai_client()
+        client = _make_client(mock_ldai)
+
+        # Three attempts, 2 samples each (n=2); judge fails on every attempt so
+        # we cycle through all max_attempts and history never exceeds 2 items.
+        opts = _make_gt_options(
+            handle_judge_call=AsyncMock(return_value=OptimizationResponse(output=JUDGE_FAIL_RESPONSE)),
+            max_attempts=3,
+        )
+
+        history_lengths: list[int] = []
+        original_extend = list.extend
+
+        def spy_extend(self_list, iterable):
+            original_extend(self_list, iterable)
+
+        with patch.object(client, "_generate_new_variation", new_callable=AsyncMock):
+            results = await client.optimize_from_ground_truth_options("test-agent", opts)
+
+        # _history should be capped at n=2 (the number of samples)
+        assert len(client._history) <= 2
+
+    @pytest.mark.asyncio
+    async def test_standard_history_trimmed_to_max_standard_length(self):
+        """After each standard optimizer iteration _history must not exceed _MAX_STANDARD_HISTORY_LENGTH."""
+        mock_ldai = _make_ldai_client()
+        client = _make_client(mock_ldai)
+
+        # Enough failing attempts to push history beyond the cap.
+        attempts = _MAX_STANDARD_HISTORY_LENGTH + 3
+        opts = _make_options(
+            handle_judge_call=AsyncMock(return_value=OptimizationResponse(output=JUDGE_FAIL_RESPONSE)),
+            max_attempts=attempts,
+        )
+
+        with patch.object(client, "_generate_new_variation", new_callable=AsyncMock):
+            await client.optimize_from_options("test-agent", opts)
+
+        assert len(client._history) <= _MAX_STANDARD_HISTORY_LENGTH
+
+
+# ---------------------------------------------------------------------------
+# Accumulated token usage
+# ---------------------------------------------------------------------------
+
+
+class TestAccumulatedTokenUsage:
+    """Tests that total token usage is tracked across agent, judge, and variation calls."""
+
+    def setup_method(self):
+        self.mock_ldai = _make_ldai_client()
+
+    @pytest.mark.asyncio
+    async def test_variation_tokens_counted_in_total(self):
+        """Tokens consumed by variation generation are rolled into _total_token_usage."""
+        agent_usage = TokenUsage(total=100, input=60, output=40)
+        variation_usage = TokenUsage(total=50, input=30, output=20)
+
+        # Build a minimal GT run (no validation phase) so we can control exactly
+        # which handle_agent_call responses map to agent turns vs variation.
+        # GT flow for one failed attempt then success:
+        #   Attempt 1: 2 samples → 2 agent calls → judge fails on sample 1 → all_passed=False
+        #   Variation: 1 handle_agent_call with variation_usage
+        #   Attempt 2: 2 samples → 2 agent calls → all pass → success
+        agent_responses = [
+            OptimizationResponse(output="Answer 1.", usage=agent_usage),  # attempt 1, sample 1
+            OptimizationResponse(output="Answer 2.", usage=agent_usage),  # attempt 1, sample 2
+            OptimizationResponse(output=VARIATION_RESPONSE, usage=variation_usage),  # variation
+            OptimizationResponse(output="Answer 1.", usage=agent_usage),  # attempt 2, sample 1
+            OptimizationResponse(output="Answer 2.", usage=agent_usage),  # attempt 2, sample 2
+        ]
+        handle_agent_call = AsyncMock(side_effect=agent_responses)
+        judge_responses = [
+            OptimizationResponse(output=JUDGE_FAIL_RESPONSE),  # attempt 1, sample 1 — fail
+            OptimizationResponse(output=JUDGE_PASS_RESPONSE),  # attempt 1, sample 2 — pass
+            OptimizationResponse(output=JUDGE_PASS_RESPONSE),  # attempt 2, sample 1 — pass
+            OptimizationResponse(output=JUDGE_PASS_RESPONSE),  # attempt 2, sample 2 — pass
+        ]
+        handle_judge_call = AsyncMock(side_effect=judge_responses)
+
+        client = _make_client(self.mock_ldai)
+        opts = _make_gt_options(
+            handle_agent_call=handle_agent_call,
+            handle_judge_call=handle_judge_call,
+            max_attempts=3,
+        )
+        await client.optimize_from_ground_truth_options("test-agent", opts)
+
+        # _total_token_usage must include tokens from all 4 agent calls + 1 variation call
+        expected_min = agent_usage.total * 4 + variation_usage.total
+        assert client._total_token_usage >= expected_min
+
+    @pytest.mark.asyncio
+    async def test_accumulated_token_usage_stamped_on_context(self):
+        """accumulated_token_usage on the returned context equals _total_token_usage."""
+        agent_usage = TokenUsage(total=200, input=120, output=80)
+        handle_agent_call = AsyncMock(
+            return_value=OptimizationResponse(output="The answer is 4.", usage=agent_usage)
+        )
+        handle_judge_call = AsyncMock(
+            return_value=OptimizationResponse(output=JUDGE_PASS_RESPONSE)
+        )
+
+        client = _make_client(self.mock_ldai)
+        opts = _make_options(
+            handle_agent_call=handle_agent_call,
+            handle_judge_call=handle_judge_call,
+        )
+        results = await client.optimize_from_options("test-agent", opts)
+
+        assert results is not None
+        last_ctx = results if isinstance(results, OptimizationContext) else None
+        # Check the internal total includes at least the agent tokens
+        assert client._total_token_usage >= agent_usage.total
+
+    @pytest.mark.asyncio
+    async def test_gt_accumulated_token_usage_on_final_success(self):
+        """On a passing GT run the last result's accumulated_token_usage == _total_token_usage."""
+        agent_usage = TokenUsage(total=100, input=60, output=40)
+        handle_agent_call = AsyncMock(
+            return_value=OptimizationResponse(output="correct", usage=agent_usage)
+        )
+        handle_judge_call = AsyncMock(
+            return_value=OptimizationResponse(output=JUDGE_PASS_RESPONSE)
+        )
+
+        client = _make_client(self.mock_ldai)
+        opts = _make_gt_options(
+            handle_agent_call=handle_agent_call,
+            handle_judge_call=handle_judge_call,
+        )
+        results = await client.optimize_from_ground_truth_options("test-agent", opts)
+
+        assert isinstance(results, list) and len(results) > 0
+        final_ctx = results[-1]
+        assert final_ctx.accumulated_token_usage is not None
+        assert final_ctx.accumulated_token_usage == client._total_token_usage
+
+
+# ---------------------------------------------------------------------------
+# GT token budget exhausted on final successful iteration
+# ---------------------------------------------------------------------------
+
+
+class TestGTTokenBudgetOnFinalIteration:
+    """Token budget exhausted on the very last GT sample should mark the run successful
+    when all samples passed, and failed when mid-batch or a sample failed."""
+
+    def setup_method(self):
+        self.mock_ldai = _make_ldai_client()
+
+    @pytest.mark.asyncio
+    async def test_token_limit_on_last_sample_all_passed_marks_success(self):
+        """Exhausting the budget on the final sample of a batch where all passed → success."""
+        agent_responses = [
+            OptimizationResponse(output="Answer 1.", usage=TokenUsage(total=100, input=60, output=40)),
+            OptimizationResponse(output="Answer 2.", usage=TokenUsage(total=200, input=120, output=80)),
+        ]
+        handle_agent_call = AsyncMock(side_effect=agent_responses)
+        handle_judge_call = AsyncMock(
+            return_value=OptimizationResponse(output=JUDGE_PASS_RESPONSE)
+        )
+        client = _make_client(self.mock_ldai)
+        opts = _make_gt_options(
+            handle_agent_call=handle_agent_call,
+            handle_judge_call=handle_judge_call,
+            token_limit=250,  # 100+200=300 ≥ 250 → budget hit on final (2nd) sample
+            max_attempts=5,
+        )
+        results = await client.optimize_from_ground_truth_options("test-agent", opts)
+
+        assert client._last_run_succeeded is True
+        assert len(results) == 2
+
+    @pytest.mark.asyncio
+    async def test_token_limit_on_last_sample_one_failed_marks_failure(self):
+        """Budget hit on the final sample but a prior sample failed → failure."""
+        agent_responses = [
+            # Sample 1 fails judge
+            OptimizationResponse(output="Answer 1.", usage=TokenUsage(total=100, input=60, output=40)),
+            # Sample 2 passes judge but pushes over limit
+            OptimizationResponse(output="Answer 2.", usage=TokenUsage(total=200, input=120, output=80)),
+        ]
+        handle_agent_call = AsyncMock(side_effect=agent_responses)
+        judge_responses = [
+            OptimizationResponse(output=JUDGE_FAIL_RESPONSE),  # sample 1 fails
+            OptimizationResponse(output=JUDGE_PASS_RESPONSE),  # sample 2 passes
+        ]
+        handle_judge_call = AsyncMock(side_effect=judge_responses)
+        client = _make_client(self.mock_ldai)
+        opts = _make_gt_options(
+            handle_agent_call=handle_agent_call,
+            handle_judge_call=handle_judge_call,
+            token_limit=250,
+            max_attempts=5,
+        )
+        results = await client.optimize_from_ground_truth_options("test-agent", opts)
+
+        assert client._last_run_succeeded is False
+
+    @pytest.mark.asyncio
+    async def test_token_limit_mid_batch_marks_failure(self):
+        """Budget hit mid-batch (not on the final sample) → always failure."""
+        handle_agent_call = AsyncMock(
+            return_value=OptimizationResponse(
+                output="Answer.", usage=TokenUsage(total=600, input=400, output=200)
+            )
+        )
+        handle_judge_call = AsyncMock(
+            return_value=OptimizationResponse(output=JUDGE_PASS_RESPONSE)
+        )
+        client = _make_client(self.mock_ldai)
+        opts = _make_gt_options(
+            handle_agent_call=handle_agent_call,
+            handle_judge_call=handle_judge_call,
+            token_limit=500,  # 600 > 500 → trip on first of two samples
+            max_attempts=5,
+        )
+        results = await client.optimize_from_ground_truth_options("test-agent", opts)
+
+        assert client._last_run_succeeded is False
+        assert len(results) == 1
+
+    @pytest.mark.asyncio
+    async def test_on_passing_result_called_on_budget_exhaustion_success(self):
+        """on_passing_result fires when token budget exhausted but all GT samples passed."""
+        on_passing = MagicMock()
+        agent_responses = [
+            OptimizationResponse(output="A1.", usage=TokenUsage(total=100, input=60, output=40)),
+            OptimizationResponse(output="A2.", usage=TokenUsage(total=200, input=120, output=80)),
+        ]
+        handle_agent_call = AsyncMock(side_effect=agent_responses)
+        handle_judge_call = AsyncMock(
+            return_value=OptimizationResponse(output=JUDGE_PASS_RESPONSE)
+        )
+        client = _make_client(self.mock_ldai)
+        opts = _make_gt_options(
+            handle_agent_call=handle_agent_call,
+            handle_judge_call=handle_judge_call,
+            token_limit=250,
+            max_attempts=5,
+            on_passing_result=on_passing,
+        )
+        await client.optimize_from_ground_truth_options("test-agent", opts)
+
+        on_passing.assert_called_once()
 
 
 # ---------------------------------------------------------------------------
@@ -3518,43 +3826,43 @@ class TestEvaluateDuration:
         assert self.client._evaluate_duration(self._ctx(5000, iteration=2)) is True
 
     def test_returns_true_when_candidate_duration_is_none(self):
-        self.client._history = [self._ctx(2000, iteration=1)]
+        self.client._baseline_duration_ms = 2000.0
         assert self.client._evaluate_duration(self._ctx(None, iteration=2)) is True
 
     def test_passes_when_candidate_is_more_than_20_percent_faster(self):
         # baseline=2000ms, threshold=1600ms, candidate=1500ms → 1500 < 1600 → pass
-        self.client._history = [self._ctx(2000, iteration=1)]
+        self.client._baseline_duration_ms = 2000.0
         assert self.client._evaluate_duration(self._ctx(1500, iteration=2)) is True
 
     def test_fails_when_candidate_is_exactly_at_threshold(self):
         # baseline=2000ms, threshold=1600ms, candidate=1600ms → not strictly less → fail
-        self.client._history = [self._ctx(2000, iteration=1)]
+        self.client._baseline_duration_ms = 2000.0
         assert self.client._evaluate_duration(self._ctx(1600, iteration=2)) is False
 
     def test_fails_when_improvement_is_less_than_20_percent(self):
         # baseline=2000ms, threshold=1600ms, candidate=1800ms → 1800 >= 1600 → fail
-        self.client._history = [self._ctx(2000, iteration=1)]
+        self.client._baseline_duration_ms = 2000.0
         assert self.client._evaluate_duration(self._ctx(1800, iteration=2)) is False
 
     def test_fails_when_candidate_matches_baseline(self):
-        self.client._history = [self._ctx(2000, iteration=1)]
+        self.client._baseline_duration_ms = 2000.0
         assert self.client._evaluate_duration(self._ctx(2000, iteration=2)) is False
 
     def test_fails_when_candidate_is_slower_than_baseline(self):
-        self.client._history = [self._ctx(2000, iteration=1)]
+        self.client._baseline_duration_ms = 2000.0
         assert self.client._evaluate_duration(self._ctx(2500, iteration=2)) is False
 
-    def test_uses_history_index_zero_as_baseline_not_last(self):
-        # history[0] is 2000ms (baseline), history[-1] is 500ms (fast, but not the baseline)
-        first = self._ctx(2000, iteration=1)
-        later = self._ctx(500, iteration=2)
-        self.client._history = [first, later]
-        # candidate=1500ms < 2000 * 0.80 = 1600ms → pass (uses history[0], not history[-1])
+    def test_uses_explicit_baseline_not_most_recent_history(self):
+        # _baseline_duration_ms is 2000ms even though the most recent history item has 500ms.
+        # The explicit baseline is what must be used, not any history item.
+        self.client._baseline_duration_ms = 2000.0
+        self.client._history = [self._ctx(2000, iteration=1), self._ctx(500, iteration=2)]
+        # candidate=1500ms < 2000 * 0.80 = 1600ms → pass (uses explicit baseline, not history[-1])
         assert self.client._evaluate_duration(self._ctx(1500, iteration=3)) is True
 
     def test_pass_boundary_just_below_threshold(self):
         # baseline=1000ms, threshold=800ms, candidate=799ms → pass
-        self.client._history = [self._ctx(1000, iteration=1)]
+        self.client._baseline_duration_ms = 1000.0
         assert self.client._evaluate_duration(self._ctx(799, iteration=2)) is True
 
 
@@ -3665,8 +3973,8 @@ class TestDurationOptimizationChaosMode:
 
         with patch.object(client, "_execute_agent_turn", new_callable=AsyncMock) as mock_execute:
             mock_execute.side_effect = execute_side_effects
-            # Manually seed history so _evaluate_duration would fire if incorrectly triggered
-            client._history = [self._ctx_with(duration_ms=2000, iteration=0)]
+            # Manually seed baseline so _evaluate_duration would fire if incorrectly triggered
+            client._baseline_duration_ms = 2000.0
             result = await client.optimize_from_options("test-agent", opts)
 
         assert result is not None
@@ -4831,6 +5139,7 @@ class TestEvaluateCost:
 
     def _seed_history(self, baseline_cost: float):
         self.client._history = [self._ctx(baseline_cost, iteration=1)]
+        self.client._baseline_cost_usd = baseline_cost
 
     def test_passes_when_cost_improved_beyond_tolerance(self):
         self._seed_history(0.010)
@@ -4838,13 +5147,14 @@ class TestEvaluateCost:
 
     def test_fails_when_cost_not_improved_enough(self):
         self._seed_history(0.010)
-        assert self.client._evaluate_cost(self._ctx(0.009)) is False
+        assert self.client._evaluate_cost(self._ctx(0.0095)) is False
 
     def test_passes_at_exact_tolerance_boundary(self):
         self._seed_history(0.010)
-        # 0.010 * 0.80 = 0.008; must be strictly less than 0.008
-        assert self.client._evaluate_cost(self._ctx(0.0079)) is True
-        assert self.client._evaluate_cost(self._ctx(0.008)) is False
+        # 0.010 * 0.90 ≈ 0.009; must be strictly less than the threshold
+        assert self.client._evaluate_cost(self._ctx(0.0089)) is True
+        # 0.0091 is above the threshold → fail
+        assert self.client._evaluate_cost(self._ctx(0.0091)) is False
 
     def test_skips_gracefully_when_history_empty(self):
         self.client._history = []
@@ -4864,6 +5174,233 @@ class TestEvaluateCost:
         # candidate cost is None and the gate skips rather than comparing incompatible units.
         self._seed_history(0.010)
         assert self.client._evaluate_cost(self._ctx(None)) is True
+
+
+# ---------------------------------------------------------------------------
+# _apply_duration_gate
+# ---------------------------------------------------------------------------
+
+
+class TestApplyDurationGate:
+    """Unit tests for the _apply_duration_gate wrapper method."""
+
+    def _make_judges_with_latency(self):
+        return {
+            "latency": OptimizationJudge(
+                threshold=0.8,
+                acceptance_statement="The response must be faster and reduce latency.",
+            )
+        }
+
+    def _make_judges_no_latency(self):
+        return {
+            "accuracy": OptimizationJudge(
+                threshold=0.8,
+                acceptance_statement="The response must be accurate.",
+            )
+        }
+
+    def _ctx(self, duration_ms=None, iteration=2):
+        return OptimizationContext(
+            scores={},
+            completion_response="response",
+            current_instructions="Do X.",
+            current_parameters={},
+            current_variables={},
+            iteration=iteration,
+            duration_ms=duration_ms,
+        )
+
+    def setup_method(self):
+        self.client = _make_client()
+        self.client._options = _make_options(judges=self._make_judges_with_latency())
+        self.client._initialize_class_members_from_config(_make_agent_config())
+        self.client._baseline_duration_ms = 2000.0
+
+    def test_no_entry_added_when_gate_not_active(self):
+        self.client._options = _make_options(judges=self._make_judges_no_latency())
+        ctx = self._ctx(1000)
+        passed, updated = self.client._apply_duration_gate(True, ctx)
+        assert passed is True
+        assert "_latency_gate" not in updated.scores
+
+    def test_no_entry_added_when_already_failed(self):
+        ctx = self._ctx(1000)
+        passed, updated = self.client._apply_duration_gate(False, ctx)
+        assert passed is False
+        assert "_latency_gate" not in updated.scores
+
+    def test_gate_pass_adds_score_1(self):
+        # baseline=2000ms, threshold=1600ms, candidate=1500ms → pass
+        ctx = self._ctx(1500)
+        passed, updated = self.client._apply_duration_gate(True, ctx)
+        assert passed is True
+        assert "_latency_gate" in updated.scores
+        assert updated.scores["_latency_gate"].score == 1.0
+        assert "passed" in updated.scores["_latency_gate"].rationale.lower()
+        assert "1500" in updated.scores["_latency_gate"].rationale
+        assert "2000" in updated.scores["_latency_gate"].rationale
+
+    def test_gate_fail_adds_score_0(self):
+        # baseline=2000ms, threshold=1600ms, candidate=1800ms → fail
+        ctx = self._ctx(1800)
+        passed, updated = self.client._apply_duration_gate(True, ctx)
+        assert passed is False
+        assert "_latency_gate" in updated.scores
+        assert updated.scores["_latency_gate"].score == 0.0
+        assert "failed" in updated.scores["_latency_gate"].rationale.lower()
+        assert "1800" in updated.scores["_latency_gate"].rationale
+
+    def test_gate_pass_no_baseline_gives_fallback_rationale(self):
+        self.client._baseline_duration_ms = None
+        ctx = self._ctx(None)
+        passed, updated = self.client._apply_duration_gate(True, ctx)
+        assert "_latency_gate" in updated.scores
+        assert "no baseline" in updated.scores["_latency_gate"].rationale.lower()
+
+    def test_existing_scores_are_preserved(self):
+        ctx = OptimizationContext(
+            scores={"accuracy": JudgeResult(score=1.0, rationale="ok")},
+            completion_response="response",
+            current_instructions="Do X.",
+            current_parameters={},
+            current_variables={},
+            iteration=2,
+            duration_ms=1500,
+        )
+        _, updated = self.client._apply_duration_gate(True, ctx)
+        assert "accuracy" in updated.scores
+        assert "_latency_gate" in updated.scores
+
+    def test_no_threshold_field_on_judge_result(self):
+        ctx = self._ctx(1500)
+        _, updated = self.client._apply_duration_gate(True, ctx)
+        gate_result = updated.scores["_latency_gate"]
+        assert not hasattr(gate_result, "threshold") or gate_result.threshold is None  # type: ignore[union-attr]
+
+
+# ---------------------------------------------------------------------------
+# _apply_cost_gate
+# ---------------------------------------------------------------------------
+
+
+class TestApplyCostGate:
+    """Unit tests for the _apply_cost_gate wrapper method."""
+
+    def _make_judges_with_cost(self):
+        return {
+            "cost": OptimizationJudge(
+                threshold=0.8,
+                acceptance_statement="The response must be cheaper and reduce cost.",
+            )
+        }
+
+    def _make_judges_no_cost(self):
+        return {
+            "accuracy": OptimizationJudge(
+                threshold=0.8,
+                acceptance_statement="The response must be accurate.",
+            )
+        }
+
+    def _ctx(self, cost=None, iteration=2):
+        return OptimizationContext(
+            scores={},
+            completion_response="response",
+            current_instructions="Do X.",
+            current_parameters={},
+            current_variables={},
+            iteration=iteration,
+            estimated_cost_usd=cost,
+        )
+
+    def setup_method(self):
+        self.client = _make_client()
+        self.client._options = _make_options(judges=self._make_judges_with_cost())
+        self.client._initialize_class_members_from_config(_make_agent_config())
+        self.client._baseline_cost_usd = 0.010
+
+    def test_no_entry_added_when_gate_not_active(self):
+        self.client._options = _make_options(judges=self._make_judges_no_cost())
+        ctx = self._ctx(0.005)
+        passed, updated = self.client._apply_cost_gate(True, ctx)
+        assert passed is True
+        assert "_cost_gate" not in updated.scores
+
+    def test_no_entry_added_when_already_failed(self):
+        ctx = self._ctx(0.005)
+        passed, updated = self.client._apply_cost_gate(False, ctx)
+        assert passed is False
+        assert "_cost_gate" not in updated.scores
+
+    def test_gate_pass_adds_score_1(self):
+        # baseline=0.010, threshold=0.009, candidate=0.007 → pass
+        ctx = self._ctx(0.007)
+        passed, updated = self.client._apply_cost_gate(True, ctx)
+        assert passed is True
+        assert "_cost_gate" in updated.scores
+        assert updated.scores["_cost_gate"].score == 1.0
+        assert "passed" in updated.scores["_cost_gate"].rationale.lower()
+
+    def test_gate_fail_adds_score_0(self):
+        # baseline=0.010, threshold=0.009, candidate=0.0095 → fail
+        ctx = self._ctx(0.0095)
+        passed, updated = self.client._apply_cost_gate(True, ctx)
+        assert passed is False
+        assert "_cost_gate" in updated.scores
+        assert updated.scores["_cost_gate"].score == 0.0
+        assert "failed" in updated.scores["_cost_gate"].rationale.lower()
+
+    def test_gate_pass_no_baseline_gives_fallback_rationale(self):
+        self.client._baseline_cost_usd = None
+        ctx = self._ctx(None)
+        passed, updated = self.client._apply_cost_gate(True, ctx)
+        assert "_cost_gate" in updated.scores
+        assert "no baseline" in updated.scores["_cost_gate"].rationale.lower()
+
+    def test_existing_scores_are_preserved(self):
+        ctx = OptimizationContext(
+            scores={"accuracy": JudgeResult(score=1.0, rationale="ok")},
+            completion_response="response",
+            current_instructions="Do X.",
+            current_parameters={},
+            current_variables={},
+            iteration=2,
+            estimated_cost_usd=0.007,
+        )
+        _, updated = self.client._apply_cost_gate(True, ctx)
+        assert "accuracy" in updated.scores
+        assert "_cost_gate" in updated.scores
+
+    def test_both_gates_active_compose_cleanly(self):
+        """Duration + cost gate can both fire on the same context."""
+        self.client._options = _make_options(
+            judges={
+                "perf": OptimizationJudge(
+                    threshold=0.8,
+                    acceptance_statement="The response must be faster, reduce latency, and cheaper cost.",
+                )
+            }
+        )
+        self.client._baseline_duration_ms = 2000.0
+        self.client._baseline_cost_usd = 0.010
+        ctx = OptimizationContext(
+            scores={},
+            completion_response="response",
+            current_instructions="Do X.",
+            current_parameters={},
+            current_variables={},
+            iteration=2,
+            duration_ms=1500,
+            estimated_cost_usd=0.007,
+        )
+        passed, ctx = self.client._apply_duration_gate(True, ctx)
+        passed, ctx = self.client._apply_cost_gate(passed, ctx)
+        assert passed is True
+        assert "_latency_gate" in ctx.scores
+        assert "_cost_gate" in ctx.scores
+        assert ctx.scores["_latency_gate"].score == 1.0
+        assert ctx.scores["_cost_gate"].score == 1.0
 
 
 # ---------------------------------------------------------------------------
@@ -4887,6 +5424,148 @@ class TestVariationPromptCostOptimization:
     def test_mentions_token_reduction(self):
         result = variation_prompt_cost_optimization(["gpt-4o"])
         assert "token" in result.lower()
+
+    # quality_already_passing=False (default) — standard framing
+    def test_default_framing_says_improve_quality_too(self):
+        result = variation_prompt_cost_optimization(["gpt-4o"], quality_already_passing=False)
+        assert "In addition to improving quality" in result
+
+    def test_default_framing_does_not_mention_quality_passing(self):
+        result = variation_prompt_cost_optimization(["gpt-4o"], quality_already_passing=False)
+        assert "currently passing" not in result
+
+    # quality_already_passing=True — preserve-behavior framing
+    def test_passing_framing_says_criteria_already_passing(self):
+        result = variation_prompt_cost_optimization(["gpt-4o"], quality_already_passing=True)
+        assert "currently passing" in result
+
+    def test_passing_framing_says_do_not_change_behavior(self):
+        result = variation_prompt_cost_optimization(["gpt-4o"], quality_already_passing=True)
+        assert "preserve" in result.lower() or "do not" in result.lower() or "NOT" in result
+
+    def test_passing_framing_still_includes_token_guidance(self):
+        result = variation_prompt_cost_optimization(["gpt-4o"], quality_already_passing=True)
+        assert "token" in result.lower()
+
+    def test_passing_framing_still_includes_model_choices(self):
+        result = variation_prompt_cost_optimization(["gpt-4o", "gpt-4o-mini"], quality_already_passing=True)
+        assert "gpt-4o" in result
+
+    def test_passing_framing_still_warns_quality_is_primary(self):
+        result = variation_prompt_cost_optimization(["gpt-4o"], quality_already_passing=True)
+        assert "primary objective" in result.lower() or "do not sacrifice" in result.lower()
+
+
+# ---------------------------------------------------------------------------
+# _all_judges_passing
+# ---------------------------------------------------------------------------
+
+
+class TestAllJudgesPassing:
+    def _ctx_with_scores(self, scores, iteration=1):
+        return OptimizationContext(
+            scores=scores,
+            completion_response="ok",
+            current_instructions="Do X.",
+            current_parameters={},
+            current_variables={},
+            iteration=iteration,
+        )
+
+    def setup_method(self):
+        self.client = _make_client()
+        self.client._initialize_class_members_from_config(_make_agent_config())
+
+    def test_returns_false_when_history_empty(self):
+        self.client._history = []
+        self.client._options = _make_options()
+        assert self.client._all_judges_passing() is False
+
+    def test_returns_false_when_no_judges(self):
+        self.client._options = _make_options(judges={})
+        self.client._history = [self._ctx_with_scores({"accuracy": JudgeResult(score=1.0, rationale="ok")})]
+        assert self.client._all_judges_passing() is False
+
+    def test_returns_false_when_judge_score_missing(self):
+        self.client._options = _make_options(judges={
+            "accuracy": OptimizationJudge(threshold=0.8, acceptance_statement="accurate"),
+        })
+        self.client._history = [self._ctx_with_scores({})]
+        assert self.client._all_judges_passing() is False
+
+    def test_returns_true_when_all_judges_pass(self):
+        self.client._options = _make_options(judges={
+            "accuracy": OptimizationJudge(threshold=0.8, acceptance_statement="accurate"),
+        })
+        self.client._history = [self._ctx_with_scores({"accuracy": JudgeResult(score=0.9, rationale="ok")})]
+        assert self.client._all_judges_passing() is True
+
+    def test_returns_false_when_one_judge_below_threshold(self):
+        self.client._options = _make_options(judges={
+            "accuracy": OptimizationJudge(threshold=0.8, acceptance_statement="accurate"),
+        })
+        self.client._history = [self._ctx_with_scores({"accuracy": JudgeResult(score=0.7, rationale="bad")})]
+        assert self.client._all_judges_passing() is False
+
+    def test_returns_false_when_one_of_multiple_judges_fails(self):
+        self.client._options = _make_options(judges={
+            "accuracy": OptimizationJudge(threshold=0.8, acceptance_statement="accurate"),
+            "tone": OptimizationJudge(threshold=0.9, acceptance_statement="friendly tone"),
+        })
+        self.client._history = [self._ctx_with_scores({
+            "accuracy": JudgeResult(score=1.0, rationale="ok"),
+            "tone": JudgeResult(score=0.5, rationale="failed"),
+        })]
+        assert self.client._all_judges_passing() is False
+
+    def test_returns_true_when_all_of_multiple_judges_pass(self):
+        self.client._options = _make_options(judges={
+            "accuracy": OptimizationJudge(threshold=0.8, acceptance_statement="accurate"),
+            "tone": OptimizationJudge(threshold=0.9, acceptance_statement="friendly tone"),
+        })
+        self.client._history = [self._ctx_with_scores({
+            "accuracy": JudgeResult(score=1.0, rationale="ok"),
+            "tone": JudgeResult(score=0.95, rationale="ok"),
+        })]
+        assert self.client._all_judges_passing() is True
+
+    def test_gate_scores_do_not_affect_result(self):
+        """Synthetic _latency_gate / _cost_gate keys must not count as judge failures."""
+        self.client._options = _make_options(judges={
+            "accuracy": OptimizationJudge(threshold=0.8, acceptance_statement="accurate"),
+        })
+        self.client._history = [self._ctx_with_scores({
+            "accuracy": JudgeResult(score=1.0, rationale="ok"),
+            "_latency_gate": JudgeResult(score=0.0, rationale="gate failed"),
+            "_cost_gate": JudgeResult(score=0.0, rationale="gate failed"),
+        })]
+        # Gate failures should not prevent _all_judges_passing from returning True
+        assert self.client._all_judges_passing() is True
+
+    def test_uses_most_recent_history_entry(self):
+        """Only the last history entry is inspected."""
+        self.client._options = _make_options(judges={
+            "accuracy": OptimizationJudge(threshold=0.8, acceptance_statement="accurate"),
+        })
+        self.client._history = [
+            self._ctx_with_scores({"accuracy": JudgeResult(score=0.5, rationale="early fail")}, iteration=1),
+            self._ctx_with_scores({"accuracy": JudgeResult(score=1.0, rationale="later pass")}, iteration=2),
+        ]
+        assert self.client._all_judges_passing() is True
+
+    def test_inverted_judge_passes_when_score_below_threshold(self):
+        self.client._options = _make_options(judges={
+            "toxicity": OptimizationJudge(threshold=0.2, acceptance_statement="low toxicity", is_inverted=True),
+        })
+        self.client._history = [self._ctx_with_scores({"toxicity": JudgeResult(score=0.1, rationale="clean")})]
+        assert self.client._all_judges_passing() is True
+
+    def test_inverted_judge_fails_when_score_above_threshold(self):
+        self.client._options = _make_options(judges={
+            "toxicity": OptimizationJudge(threshold=0.2, acceptance_statement="low toxicity", is_inverted=True),
+        })
+        self.client._history = [self._ctx_with_scores({"toxicity": JudgeResult(score=0.5, rationale="toxic")})]
+        assert self.client._all_judges_passing() is False
 
 
 class TestBuildNewVariationPromptCost:
@@ -5064,6 +5743,7 @@ class TestEvaluateAcceptanceJudgeCostAugmentation:
             estimated_cost_usd=500.0,
         )
         self.client._history = [baseline_ctx]
+        self.client._baseline_cost_usd = 500.0
         self.client._options = _make_options(handle_judge_call=_capture_judge_call)
         await self.client._evaluate_acceptance_judge(
             judge_key="cost-judge",

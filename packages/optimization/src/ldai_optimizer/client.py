@@ -22,7 +22,7 @@ import os
 import random
 import time
 import uuid
-from typing import Any, Dict, List, Literal, Optional, Union
+from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 from ldai import AIAgentConfig, AIJudgeConfig, AIJudgeConfigDefault, LDAIClient
 from ldai.models import LDMessage, ModelConfig
@@ -132,8 +132,30 @@ _DURATION_TOLERANCE = 0.80
 
 # Cost gate: a candidate must cost at most this fraction of the baseline
 # (history[0].estimated_cost_usd) to pass when acceptance criteria imply a
-# cost reduction goal. 0.80 means at least 20% cheaper than the baseline.
-_COST_TOLERANCE = 0.80
+# cost reduction goal. 0.90 means at least 10% cheaper than the baseline.
+_COST_TOLERANCE = 0.90
+
+# Maximum number of history items retained in the standard (non-GT) optimizer.
+# Since user inputs are randomly selected there is no "full pass" concept, so
+# a small fixed window is sufficient context for variation generation.
+_MAX_STANDARD_HISTORY_LENGTH = 5
+
+
+def _trim_history(
+    history: List["OptimizationContext"], max_len: int
+) -> List["OptimizationContext"]:
+    """Trim history to at most max_len of the most recent items.
+
+    The duration/cost baselines are captured explicitly in ``_baseline_duration_ms``
+    and ``_baseline_cost_usd`` so the oldest entry no longer needs to be preserved.
+
+    :param history: Current accumulated history list.
+    :param max_len: Maximum number of items to retain (must be >= 1).
+    :return: Trimmed history list, or the original list if already within limit.
+    """
+    if len(history) <= max_len:
+        return history
+    return history[-max_len:]
 
 # Maps SDK status strings to the API status/activity values expected by
 # agent_optimization_result records. Defined at module level to avoid
@@ -195,6 +217,23 @@ class OptimizationClient:
             agent_config.model.name if agent_config.model else None
         )
         self._history: List[OptimizationContext] = []
+        # Explicit baseline captured from the first iteration ever appended to history.
+        # Stored separately so that history truncation can be a pure slice without
+        # having to preserve history[0] as an anchor.
+        self._baseline_duration_ms: Optional[float] = None
+        self._baseline_cost_usd: Optional[float] = None
+
+    def _record_baseline(self, ctx: OptimizationContext) -> None:
+        """Capture duration/cost baseline from the first iteration appended to history.
+
+        Called once per run (subsequent calls are no-ops once both values are set).
+        Storing these explicitly lets ``_trim_history`` use a simple tail slice without
+        needing to preserve ``history[0]`` as an anchor.
+        """
+        if self._baseline_duration_ms is None and ctx.duration_ms is not None:
+            self._baseline_duration_ms = ctx.duration_ms
+        if self._baseline_cost_usd is None and ctx.estimated_cost_usd is not None:
+            self._baseline_cost_usd = ctx.estimated_cost_usd
 
     def _build_agent_config_for_context(
         self, ctx: OptimizationContext, skip_interpolation: bool = False
@@ -260,6 +299,7 @@ class OptimizationClient:
             user_input=user_input,
             history=tuple(flat_history),
             iteration=iteration,
+            accumulated_token_usage=self._total_token_usage if self._total_token_usage > 0 else None,
         )
 
     @property
@@ -755,11 +795,7 @@ class OptimizationClient:
                 {judge_key: optimization_judge}
             )
         ):
-            baseline_ms = (
-                self._history[0].duration_ms
-                if self._history and self._history[0].duration_ms is not None
-                else None
-            )
+            baseline_ms = self._baseline_duration_ms
             instructions += (
                 f"\n\nThe acceptance criteria for this judge includes a latency/duration goal. "
                 f"The agent's response took {agent_duration_ms:.0f}ms to generate. "
@@ -785,11 +821,7 @@ class OptimizationClient:
                 agent_usage,
                 _find_model_config(self._current_model or "", self._model_configs),
             )
-            baseline_cost = (
-                self._history[0].estimated_cost_usd
-                if self._history and self._history[0].estimated_cost_usd is not None
-                else None
-            )
+            baseline_cost = self._baseline_cost_usd
             if current_cost is not None:
                 instructions += (
                     f"\n\nThe acceptance criteria for this judge includes a cost/token-usage goal. "
@@ -1100,27 +1132,13 @@ class OptimizationClient:
                     expected_response=sample.expected_response,
                 )
                 self._accumulate_tokens(optimize_context)
-                if self._is_token_limit_exceeded():
-                    logger.error(
-                        "[GT Attempt %d] -> Token limit exceeded on sample %d (total=%d)",
-                        attempt,
-                        i + 1,
-                        self._total_token_usage,
-                    )
-                    attempt_results.append(optimize_context)
-                    self._last_run_succeeded = False
-                    self._last_succeeded_context = None
-                    self._safe_status_update("failure", optimize_context, linear_iter)
-                    if self._options.on_failing_result:
-                        try:
-                            self._options.on_failing_result(optimize_context)
-                        except Exception:
-                            logger.exception(
-                                "[GT Attempt %d] -> on_failing_result callback failed", attempt
-                            )
-                    return attempt_results
+                optimize_context = dataclasses.replace(
+                    optimize_context, accumulated_token_usage=self._total_token_usage
+                )
 
-                # Per-sample pass/fail check
+                # Per-sample pass/fail check — evaluated before the token limit gate so
+                # that a sample which passed is not incorrectly stamped as FAILED simply
+                # because the budget was exhausted after its scores were computed.
                 if self._options.on_turn is not None:
                     try:
                         sample_passed = self._options.on_turn(optimize_context)
@@ -1134,15 +1152,8 @@ class OptimizationClient:
                 else:
                     sample_passed = self._evaluate_response(optimize_context)
 
-                if sample_passed and _acceptance_criteria_implies_duration_optimization(
-                    self._options.judges
-                ):
-                    sample_passed = self._evaluate_duration(optimize_context)
-
-                if sample_passed and _acceptance_criteria_implies_cost_optimization(
-                    self._options.judges
-                ):
-                    sample_passed = self._evaluate_cost(optimize_context)
+                sample_passed, optimize_context = self._apply_duration_gate(sample_passed, optimize_context)
+                sample_passed, optimize_context = self._apply_cost_gate(sample_passed, optimize_context)
 
                 if not sample_passed:
                     logger.info(
@@ -1163,6 +1174,10 @@ class OptimizationClient:
 
                 attempt_results.append(optimize_context)
 
+                # Persist the completed sample so every API record gets its scores,
+                # generation tokens, and accumulated_total — not just the final one.
+                self._safe_status_update("turn completed", optimize_context, linear_iter)
+
                 if gt_options.on_sample_result is not None:
                     try:
                         gt_options.on_sample_result(optimize_context)
@@ -1172,6 +1187,42 @@ class OptimizationClient:
                             attempt,
                             i + 1,
                         )
+
+                # Token limit check after pass/fail so the terminal status reflects
+                # whether the samples actually passed, not just that the budget was hit.
+                # Mark success only when every sample in this attempt was processed and
+                # all passed; stopping mid-batch is always a failure even if the
+                # partially-processed samples looked good.
+                if self._is_token_limit_exceeded():
+                    logger.error(
+                        "[GT Attempt %d] -> Token limit exceeded on sample %d (total=%d)",
+                        attempt,
+                        i + 1,
+                        self._total_token_usage,
+                    )
+                    if all_passed and i == n - 1:
+                        self._last_run_succeeded = True
+                        self._last_succeeded_context = optimize_context
+                        self._safe_status_update("success", optimize_context, linear_iter)
+                        if self._options.on_passing_result:
+                            try:
+                                self._options.on_passing_result(optimize_context)
+                            except Exception:
+                                logger.exception(
+                                    "[GT Attempt %d] -> on_passing_result callback failed", attempt
+                                )
+                    else:
+                        self._last_run_succeeded = False
+                        self._last_succeeded_context = None
+                        self._safe_status_update("failure", optimize_context, linear_iter)
+                        if self._options.on_failing_result:
+                            try:
+                                self._options.on_failing_result(optimize_context)
+                            except Exception:
+                                logger.exception(
+                                    "[GT Attempt %d] -> on_failing_result callback failed", attempt
+                                )
+                    return attempt_results
 
             last_ctx = attempt_results[-1]
 
@@ -1212,8 +1263,12 @@ class OptimizationClient:
                 return attempt_results
 
             # Append all N results to history so the variation generator has full context
-            # from all of the previous samples
+            # from all of the previous samples, then trim to one full attempt's worth so
+            # judge prompts don't grow unboundedly across many failed attempts.
+            if attempt_results:
+                self._record_baseline(attempt_results[0])
             self._history.extend(attempt_results)
+            self._history = _trim_history(self._history, n)
 
             logger.info(
                 "[GT Attempt %d] -> %d/%d samples failed — generating new variation",
@@ -1393,6 +1448,7 @@ class OptimizationClient:
         optimize_for_cost = _acceptance_criteria_implies_cost_optimization(
             self._options.judges
         )
+        quality_already_passing = self._all_judges_passing()
         instructions = build_new_variation_prompt(
             self._history,
             self._options.judges,
@@ -1404,6 +1460,7 @@ class OptimizationClient:
             self._initial_instructions,
             optimize_for_duration=optimize_for_duration,
             optimize_for_cost=optimize_for_cost,
+            quality_already_passing=quality_already_passing,
         )
 
         # Create a flat history list (without nested history) to avoid exponential growth
@@ -1440,6 +1497,8 @@ class OptimizationClient:
                 False,
             )
             variation_response: OptimizationResponse = await await_if_needed(result)
+            if variation_response.usage is not None:
+                self._total_token_usage += variation_response.usage.total or 0
             response_str = variation_response.output
             try:
                 response_data = extract_json_from_response(response_str)
@@ -1707,10 +1766,17 @@ class OptimizationClient:
                 if snapshot.duration_ms is not None:
                     patch["generationLatency"] = int(snapshot.duration_ms)
                 if snapshot.usage is not None:
-                    patch["generationTokens"] = {
+                    gen_tokens: Dict[str, Any] = {
                         "total": snapshot.usage.total,
                         "input": snapshot.usage.input,
                         "output": snapshot.usage.output,
+                    }
+                    if snapshot.accumulated_token_usage is not None:
+                        gen_tokens["accumulated_total"] = snapshot.accumulated_token_usage
+                    patch["generationTokens"] = gen_tokens
+                elif snapshot.accumulated_token_usage is not None:
+                    patch["generationTokens"] = {
+                        "accumulated_total": snapshot.accumulated_token_usage
                     }
                 eval_latencies = {
                     k: v.duration_ms
@@ -1948,22 +2014,22 @@ class OptimizationClient:
         """
         Check whether the candidate's duration meets the improvement target vs. the baseline.
 
-        The baseline is history[0].duration_ms — the very first completed iteration,
-        representing the original unoptimized configuration's latency. The candidate
-        must be at least _DURATION_TOLERANCE faster (default: 20% improvement).
+        The baseline is the duration_ms from the very first iteration appended to history,
+        captured in ``_baseline_duration_ms``. The candidate must be at least
+        _DURATION_TOLERANCE faster (default: 20% improvement).
 
-        Returns True without blocking when no baseline is available (empty history or
-        history[0].duration_ms is None), or when the candidate's duration_ms was not
-        captured. This avoids penalising configurations when timing data is missing.
+        Returns True without blocking when no baseline is available or when the candidate's
+        duration_ms was not captured. This avoids penalising configurations when timing data
+        is missing.
 
         :param optimize_context: The completed turn context containing duration_ms
         :return: True if the duration requirement is met or cannot be checked
         """
-        if not self._history or self._history[0].duration_ms is None:
+        if self._baseline_duration_ms is None:
             return True
         if optimize_context.duration_ms is None:
             return True
-        baseline = self._history[0].duration_ms
+        baseline = self._baseline_duration_ms
         passed = optimize_context.duration_ms < baseline * _DURATION_TOLERANCE
         if not passed:
             logger.warning(
@@ -1980,26 +2046,25 @@ class OptimizationClient:
         """
         Check whether the candidate's estimated cost meets the improvement target vs. the baseline.
 
-        The baseline is history[0].estimated_cost_usd — the very first completed iteration,
-        representing the original unoptimized configuration's cost. The candidate must be
-        at least _COST_TOLERANCE cheaper (default: 20% improvement).
+        The baseline is the estimated_cost_usd from the very first iteration appended to
+        history, captured in ``_baseline_cost_usd``. The candidate must be at least
+        _COST_TOLERANCE cheaper (default: 10% improvement).
 
         The cost value is in USD when model pricing data is available, or raw total token
         count as a proxy when pricing is absent. Both are comparable relative to their
         own baselines.
 
-        Returns True without blocking when no baseline is available (empty history or
-        history[0].estimated_cost_usd is None), or when the candidate's cost was not
-        captured. This avoids penalising configurations when cost data is missing.
+        Returns True without blocking when no baseline is available or when the candidate's
+        cost was not captured. This avoids penalising configurations when cost data is missing.
 
         :param optimize_context: The completed turn context containing estimated_cost_usd
         :return: True if the cost requirement is met or cannot be checked
         """
-        if not self._history or self._history[0].estimated_cost_usd is None:
+        if self._baseline_cost_usd is None:
             return True
         if optimize_context.estimated_cost_usd is None:
             return True
-        baseline = self._history[0].estimated_cost_usd
+        baseline = self._baseline_cost_usd
         passed = optimize_context.estimated_cost_usd < baseline * _COST_TOLERANCE
         if not passed:
             logger.warning(
@@ -2011,6 +2076,132 @@ class OptimizationClient:
                 baseline * _COST_TOLERANCE,
             )
         return passed
+
+    def _all_judges_passing(self) -> bool:
+        """Return True if every user-configured judge passed in the most recent history entry.
+
+        Inspects the last context in ``_history`` and checks each score key that
+        corresponds to a judge defined in ``_options.judges`` (skipping synthetic gate
+        entries whose keys begin with ``_``). Returns False when history is empty or any
+        judge score does not meet its threshold.
+
+        This is used to decide whether variation generation should preserve the current
+        behavior and only optimise for cost, rather than trying to improve quality further.
+        """
+        if not self._history or not self._options.judges:
+            return False
+        recent = self._history[-1]
+        if not recent.scores:
+            return False
+        for key, judge in self._options.judges.items():
+            result = recent.scores.get(key)
+            if result is None:
+                return False
+            threshold = judge.threshold if judge.threshold is not None else 1.0
+            if not judge_passed(result.score, threshold, judge.is_inverted):
+                return False
+        return True
+
+    def _apply_duration_gate(
+        self, passed_so_far: bool, ctx: OptimizationContext
+    ) -> Tuple[bool, OptimizationContext]:
+        """Apply the latency improvement gate and record its result in ctx.scores.
+
+        When the gate is active (any acceptance statement implies latency optimization),
+        evaluates whether the candidate's duration improved by at least
+        _DURATION_TOLERANCE vs the baseline. A synthetic ``_latency_gate`` entry is
+        added to scores with score=1.0 on pass or score=0.0 on fail so the outcome
+        is visible in the API result and UI.
+
+        The gate is skipped (no score entry added) when:
+        - No acceptance statement implies latency optimization.
+        - ``passed_so_far`` is already False (a prior check failed the sample).
+
+        :param passed_so_far: Whether all prior checks for this sample passed.
+        :param ctx: Current optimization context.
+        :return: (passed, updated_ctx) where passed reflects gate outcome.
+        """
+        if not _acceptance_criteria_implies_duration_optimization(self._options.judges):
+            return passed_so_far, ctx
+        if not passed_so_far:
+            return passed_so_far, ctx
+        passed = self._evaluate_duration(ctx)
+        if passed:
+            if self._baseline_duration_ms is not None and ctx.duration_ms is not None:
+                rationale = (
+                    f"Latency improvement gate passed: {ctx.duration_ms:.0f}ms is at least "
+                    f"{int((1 - _DURATION_TOLERANCE) * 100)}% faster than baseline "
+                    f"{self._baseline_duration_ms:.0f}ms."
+                )
+            else:
+                rationale = "Latency gate passed (no baseline)."
+            score = 1.0
+        else:
+            if self._baseline_duration_ms is not None and ctx.duration_ms is not None:
+                rationale = (
+                    f"Latency improvement gate failed: {ctx.duration_ms:.0f}ms did not improve "
+                    f"by {int((1 - _DURATION_TOLERANCE) * 100)}% vs baseline "
+                    f"{self._baseline_duration_ms:.0f}ms "
+                    f"(required < {self._baseline_duration_ms * _DURATION_TOLERANCE:.0f}ms)."
+                )
+            else:
+                rationale = "Latency gate failed (no baseline data)."
+            score = 0.0
+        ctx = dataclasses.replace(
+            ctx,
+            scores={**ctx.scores, "_latency_gate": JudgeResult(score=score, rationale=rationale)},
+        )
+        return passed, ctx
+
+    def _apply_cost_gate(
+        self, passed_so_far: bool, ctx: OptimizationContext
+    ) -> Tuple[bool, OptimizationContext]:
+        """Apply the cost improvement gate and record its result in ctx.scores.
+
+        When the gate is active (any acceptance statement implies cost optimization),
+        evaluates whether the candidate's estimated cost improved by at least
+        _COST_TOLERANCE vs the baseline. A synthetic ``_cost_gate`` entry is
+        added to scores with score=1.0 on pass or score=0.0 on fail.
+
+        The gate is skipped (no score entry added) when:
+        - No acceptance statement implies cost optimization.
+        - ``passed_so_far`` is already False (a prior check failed the sample).
+
+        :param passed_so_far: Whether all prior checks for this sample passed.
+        :param ctx: Current optimization context.
+        :return: (passed, updated_ctx) where passed reflects gate outcome.
+        """
+        if not _acceptance_criteria_implies_cost_optimization(self._options.judges):
+            return passed_so_far, ctx
+        if not passed_so_far:
+            return passed_so_far, ctx
+        passed = self._evaluate_cost(ctx)
+        if passed:
+            if self._baseline_cost_usd is not None and ctx.estimated_cost_usd is not None:
+                rationale = (
+                    f"Cost improvement gate passed: {ctx.estimated_cost_usd:.6f} is at least "
+                    f"{int((1 - _COST_TOLERANCE) * 100)}% cheaper than baseline "
+                    f"{self._baseline_cost_usd:.6f}."
+                )
+            else:
+                rationale = "Cost gate passed (no baseline)."
+            score = 1.0
+        else:
+            if self._baseline_cost_usd is not None and ctx.estimated_cost_usd is not None:
+                rationale = (
+                    f"Cost improvement gate failed: {ctx.estimated_cost_usd:.6f} did not improve "
+                    f"by {int((1 - _COST_TOLERANCE) * 100)}% vs baseline "
+                    f"{self._baseline_cost_usd:.6f} "
+                    f"(required < {self._baseline_cost_usd * _COST_TOLERANCE:.6f})."
+                )
+            else:
+                rationale = "Cost gate failed (no baseline data)."
+            score = 0.0
+        ctx = dataclasses.replace(
+            ctx,
+            scores={**ctx.scores, "_cost_gate": JudgeResult(score=score, rationale=rationale)},
+        )
+        return passed, ctx
 
     def _handle_success(
         self, optimize_context: OptimizationContext, iteration: int
@@ -2265,15 +2456,12 @@ class OptimizationClient:
             self._safe_status_update("generating", val_ctx, val_iter)
             val_ctx = await self._execute_agent_turn(val_ctx, val_iter)
             self._accumulate_tokens(val_ctx)
-            if self._is_token_limit_exceeded():
-                logger.error(
-                    "[Validation %d/%d] -> Token limit exceeded (total=%d)",
-                    i + 1,
-                    validation_count,
-                    self._total_token_usage,
-                )
-                return False, val_ctx
+            val_ctx = dataclasses.replace(
+                val_ctx, accumulated_token_usage=self._total_token_usage
+            )
 
+            # Evaluate pass/fail before the token limit check so a passing validation
+            # sample is not incorrectly treated as a failure due to budget exhaustion.
             if options.on_turn is not None:
                 try:
                     sample_passed = options.on_turn(val_ctx)
@@ -2285,15 +2473,17 @@ class OptimizationClient:
             else:
                 sample_passed = self._evaluate_response(val_ctx)
 
-            if sample_passed and _acceptance_criteria_implies_duration_optimization(
-                self._options.judges
-            ):
-                sample_passed = self._evaluate_duration(val_ctx)
+            sample_passed, val_ctx = self._apply_duration_gate(sample_passed, val_ctx)
+            sample_passed, val_ctx = self._apply_cost_gate(sample_passed, val_ctx)
 
-            if sample_passed and _acceptance_criteria_implies_cost_optimization(
-                self._options.judges
-            ):
-                sample_passed = self._evaluate_cost(val_ctx)
+            if self._is_token_limit_exceeded():
+                logger.error(
+                    "[Validation %d/%d] -> Token limit exceeded (total=%d)",
+                    i + 1,
+                    validation_count,
+                    self._total_token_usage,
+                )
+                return False, val_ctx
 
             last_ctx = val_ctx
 
@@ -2381,13 +2571,9 @@ class OptimizationClient:
                 optimize_context, iteration
             )
             self._accumulate_tokens(optimize_context)
-            if self._is_token_limit_exceeded():
-                logger.error(
-                    "[Iteration %d] -> Token limit exceeded (total=%d)",
-                    iteration,
-                    self._total_token_usage,
-                )
-                return self._handle_failure(optimize_context, iteration)
+            optimize_context = dataclasses.replace(
+                optimize_context, accumulated_token_usage=self._total_token_usage
+            )
 
             # Manual path: on_turn callback gives caller full control over pass/fail
             if self._options.on_turn is not None:
@@ -2414,15 +2600,18 @@ class OptimizationClient:
                         iteration,
                     )
 
-            if initial_passed and _acceptance_criteria_implies_duration_optimization(
-                self._options.judges
-            ):
-                initial_passed = self._evaluate_duration(optimize_context)
+            initial_passed, optimize_context = self._apply_duration_gate(initial_passed, optimize_context)
+            initial_passed, optimize_context = self._apply_cost_gate(initial_passed, optimize_context)
 
-            if initial_passed and _acceptance_criteria_implies_cost_optimization(
-                self._options.judges
-            ):
-                initial_passed = self._evaluate_cost(optimize_context)
+            # Token limit check after pass/fail evaluation so the persisted record
+            # correctly reflects whether the iteration passed before stopping the run.
+            if self._is_token_limit_exceeded():
+                logger.error(
+                    "[Iteration %d] -> Token limit exceeded (total=%d)",
+                    iteration,
+                    self._total_token_usage,
+                )
+                return self._handle_failure(optimize_context, iteration)
 
             if initial_passed:
                 all_valid, last_ctx = await self._run_validation_phase(
@@ -2445,7 +2634,9 @@ class OptimizationClient:
                 )
                 if iteration >= self._options.max_attempts:
                     return self._handle_failure(optimize_context, iteration)
+                self._record_baseline(last_ctx)
                 self._history.append(last_ctx)
+                self._history = _trim_history(self._history, _MAX_STANDARD_HISTORY_LENGTH)
                 try:
                     await self._generate_new_variation(
                         iteration, last_ctx.current_variables
@@ -2475,7 +2666,9 @@ class OptimizationClient:
                 )
             if iteration >= self._options.max_attempts:
                 return self._handle_failure(optimize_context, iteration)
+            self._record_baseline(optimize_context)
             self._history.append(optimize_context)
+            self._history = _trim_history(self._history, _MAX_STANDARD_HISTORY_LENGTH)
             try:
                 await self._generate_new_variation(
                     iteration, optimize_context.current_variables
