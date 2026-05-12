@@ -2,7 +2,7 @@ version: 2
 
 sphinx:
   builder: html
-  configuration: docs/conf.py
+  configuration: packages/ai-providers/server-ai-openai/docs/conf.py
   fail_on_warning: true
 
 build:
@@ -17,4 +17,4 @@ build:
     create_environment:
       - uv venv "${READTHEDOCS_VIRTUALENV_PATH}"
     install:
-      - UV_PROJECT_ENVIRONMENT="${READTHEDOCS_VIRTUALENV_PATH}" uv sync --project packages/sdk/server-ai --group docs
+      - UV_PROJECT_ENVIRONMENT="${READTHEDOCS_VIRTUALENV_PATH}" uv sync --project packages/ai-providers/server-ai-openai --group docs

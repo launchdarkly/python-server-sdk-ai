@@ -1,11 +1,5 @@
 PYTEST_FLAGS=-W error::SyntaxWarning
 
-SPHINXOPTS    = -W --keep-going
-SPHINXBUILD   = sphinx-build
-SPHINXPROJ    = launchdarkly-server-sdk
-SOURCEDIR     = docs
-BUILDDIR      = $(SOURCEDIR)/build
-
 # Package paths
 SERVER_AI_PKG = packages/sdk/server-ai
 LANGCHAIN_PKG = packages/ai-providers/server-ai-langchain
@@ -105,5 +99,12 @@ build-openai: #! Build openai provider package
 #
 
 .PHONY: docs
-docs: #! Generate sphinx-based documentation
-	$(MAKE) -C $(SERVER_AI_PKG) docs DOCS_DIR=../../../$(SOURCEDIR) DOCS_BUILD_DIR=../../../$(BUILDDIR)
+docs: docs-server-ai docs-openai #! Generate sphinx docs for all documented packages
+
+.PHONY: docs-server-ai
+docs-server-ai: #! Generate sphinx docs for server-ai package
+	$(MAKE) -C $(SERVER_AI_PKG) docs
+
+.PHONY: docs-openai
+docs-openai: #! Generate sphinx docs for openai provider package
+	$(MAKE) -C $(OPENAI_PKG) docs
