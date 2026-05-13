@@ -224,16 +224,50 @@ class OptimizationClient:
         self._baseline_cost_usd: Optional[float] = None
 
     def _record_baseline(self, ctx: OptimizationContext) -> None:
-        """Capture duration/cost baseline from the first iteration appended to history.
+        """Capture duration/cost baseline from a single context.
 
-        Called once per run (subsequent calls are no-ops once both values are set).
-        Storing these explicitly lets ``_trim_history`` use a simple tail slice without
-        needing to preserve ``history[0]`` as an anchor.
+        Used by the standard (non-GT) optimization loop where each iteration
+        produces one result. Called once per run (subsequent calls are no-ops
+        once both values are set). Storing these explicitly lets
+        ``_trim_history`` use a simple tail slice without needing to preserve
+        ``history[0]`` as an anchor.
         """
         if self._baseline_duration_ms is None and ctx.duration_ms is not None:
             self._baseline_duration_ms = ctx.duration_ms
         if self._baseline_cost_usd is None and ctx.estimated_cost_usd is not None:
             self._baseline_cost_usd = ctx.estimated_cost_usd
+
+    def _record_baseline_from_batch(self, attempt_results: List[OptimizationContext]) -> None:
+        """Capture duration/cost baseline as the average across a GT batch.
+
+        Used by the GT optimization loop. The first attempt's N samples form
+        the baseline; averaging them gives a more stable reference than a
+        single sample and ensures comparisons in subsequent attempts reflect
+        the typical performance of the original configuration rather than an
+        outlier measurement.
+
+        Called once per run (subsequent calls are no-ops once both values are
+        set).
+
+        :param attempt_results: All completed sample contexts from the first
+            GT attempt.
+        """
+        if not attempt_results:
+            return
+        if self._baseline_duration_ms is None:
+            durations = [
+                ctx.duration_ms for ctx in attempt_results if ctx.duration_ms is not None
+            ]
+            if durations:
+                self._baseline_duration_ms = sum(durations) / len(durations)
+        if self._baseline_cost_usd is None:
+            costs = [
+                ctx.estimated_cost_usd
+                for ctx in attempt_results
+                if ctx.estimated_cost_usd is not None
+            ]
+            if costs:
+                self._baseline_cost_usd = sum(costs) / len(costs)
 
     def _build_agent_config_for_context(
         self, ctx: OptimizationContext, skip_interpolation: bool = False
@@ -1272,7 +1306,7 @@ class OptimizationClient:
             # from all of the previous samples, then trim to one full attempt's worth so
             # judge prompts don't grow unboundedly across many failed attempts.
             if attempt_results:
-                self._record_baseline(attempt_results[0])
+                self._record_baseline_from_batch(attempt_results)
             self._history.extend(attempt_results)
             self._history = _trim_history(self._history, n)
 

@@ -1,5 +1,6 @@
 """Tests for OptimizationClient."""
 
+import dataclasses
 import json
 from typing import Any, Dict
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -5174,6 +5175,52 @@ class TestEvaluateCost:
         # candidate cost is None and the gate skips rather than comparing incompatible units.
         self._seed_history(0.010)
         assert self.client._evaluate_cost(self._ctx(None)) is True
+
+
+# ---------------------------------------------------------------------------
+# _record_baseline_from_batch
+# ---------------------------------------------------------------------------
+
+
+class TestRecordBaselineFromBatch:
+    def setup_method(self):
+        self.client = _make_client()
+        self.client._initialize_class_members_from_config(_make_agent_config())
+
+    def _ctx(self, duration_ms=None, cost=None):
+        ctx = self.client._create_optimization_context(iteration=1, variables={})
+        return dataclasses.replace(ctx, duration_ms=duration_ms, estimated_cost_usd=cost)
+
+    def test_averages_duration_across_batch(self):
+        results = [self._ctx(duration_ms=1000), self._ctx(duration_ms=2000), self._ctx(duration_ms=3000)]
+        self.client._record_baseline_from_batch(results)
+        assert self.client._baseline_duration_ms == 2000.0
+
+    def test_averages_cost_across_batch(self):
+        results = [self._ctx(cost=0.01), self._ctx(cost=0.02), self._ctx(cost=0.03)]
+        self.client._record_baseline_from_batch(results)
+        assert abs(self.client._baseline_cost_usd - 0.02) < 1e-9
+
+    def test_skips_none_values_in_average(self):
+        results = [self._ctx(duration_ms=1000), self._ctx(duration_ms=None), self._ctx(duration_ms=3000)]
+        self.client._record_baseline_from_batch(results)
+        assert self.client._baseline_duration_ms == 2000.0
+
+    def test_noop_when_already_set(self):
+        self.client._baseline_duration_ms = 999.0
+        results = [self._ctx(duration_ms=1000), self._ctx(duration_ms=2000)]
+        self.client._record_baseline_from_batch(results)
+        assert self.client._baseline_duration_ms == 999.0
+
+    def test_noop_on_empty_list(self):
+        self.client._record_baseline_from_batch([])
+        assert self.client._baseline_duration_ms is None
+        assert self.client._baseline_cost_usd is None
+
+    def test_noop_when_all_values_none(self):
+        results = [self._ctx(duration_ms=None), self._ctx(duration_ms=None)]
+        self.client._record_baseline_from_batch(results)
+        assert self.client._baseline_duration_ms is None
 
 
 # ---------------------------------------------------------------------------
