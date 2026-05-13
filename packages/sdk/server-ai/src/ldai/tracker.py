@@ -168,7 +168,7 @@ class LDAIConfigTracker:
 
         This is used for cross-process scenarios such as deferred feedback,
         where a different service needs to associate tracking events with the
-        original AI run's ``runId``.
+        original tracker's ``runId``.
 
         :param token: A URL-safe Base64-encoded resumption token obtained from
             :attr:`resumption_token`.
