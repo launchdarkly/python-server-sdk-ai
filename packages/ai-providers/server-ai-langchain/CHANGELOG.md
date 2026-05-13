@@ -2,6 +2,21 @@
 
 All notable changes to the LaunchDarkly Python AI LangChain provider package will be documented in this file. This project adheres to [Semantic Versioning](http://semver.org).
 
+## [0.7.0](https://github.com/launchdarkly/python-server-sdk-ai/compare/launchdarkly-server-sdk-ai-langchain-0.6.0...launchdarkly-server-sdk-ai-langchain-0.7.0) (2026-05-13)
+
+
+### ⚠ BREAKING CHANGES
+
+* Narrow AgentGraphRunner.run input from Any to str ([#177](https://github.com/launchdarkly/python-server-sdk-ai/issues/177))
+* Rename LDAIMetrics.usage and AIGraphMetrics.usage to .tokens ([#175](https://github.com/launchdarkly/python-server-sdk-ai/issues/175))
+* rename GraphMetrics/GraphMetricSummary to AIGraphMetrics/AIGraphMetricSummary ([#173](https://github.com/launchdarkly/python-server-sdk-ai/issues/173))
+
+### Features
+
+* Narrow AgentGraphRunner.run input from Any to str ([#177](https://github.com/launchdarkly/python-server-sdk-ai/issues/177)) ([cc7a0fe](https://github.com/launchdarkly/python-server-sdk-ai/commit/cc7a0fe64549337c71036cd67973bf0af91c7a42))
+* rename GraphMetrics/GraphMetricSummary to AIGraphMetrics/AIGraphMetricSummary ([#173](https://github.com/launchdarkly/python-server-sdk-ai/issues/173)) ([583939d](https://github.com/launchdarkly/python-server-sdk-ai/commit/583939dbe5c11c3c11ed960ee0b46ec377f1bb70))
+* Rename LDAIMetrics.usage and AIGraphMetrics.usage to .tokens ([#175](https://github.com/launchdarkly/python-server-sdk-ai/issues/175)) ([d8c4a70](https://github.com/launchdarkly/python-server-sdk-ai/commit/d8c4a702d4b68f146de7ca520bc35f2aa0b155f6))
+
 ## [0.6.0](https://github.com/launchdarkly/python-server-sdk-ai/compare/launchdarkly-server-sdk-ai-langchain-0.5.0...launchdarkly-server-sdk-ai-langchain-0.6.0) (2026-05-05)
 
 
