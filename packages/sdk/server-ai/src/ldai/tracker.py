@@ -224,7 +224,11 @@ class LDAIConfigTracker:
         :param duration: Duration in milliseconds.
         """
         if self._summary.duration_ms is not None:
-            log.warning("Duration has already been tracked for this execution. %s", self.__get_track_data())
+            log.warning(
+                "Skipping track_duration: duration already recorded on this tracker. "
+                "Call create_tracker on the AI Config for a new run. %s",
+                self.__get_track_data(),
+            )
             return
         self._summary._duration_ms = duration
         self._ld_client.track(
@@ -239,7 +243,8 @@ class LDAIConfigTracker:
         """
         if self._summary.time_to_first_token is not None:
             log.warning(
-                "Time to first token has already been tracked for this execution. %s",
+                "Skipping track_time_to_first_token: time-to-first-token already recorded on this tracker. "
+                "Call create_tracker on the AI Config for a new run. %s",
                 self.__get_track_data(),
             )
             return
@@ -393,7 +398,11 @@ class LDAIConfigTracker:
         :param feedback: Dictionary containing feedback kind.
         """
         if self._summary.feedback is not None:
-            log.warning("Feedback has already been tracked for this execution. %s", self.__get_track_data())
+            log.warning(
+                "Skipping track_feedback: feedback already recorded on this tracker. "
+                "Call create_tracker on the AI Config for a new run. %s",
+                self.__get_track_data(),
+            )
             return
         self._summary._feedback = feedback
         if feedback["kind"] == FeedbackKind.Positive:
@@ -430,7 +439,11 @@ class LDAIConfigTracker:
         Track a successful AI generation.
         """
         if self._summary.success is not None:
-            log.warning("Success has already been tracked for this execution. %s", self.__get_track_data())
+            log.warning(
+                "Skipping track_success: success/error already recorded on this tracker. "
+                "Call create_tracker on the AI Config for a new run. %s",
+                self.__get_track_data(),
+            )
             return
         self._summary._success = True
         self._ld_client.track(
@@ -442,7 +455,11 @@ class LDAIConfigTracker:
         Track an unsuccessful AI generation attempt.
         """
         if self._summary.success is not None:
-            log.warning("Success has already been tracked for this execution. %s", self.__get_track_data())
+            log.warning(
+                "Skipping track_error: success/error already recorded on this tracker. "
+                "Call create_tracker on the AI Config for a new run. %s",
+                self.__get_track_data(),
+            )
             return
         self._summary._success = False
         self._ld_client.track(
@@ -478,7 +495,11 @@ class LDAIConfigTracker:
         :param tokens: Token usage data from either custom, OpenAI, or Bedrock sources.
         """
         if self._summary.tokens is not None:
-            log.warning("Tokens have already been tracked for this execution. %s", self.__get_track_data())
+            log.warning(
+                "Skipping track_tokens: token usage already recorded on this tracker. "
+                "Call create_tracker on the AI Config for a new run. %s",
+                self.__get_track_data(),
+            )
             return
         self._summary._tokens = tokens
         td = self.__get_track_data()
@@ -608,8 +629,10 @@ class AIGraphTracker:
         """
         if self._summary.success is not None:
             log.warning(
-                "Invocation status has already been tracked for this graph execution. %s",
-                self.__get_track_data())
+                "Skipping track_invocation_success: invocation result already recorded on this graph tracker. "
+                "Call create_tracker on the agent graph for a new run. %s",
+                self.__get_track_data(),
+            )
             return
         self._summary.success = True
         self._ld_client.track(
@@ -625,8 +648,10 @@ class AIGraphTracker:
         """
         if self._summary.success is not None:
             log.warning(
-                "Invocation status has already been tracked for this graph execution. %s",
-                self.__get_track_data())
+                "Skipping track_invocation_failure: invocation result already recorded on this graph tracker. "
+                "Call create_tracker on the agent graph for a new run. %s",
+                self.__get_track_data(),
+            )
             return
         self._summary.success = False
         self._ld_client.track(
@@ -643,7 +668,11 @@ class AIGraphTracker:
         :param duration: Duration in milliseconds.
         """
         if self._summary.duration_ms is not None:
-            log.warning("Duration has already been tracked for this graph execution. %s", self.__get_track_data())
+            log.warning(
+                "Skipping track_duration: duration already recorded on this graph tracker. "
+                "Call create_tracker on the agent graph for a new run. %s",
+                self.__get_track_data(),
+            )
             return
         self._summary.duration_ms = duration
         self._ld_client.track(
@@ -662,7 +691,11 @@ class AIGraphTracker:
         if tokens is None or tokens.total <= 0:
             return
         if self._summary.tokens is not None:
-            log.warning("Token usage has already been tracked for this graph execution. %s", self.__get_track_data())
+            log.warning(
+                "Skipping track_total_tokens: tokens already recorded on this graph tracker. "
+                "Call create_tracker on the agent graph for a new run. %s",
+                self.__get_track_data(),
+            )
             return
         self._summary.tokens = tokens
         self._ld_client.track(
