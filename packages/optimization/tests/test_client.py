@@ -16,6 +16,7 @@ from ldai_optimizer.client import (
     _MAX_STANDARD_HISTORY_LENGTH,
     _compute_validation_count,
     _find_model_config,
+    _strip_provider_prefix,
     _trim_history,
 )
 from ldai_optimizer.util import judge_passed
@@ -127,6 +128,40 @@ def _make_client(ldai: MagicMock | None = None) -> OptimizationClient:
 # ---------------------------------------------------------------------------
 # Util functions
 # ---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+# _strip_provider_prefix
+# ---------------------------------------------------------------------------
+
+
+class TestStripProviderPrefix:
+    def test_strips_known_anthropic_prefix(self):
+        assert _strip_provider_prefix("Anthropic.claude-opus-4-5") == "claude-opus-4-5"
+
+    def test_strips_known_openai_prefix(self):
+        assert _strip_provider_prefix("OpenAI.gpt-4o") == "gpt-4o"
+
+    def test_strips_known_bedrock_prefix(self):
+        # "Bedrock.us.amazon.nova-pro-v1:0" → region prefix is preserved
+        assert _strip_provider_prefix("Bedrock.us.amazon.nova-pro-v1:0") == "us.amazon.nova-pro-v1:0"
+
+    def test_does_not_strip_bedrock_region_prefix(self):
+        # Raw Bedrock cross-region ID has no provider prefix — must be unchanged
+        assert _strip_provider_prefix("us.amazon.nova-pro-v1:0") == "us.amazon.nova-pro-v1:0"
+
+    def test_does_not_strip_eu_region_prefix(self):
+        assert _strip_provider_prefix("eu.anthropic.claude-3-5-sonnet-20241022-v2:0") == "eu.anthropic.claude-3-5-sonnet-20241022-v2:0"
+
+    def test_no_period_returns_unchanged(self):
+        assert _strip_provider_prefix("gpt-4o") == "gpt-4o"
+
+    def test_empty_string_returns_unchanged(self):
+        assert _strip_provider_prefix("") == ""
+
+    def test_preserves_dots_in_model_name_after_stripping(self):
+        # Multiple dots after the provider prefix are preserved
+        assert _strip_provider_prefix("Anthropic.claude-3.5-sonnet") == "claude-3.5-sonnet"
 
 
 # ---------------------------------------------------------------------------

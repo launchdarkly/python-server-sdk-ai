@@ -91,18 +91,40 @@ def _find_model_config(
     return global_match if global_match is not None else matching[0]
 
 
+# Known provider prefixes used by the LD API (e.g. "Anthropic.claude-3").
+# Only strip the first segment when it is one of these known values so that
+# model IDs whose first dotted segment is NOT a provider — such as Bedrock
+# cross-region inference IDs like "us.amazon.nova-pro-v1:0" — are left intact.
+_KNOWN_PROVIDER_PREFIXES: frozenset = frozenset({
+    "Anthropic",
+    "Bedrock",
+    "Cohere",
+    "Google",
+    "Groq",
+    "Meta",
+    "Mistral",
+    "OpenAI",
+    "Perplexity",
+})
+
+
 def _strip_provider_prefix(model: str) -> str:
     """Strip the provider prefix from a model identifier returned by the LD API.
 
     API model keys are formatted as "Provider.model-name" (e.g. "OpenAI.gpt-5",
-    "Anthropic.claude-opus-4.6"). Only the part after the first period is needed
-    by the underlying LLM clients. If no period is present the string is returned
-    unchanged.
+    "Anthropic.claude-opus-4.6"). Only the segment before the first period is
+    stripped, and only when it is a recognised provider name. This prevents
+    incorrectly stripping region prefixes from Bedrock cross-region inference
+    IDs such as "us.amazon.nova-pro-v1:0".
 
     :param model: Raw model string from the API.
-    :return: Model name with provider prefix removed.
+    :return: Model name with provider prefix removed, or the original string if
+        the first segment is not a known provider.
     """
-    return model.split(".", 1)[-1]
+    prefix, _, rest = model.partition(".")
+    if prefix in _KNOWN_PROVIDER_PREFIXES and rest:
+        return rest
+    return model
 
 
 def _compute_validation_count(pool_size: int) -> int:
