@@ -1155,6 +1155,12 @@ class OptimizationClient:
                 sample_passed, optimize_context = self._apply_duration_gate(sample_passed, optimize_context)
                 sample_passed, optimize_context = self._apply_cost_gate(sample_passed, optimize_context)
 
+                # Flush gate scores to the API for this sample. Without this,
+                # the next sample's "generating" event closes out this record
+                # with a status-only PATCH before gate scores are sent, so only
+                # the last sample would ever show latency/cost gate entries.
+                self._safe_status_update("evaluating", optimize_context, linear_iter)
+
                 if not sample_passed:
                     logger.info(
                         "[GT Attempt %d] -> Sample %d/%d FAILED",
@@ -2110,20 +2116,22 @@ class OptimizationClient:
         When the gate is active (any acceptance statement implies latency optimization),
         evaluates whether the candidate's duration improved by at least
         _DURATION_TOLERANCE vs the baseline. A synthetic ``_latency_gate`` entry is
-        added to scores with score=1.0 on pass or score=0.0 on fail so the outcome
-        is visible in the API result and UI.
+        always added to scores with score=1.0 on pass or score=0.0 on fail so the
+        outcome is visible in the API result and UI for every iteration.
 
-        The gate is skipped (no score entry added) when:
-        - No acceptance statement implies latency optimization.
-        - ``passed_so_far`` is already False (a prior check failed the sample).
+        The gate score is recorded even when ``passed_so_far`` is False (quality
+        judges already failed) so that latency telemetry is visible on all
+        iterations, not just passing ones. In that case it is informational only
+        and cannot block the iteration further.
+
+        The gate is skipped entirely (no score entry added) only when no acceptance
+        statement implies latency optimization.
 
         :param passed_so_far: Whether all prior checks for this sample passed.
         :param ctx: Current optimization context.
         :return: (passed, updated_ctx) where passed reflects gate outcome.
         """
         if not _acceptance_criteria_implies_duration_optimization(self._options.judges):
-            return passed_so_far, ctx
-        if not passed_so_far:
             return passed_so_far, ctx
         passed = self._evaluate_duration(ctx)
         if passed:
@@ -2149,9 +2157,13 @@ class OptimizationClient:
             score = 0.0
         ctx = dataclasses.replace(
             ctx,
-            scores={**ctx.scores, "_latency_gate": JudgeResult(score=score, rationale=rationale)},
+            scores={**ctx.scores, "_latency_gate": JudgeResult(
+                score=score,
+                rationale=rationale,
+                duration_ms=ctx.duration_ms,
+            )},
         )
-        return passed, ctx
+        return passed_so_far and passed, ctx
 
     def _apply_cost_gate(
         self, passed_so_far: bool, ctx: OptimizationContext
@@ -2160,20 +2172,22 @@ class OptimizationClient:
 
         When the gate is active (any acceptance statement implies cost optimization),
         evaluates whether the candidate's estimated cost improved by at least
-        _COST_TOLERANCE vs the baseline. A synthetic ``_cost_gate`` entry is
+        _COST_TOLERANCE vs the baseline. A synthetic ``_cost_gate`` entry is always
         added to scores with score=1.0 on pass or score=0.0 on fail.
 
-        The gate is skipped (no score entry added) when:
-        - No acceptance statement implies cost optimization.
-        - ``passed_so_far`` is already False (a prior check failed the sample).
+        The gate score is recorded even when ``passed_so_far`` is False (quality
+        judges already failed) so that cost telemetry is visible on all iterations,
+        not just passing ones. In that case it is informational only and cannot
+        block the iteration further.
+
+        The gate is skipped entirely (no score entry added) only when no acceptance
+        statement implies cost optimization.
 
         :param passed_so_far: Whether all prior checks for this sample passed.
         :param ctx: Current optimization context.
         :return: (passed, updated_ctx) where passed reflects gate outcome.
         """
         if not _acceptance_criteria_implies_cost_optimization(self._options.judges):
-            return passed_so_far, ctx
-        if not passed_so_far:
             return passed_so_far, ctx
         passed = self._evaluate_cost(ctx)
         if passed:
@@ -2199,9 +2213,14 @@ class OptimizationClient:
             score = 0.0
         ctx = dataclasses.replace(
             ctx,
-            scores={**ctx.scores, "_cost_gate": JudgeResult(score=score, rationale=rationale)},
+            scores={**ctx.scores, "_cost_gate": JudgeResult(
+                score=score,
+                rationale=rationale,
+                duration_ms=ctx.duration_ms,
+                estimated_cost_usd=ctx.estimated_cost_usd,
+            )},
         )
-        return passed, ctx
+        return passed_so_far and passed, ctx
 
     def _handle_success(
         self, optimize_context: OptimizationContext, iteration: int

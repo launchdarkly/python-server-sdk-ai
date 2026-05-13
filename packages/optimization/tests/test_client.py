@@ -5224,11 +5224,13 @@ class TestApplyDurationGate:
         assert passed is True
         assert "_latency_gate" not in updated.scores
 
-    def test_no_entry_added_when_already_failed(self):
+    def test_gate_recorded_even_when_already_failed(self):
+        # Gate score is always written for telemetry; it cannot block an
+        # iteration that was already failing (passed_so_far=False).
         ctx = self._ctx(1000)
         passed, updated = self.client._apply_duration_gate(False, ctx)
         assert passed is False
-        assert "_latency_gate" not in updated.scores
+        assert "_latency_gate" in updated.scores
 
     def test_gate_pass_adds_score_1(self):
         # baseline=2000ms, threshold=1600ms, candidate=1500ms → pass
@@ -5327,11 +5329,13 @@ class TestApplyCostGate:
         assert passed is True
         assert "_cost_gate" not in updated.scores
 
-    def test_no_entry_added_when_already_failed(self):
+    def test_gate_recorded_even_when_already_failed(self):
+        # Gate score is always written for telemetry; it cannot block an
+        # iteration that was already failing (passed_so_far=False).
         ctx = self._ctx(0.005)
         passed, updated = self.client._apply_cost_gate(False, ctx)
         assert passed is False
-        assert "_cost_gate" not in updated.scores
+        assert "_cost_gate" in updated.scores
 
     def test_gate_pass_adds_score_1(self):
         # baseline=0.010, threshold=0.009, candidate=0.007 → pass
