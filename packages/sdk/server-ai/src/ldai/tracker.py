@@ -84,14 +84,20 @@ class LDAIMetricSummary:
         """
         URL-safe Base64-encoded resumption token captured at tracker
         instantiation. Useful for deferred feedback flows where a downstream
-        process needs to associate events with the original execution.
+        process needs to associate events with the original AI run.
         """
         return self._resumption_token
 
 
 class LDAIConfigTracker:
     """
-    Tracks configuration and usage metrics for LaunchDarkly AI operations.
+    Records metrics for a single AI run.
+
+    All events a tracker emits share a runId (a UUIDv4) so LaunchDarkly can correlate
+    them in metrics views. See individual track methods for their specific semantics.
+    Call ``create_tracker`` on the AI Config to start a new run. A resumption token
+    preserves the runId, so events emitted by a tracker reconstructed in another
+    process correlate with the original run.
     """
 
     def __init__(
@@ -110,7 +116,7 @@ class LDAIConfigTracker:
         Initialize an AI Config tracker.
 
         :param ld_client: LaunchDarkly client instance.
-        :param run_id: Unique identifier for this execution.
+        :param run_id: Unique identifier for this AI run.
         :param config_key: Configuration key for tracking.
         :param variation_key: Variation key for tracking.
         :param version: Version of the variation.
@@ -162,7 +168,7 @@ class LDAIConfigTracker:
 
         This is used for cross-process scenarios such as deferred feedback,
         where a different service needs to associate tracking events with the
-        original execution's ``runId``.
+        original tracker's ``runId``.
 
         :param token: A URL-safe Base64-encoded resumption token obtained from
             :attr:`resumption_token`.
@@ -219,12 +225,18 @@ class LDAIConfigTracker:
 
     def track_duration(self, duration: int) -> None:
         """
-        Manually track the duration of an AI operation.
+        Manually track the duration of an AI run.
+
+        Records at most once per Tracker; further calls are ignored.
 
         :param duration: Duration in milliseconds.
         """
         if self._summary.duration_ms is not None:
-            log.warning("Duration has already been tracked for this execution. %s", self.__get_track_data())
+            log.warning(
+                "Skipping track_duration: duration already recorded on this tracker. "
+                "Call create_tracker on the AI Config for a new run. %s",
+                self.__get_track_data(),
+            )
             return
         self._summary._duration_ms = duration
         self._ld_client.track(
@@ -233,13 +245,16 @@ class LDAIConfigTracker:
 
     def track_time_to_first_token(self, time_to_first_token: int) -> None:
         """
-        Manually track the time to first token of an AI operation.
+        Manually track the time to first token of an AI run.
+
+        Records at most once per Tracker; further calls are ignored.
 
         :param time_to_first_token: Time to first token in milliseconds.
         """
         if self._summary.time_to_first_token is not None:
             log.warning(
-                "Time to first token has already been tracked for this execution. %s",
+                "Skipping track_time_to_first_token: time-to-first-token already recorded on this tracker. "
+                "Call create_tracker on the AI Config for a new run. %s",
                 self.__get_track_data(),
             )
             return
@@ -253,10 +268,10 @@ class LDAIConfigTracker:
 
     def track_duration_of(self, func):
         """
-        Automatically track the duration of an AI operation.
+        Automatically track the duration of an AI run.
 
-        An exception occurring during the execution of the function will still
-        track the duration. The exception will be re-thrown.
+        An exception raised while the function runs will still record the
+        duration. The exception will be re-thrown.
 
         :param func: Function to track (synchronous only).
         :return: Result of the tracked function.
@@ -317,6 +332,10 @@ class LDAIConfigTracker:
         non-``None`` ``duration_ms`` field, that value is used as the measured duration
         instead of the wall-clock elapsed time.
 
+        Because each inner metric is at-most-once per Tracker, calling this twice
+        on the same Tracker will run the inner block again but produce no
+        additional metric events.
+
         :param metrics_extractor: Function that extracts LDAIMetrics from the operation result
         :param func: Synchronous callable that runs the operation
         :return: The result of the operation
@@ -348,6 +367,10 @@ class LDAIConfigTracker:
         non-``None`` ``duration_ms`` field, that value is used as the measured duration
         instead of the wall-clock elapsed time.
 
+        Because each inner metric is at-most-once per Tracker, calling this twice
+        on the same Tracker will run the inner block again but produce no
+        additional metric events.
+
         :param metrics_extractor: Function that extracts LDAIMetrics from the operation result
         :param func: Async callable or zero-arg callable that returns an awaitable when called
         :return: The result of the operation
@@ -370,6 +393,9 @@ class LDAIConfigTracker:
         """
         Track a judge result, including the evaluation score with judge config key.
 
+        May be called multiple times per Tracker; each call records the
+        provided judge result.
+
         :param judge_result: JudgeResult object containing score, metric key, and success status
         """
         if not judge_result.sampled:
@@ -388,12 +414,18 @@ class LDAIConfigTracker:
 
     def track_feedback(self, feedback: Dict[str, FeedbackKind]) -> None:
         """
-        Track user feedback for an AI operation.
+        Track user feedback for an AI run.
+
+        Records at most once per Tracker; further calls are ignored.
 
         :param feedback: Dictionary containing feedback kind.
         """
         if self._summary.feedback is not None:
-            log.warning("Feedback has already been tracked for this execution. %s", self.__get_track_data())
+            log.warning(
+                "Skipping track_feedback: feedback already recorded on this tracker. "
+                "Call create_tracker on the AI Config for a new run. %s",
+                self.__get_track_data(),
+            )
             return
         self._summary._feedback = feedback
         if feedback["kind"] == FeedbackKind.Positive:
@@ -413,10 +445,13 @@ class LDAIConfigTracker:
 
     def track_tool_calls(self, tool_calls: Iterable[str]) -> None:
         """
-        Track the tool calls made during an AI operation.
+        Track the tool calls made during an AI run.
 
         Appends to the summary's tool call list and fires a
         ``$ld:ai:tool_call`` event for each tool.
+
+        May be called multiple times per Tracker; each call records an event
+        for every tool identifier provided.
 
         :param tool_calls: Tool identifiers (e.g. from a model response).
         """
@@ -428,9 +463,17 @@ class LDAIConfigTracker:
     def track_success(self) -> None:
         """
         Track a successful AI generation.
+
+        Records at most once per Tracker. track_success and track_error share
+        state; only one of the two can record per Tracker, and subsequent calls
+        are ignored.
         """
         if self._summary.success is not None:
-            log.warning("Success has already been tracked for this execution. %s", self.__get_track_data())
+            log.warning(
+                "Skipping track_success: success/error already recorded on this tracker. "
+                "Call create_tracker on the AI Config for a new run. %s",
+                self.__get_track_data(),
+            )
             return
         self._summary._success = True
         self._ld_client.track(
@@ -440,9 +483,17 @@ class LDAIConfigTracker:
     def track_error(self) -> None:
         """
         Track an unsuccessful AI generation attempt.
+
+        Records at most once per Tracker. track_success and track_error share
+        state; only one of the two can record per Tracker, and subsequent calls
+        are ignored.
         """
         if self._summary.success is not None:
-            log.warning("Success has already been tracked for this execution. %s", self.__get_track_data())
+            log.warning(
+                "Skipping track_error: success/error already recorded on this tracker. "
+                "Call create_tracker on the AI Config for a new run. %s",
+                self.__get_track_data(),
+            )
             return
         self._summary._success = False
         self._ld_client.track(
@@ -475,10 +526,16 @@ class LDAIConfigTracker:
         """
         Track token usage metrics.
 
+        Records at most once per Tracker; further calls are ignored.
+
         :param tokens: Token usage data from either custom, OpenAI, or Bedrock sources.
         """
         if self._summary.tokens is not None:
-            log.warning("Tokens have already been tracked for this execution. %s", self.__get_track_data())
+            log.warning(
+                "Skipping track_tokens: token usage already recorded on this tracker. "
+                "Call create_tracker on the AI Config for a new run. %s",
+                self.__get_track_data(),
+            )
             return
         self._summary._tokens = tokens
         td = self.__get_track_data()
@@ -506,7 +563,10 @@ class LDAIConfigTracker:
 
     def track_tool_call(self, tool_key: str) -> None:
         """
-        Track a tool invocation for this configuration (standalone or within a graph).
+        Track a tool call for this configuration (standalone or within a graph).
+
+        May be called multiple times per Tracker; each call records a tool
+        call event for the provided tool key.
 
         :param tool_key: Identifier of the tool that was invoked.
         """
@@ -604,12 +664,18 @@ class AIGraphTracker:
 
     def track_invocation_success(self) -> None:
         """
-        Track a successful graph invocation.
+        Track a successful graph run.
+
+        Records at most once per graph tracker. track_invocation_success and
+        track_invocation_failure share state; only one of the two can record
+        per graph tracker, and subsequent calls are ignored.
         """
         if self._summary.success is not None:
             log.warning(
-                "Invocation status has already been tracked for this graph execution. %s",
-                self.__get_track_data())
+                "Skipping track_invocation_success: invocation result already recorded on this graph tracker. "
+                "Call create_tracker on the agent graph for a new run. %s",
+                self.__get_track_data(),
+            )
             return
         self._summary.success = True
         self._ld_client.track(
@@ -621,12 +687,18 @@ class AIGraphTracker:
 
     def track_invocation_failure(self) -> None:
         """
-        Track an unsuccessful graph invocation.
+        Track an unsuccessful graph run.
+
+        Records at most once per graph tracker. track_invocation_success and
+        track_invocation_failure share state; only one of the two can record
+        per graph tracker, and subsequent calls are ignored.
         """
         if self._summary.success is not None:
             log.warning(
-                "Invocation status has already been tracked for this graph execution. %s",
-                self.__get_track_data())
+                "Skipping track_invocation_failure: invocation result already recorded on this graph tracker. "
+                "Call create_tracker on the agent graph for a new run. %s",
+                self.__get_track_data(),
+            )
             return
         self._summary.success = False
         self._ld_client.track(
@@ -638,12 +710,18 @@ class AIGraphTracker:
 
     def track_duration(self, duration: int) -> None:
         """
-        Track the total duration of graph execution.
+        Track the total duration of a graph run.
+
+        Records at most once per graph tracker; further calls are ignored.
 
         :param duration: Duration in milliseconds.
         """
         if self._summary.duration_ms is not None:
-            log.warning("Duration has already been tracked for this graph execution. %s", self.__get_track_data())
+            log.warning(
+                "Skipping track_duration: duration already recorded on this graph tracker. "
+                "Call create_tracker on the agent graph for a new run. %s",
+                self.__get_track_data(),
+            )
             return
         self._summary.duration_ms = duration
         self._ld_client.track(
@@ -655,14 +733,20 @@ class AIGraphTracker:
 
     def track_total_tokens(self, tokens: Optional[TokenUsage] = None) -> None:
         """
-        Track aggregated token usage across the entire graph invocation.
+        Track aggregated token usage across the entire graph run.
+
+        Records at most once per graph tracker; further calls are ignored.
 
         :param tokens: Token usage data, or ``None`` when usage is unknown.
         """
         if tokens is None or tokens.total <= 0:
             return
         if self._summary.tokens is not None:
-            log.warning("Token usage has already been tracked for this graph execution. %s", self.__get_track_data())
+            log.warning(
+                "Skipping track_total_tokens: tokens already recorded on this graph tracker. "
+                "Call create_tracker on the agent graph for a new run. %s",
+                self.__get_track_data(),
+            )
             return
         self._summary.tokens = tokens
         self._ld_client.track(
@@ -674,10 +758,14 @@ class AIGraphTracker:
 
     def track_path(self, path: List[str]) -> None:
         """
-        Track the execution path through the graph.
+        Track the path traversed through the graph during a graph run.
 
         Appends to the summary's path list and fires a ``$ld:ai:graph:path``
-        event. Can be called multiple times to build the path incrementally.
+        event.
+
+        May be called multiple times per Tracker; each call records the
+        provided path segment and appends it to the summary so the full
+        path can be built incrementally.
 
         :param path: An array of configuration keys representing the sequence of nodes executed during graph traversal.
         """

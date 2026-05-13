@@ -203,10 +203,20 @@ class AIConfig:
 
     Instances are always created by the SDK client, which injects a real
     ``create_tracker`` factory.  User code should never need to construct
-    this directly — use the ``*Default`` variants for default values.
+    this directly -- use the ``*Default`` variants for default values.
+
+    ``create_tracker`` is a zero-argument callable: each invocation creates a
+    new tracker for a fresh AI run. Each call mints a new ``runId`` (a UUIDv4)
+    that LaunchDarkly uses to correlate the run's events in metrics views.
+    Call it once per AI run; metrics from different ``runId``s cannot be
+    combined.
     """
     key: str
     enabled: bool
+    #: Factory that creates a new tracker for a fresh AI run. Each call mints a
+    #: new ``runId`` (a UUIDv4) so LaunchDarkly can correlate the run's events
+    #: in metrics views. Call this once per AI run; metrics from different
+    #: ``runId``s cannot be combined.
     create_tracker: Callable[[], Any]
     model: Optional[ModelConfig] = None
     provider: Optional[ProviderConfig] = None
