@@ -1,6 +1,6 @@
 {
-  "packages/sdk/server-ai": "0.20.0",
-  "packages/ai-providers/server-ai-langchain": "0.7.0",
-  "packages/ai-providers/server-ai-openai": "0.6.0",
+  "packages/sdk/server-ai": "0.20.1",
+  "packages/ai-providers/server-ai-langchain": "0.7.1",
+  "packages/ai-providers/server-ai-openai": "0.6.1",
   "packages/optimization": "0.1.0"
 }
