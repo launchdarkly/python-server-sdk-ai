@@ -123,15 +123,15 @@ async def main():
     )
     
     if model:
-        # Simple conversation flow - metrics are automatically tracked by invoke()
-        response1 = await model.invoke('I need help with my order')
-        print(response1.message.content)
+        # Simple conversation flow - metrics are automatically tracked by run()
+        response1 = await model.run('I need help with my order')
+        print(response1.content)
         
-        response2 = await model.invoke("What's the status?")
-        print(response2.message.content)
+        response2 = await model.run("What's the status?")
+        print(response2.content)
         
         # Access conversation history
-        messages = model.get_messages()
+        messages = model.get_config().messages
         print(f'Conversation has {len(messages)} messages')
 
 asyncio.run(main())
@@ -146,21 +146,20 @@ For more control, you can use the configuration directly with AI providers. We r
 ```python
 import asyncio
 from ldai import LDAIClient, AICompletionConfigDefault, ModelConfig
-from ldai.providers.types import LDAIMetrics, TokenUsage
 
-from ldai_langchain import LangChainProvider
+from ldai_langchain import create_langchain_model, get_ai_metrics_from_response
 
 async def main():
     ai_config = ai_client.completion_config(ai_config_key, context, default)
     
     # Create LangChain model from configuration
-    llm = await LangChainProvider.create_langchain_model(ai_config)
+    llm = create_langchain_model(ai_config)
     
     # Use with tracking (sync invoke). Mint a tracker once per AI run.
     tracker = ai_config.create_tracker()
     response = tracker.track_metrics_of(
+        get_ai_metrics_from_response,
         lambda: llm.invoke(messages),
-        lambda result: LangChainProvider.get_ai_metrics_from_response(result)
     )
     
     print('AI Response:', response.content)
@@ -173,7 +172,8 @@ asyncio.run(main())
 ```python
 import asyncio
 from ldai import LDAIClient, AICompletionConfigDefault, ModelConfig
-from ldai.providers.types import LDAIMetrics, TokenUsage
+from ldai.providers import LDAIMetrics
+from ldai.tracker import TokenUsage
 
 async def main():
     ai_config = ai_client.completion_config(ai_config_key, context, default)
@@ -200,8 +200,8 @@ async def main():
     # Mint a tracker once per AI run.
     tracker = ai_config.create_tracker()
     result = await tracker.track_metrics_of_async(
+        map_custom_provider_metrics,
         call_custom_provider,
-        map_custom_provider_metrics
     )
     
     print('AI Response:', result.content)

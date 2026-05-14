@@ -24,12 +24,12 @@ pip install launchdarkly-server-sdk-ai-openai
 ```python
 import asyncio
 from ldclient import LDClient, Config, Context
-from ldai import init
+from ldai import LDAIClient
 from ldai.models import AICompletionConfigDefault, ModelConfig, ProviderConfig
 
 # Initialize LaunchDarkly client
 ld_client = LDClient(Config("your-sdk-key"))
-ai_client = init(ld_client)
+ai_client = LDAIClient(ld_client)
 
 context = Context.builder("user-123").build()
 
@@ -112,7 +112,7 @@ model = await ai_client.create_model("ai-config-key", context)
 if model:
     result = await model.run("Explain feature flags.")
     # Metrics are tracked automatically; access them via result.metrics
-    print(result.metrics.tokens)
+    print(result.metrics.usage)
 ```
 
 ### Static Utility Methods
