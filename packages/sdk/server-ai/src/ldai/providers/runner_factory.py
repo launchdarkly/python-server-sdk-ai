@@ -120,17 +120,25 @@ class RunnerFactory:
     def create_model(
         config: AIConfigKind,
         default_ai_provider: Optional[str] = None,
+        multi_turn: bool = True,
     ) -> Optional[Runner]:
         """
         Create a model executor for the given AI completion config.
 
         :param config: LaunchDarkly AI config (completion or judge)
         :param default_ai_provider: Optional provider override ('openai', 'langchain', …)
+        :param multi_turn: When ``True`` (the default) the returned runner appends
+            each successful exchange to its history so subsequent ``run()`` calls
+            include the prior conversation. Set ``False`` for callers that share a
+            single runner across independent invocations (for example, judges) so
+            each call starts from the same baseline history.
         :return: Configured Runner ready to invoke the model, or None
         """
         provider_name = config.provider.name.lower() if config.provider else None
         providers = RunnerFactory._get_providers_to_try(default_ai_provider, provider_name)
-        return RunnerFactory._with_fallback(providers, lambda p: p.create_model(config))
+        return RunnerFactory._with_fallback(
+            providers, lambda p: p.create_model(config, multi_turn=multi_turn)
+        )
 
     @staticmethod
     def create_agent(

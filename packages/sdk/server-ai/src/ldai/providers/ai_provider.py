@@ -15,13 +15,18 @@ class AIProvider(ABC):
     create_model(), create_agent(), and create_agent_graph().
     """
 
-    def create_model(self, config: Any) -> Optional[Any]:
+    def create_model(self, config: Any, multi_turn: bool = True) -> Optional[Any]:
         """
         Create a configured model executor for the given AI config.
 
         Default implementation warns. Provider implementations should override this method.
 
         :param config: The LaunchDarkly AI configuration
+        :param multi_turn: When ``True`` (the default) the returned runner should
+            accumulate conversation history across successful ``run()`` calls.
+            When ``False`` each invocation starts from the same baseline history,
+            which is required for callers that share one runner across
+            independent invocations (e.g. judges).
         :return: Configured model runner instance, or None if unsupported
         """
         log.warning('create_model not implemented by this provider')

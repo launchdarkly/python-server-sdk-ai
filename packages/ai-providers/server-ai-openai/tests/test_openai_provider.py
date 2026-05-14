@@ -235,6 +235,65 @@ class TestRunCompletion:
         ]
 
     @pytest.mark.asyncio
+    async def test_multi_turn_false_does_not_accumulate_history(self, mock_client):
+        """When multi_turn=False the runner must not append to history on success."""
+        def make_response(text: str):
+            r = MagicMock()
+            r.context_wrapper = None
+            r.choices = [MagicMock()]
+            r.choices[0].message = MagicMock()
+            r.choices[0].message.content = text
+            r.usage = None
+            return r
+
+        mock_client.chat = MagicMock()
+        mock_client.chat.completions = MagicMock()
+        mock_client.chat.completions.create = AsyncMock(side_effect=[
+            make_response('First response'),
+            make_response('Second response'),
+        ])
+
+        provider = OpenAIModelRunner(mock_client, 'gpt-4o', {}, multi_turn=False)
+        baseline_len = len(provider._history)
+
+        await provider.run('First question')
+        assert len(provider._history) == baseline_len
+
+        await provider.run('Second question')
+        assert len(provider._history) == baseline_len
+
+        # Each call must see only the configured baseline, never the prior turn.
+        second_call_messages = mock_client.chat.completions.create.call_args_list[1].kwargs['messages']
+        assert second_call_messages == [{'role': 'user', 'content': 'Second question'}]
+
+    @pytest.mark.asyncio
+    async def test_multi_turn_default_accumulates_history(self, mock_client):
+        """Default behavior (multi_turn omitted) still accumulates history (preserves PR #166)."""
+        def make_response(text: str):
+            r = MagicMock()
+            r.context_wrapper = None
+            r.choices = [MagicMock()]
+            r.choices[0].message = MagicMock()
+            r.choices[0].message.content = text
+            r.usage = None
+            return r
+
+        mock_client.chat = MagicMock()
+        mock_client.chat.completions = MagicMock()
+        mock_client.chat.completions.create = AsyncMock(side_effect=[
+            make_response('First response'),
+            make_response('Second response'),
+        ])
+
+        provider = OpenAIModelRunner(mock_client, 'gpt-4o', {})
+        baseline_len = len(provider._history)
+
+        await provider.run('First question')
+        await provider.run('Second question')
+
+        assert len(provider._history) == baseline_len + 4
+
+    @pytest.mark.asyncio
     async def test_does_not_accumulate_history_on_failed_call(self, mock_client):
         """Should not add to history when the call fails."""
         mock_client.chat = MagicMock()

@@ -25,11 +25,17 @@ class LangChainModelRunner(Runner):
     :meth:`run`.
     """
 
-    def __init__(self, llm: BaseChatModel, config_messages: Optional[List[LDMessage]] = None):
+    def __init__(
+        self,
+        llm: BaseChatModel,
+        config_messages: Optional[List[LDMessage]] = None,
+        multi_turn: bool = True,
+    ):
         self._llm = llm
         self._chat_history = InMemoryChatMessageHistory(
             messages=cast(List[BaseMessage], convert_messages_to_langchain(config_messages or []))
         )
+        self._multi_turn = multi_turn
 
     def get_llm(self) -> BaseChatModel:
         """
@@ -61,7 +67,7 @@ class LangChainModelRunner(Runner):
         else:
             result = await self._run_completion(langchain_messages)
 
-        if result.metrics.success and result.content:
+        if result.metrics.success and result.content and self._multi_turn:
             self._chat_history.add_user_message(input)
             self._chat_history.add_ai_message(result.content)
 

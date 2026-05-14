@@ -1,5 +1,6 @@
 """Tests for Judge functionality."""
 
+from typing import List
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
@@ -542,6 +543,79 @@ class TestJudgeEvaluateMessages:
         assert result is not None
         assert result.success is True
         assert tracker.track_metrics_of_async.called
+
+    @pytest.mark.asyncio
+    async def test_evaluate_messages_preserves_roles_in_input(
+        self, judge_config_with_key: AIJudgeConfig, mock_runner
+    ):
+        """evaluate_messages must forward role-prefixed lines to evaluate()."""
+        messages = [
+            LDMessage(role='user', content='hi'),
+            LDMessage(role='assistant', content='hello'),
+        ]
+        chat_response = RunnerResult(content='reply', metrics=LDAIMetrics(success=True))
+
+        judge = Judge(judge_config_with_key, mock_runner)
+        with patch.object(judge, 'evaluate', new=AsyncMock(return_value=JudgeResult(judge_config_key='judge-config'))) as mock_evaluate:
+            await judge.evaluate_messages(messages, chat_response)
+
+        mock_evaluate.assert_called_once()
+        args, _ = mock_evaluate.call_args
+        assert args[0] == 'user: hi\nassistant: hello'
+        assert args[1] == 'reply'
+
+
+class TestJudgeRunnerNonMultiTurn:
+    """Successive evaluate() calls must not contaminate each other.
+
+    The Judge shares one runner across evaluations, so the runner must be
+    stateless across calls — RunnerFactory.create_model(..., multi_turn=False)
+    is what guarantees that at the client layer. These tests verify the Judge
+    itself does not accidentally mutate the runner's history and that two
+    evaluations see the same baseline.
+    """
+
+    @pytest.mark.asyncio
+    async def test_two_evaluations_do_not_contaminate_history(
+        self, judge_config_with_key: AIJudgeConfig, tracker: LDAIConfigTracker
+    ):
+        """A judge bound to a non-multi-turn runner must run the same baseline twice."""
+        # Stand in a fake runner that records the history it would expose to the
+        # LLM at the moment run() is called. With multi_turn=False the recorded
+        # baseline should be identical across calls.
+        seen_baselines: List[List[LDMessage]] = []
+
+        class _FakeRunner:
+            def __init__(self):
+                self._history: List[LDMessage] = []
+                self._multi_turn = False
+
+            async def run(self, input, output_type=None):  # type: ignore[no-untyped-def]
+                # Snapshot history as seen at call time.
+                seen_baselines.append(list(self._history))
+                return RunnerResult(
+                    content='ok',
+                    metrics=LDAIMetrics(success=True),
+                    parsed={'score': 0.9, 'reasoning': 'fine'},
+                )
+
+        runner = _FakeRunner()
+
+        async def _await_fn(_metric_fn, fn):
+            return await fn()
+
+        tracker.track_metrics_of_async = AsyncMock(side_effect=_await_fn)
+        judge = Judge(judge_config_with_key, runner)  # type: ignore[arg-type]
+
+        await judge.evaluate('first input', 'first output')
+        await judge.evaluate('second input', 'second output')
+
+        assert len(seen_baselines) == 2
+        # Both runs see the same baseline (empty in this fake; the point is
+        # they're equal — no contamination from the prior turn).
+        assert seen_baselines[0] == seen_baselines[1]
+        # And the runner's history never grew because multi_turn is False.
+        assert runner._history == []
 
 
 class TestJudgeConfigStripsLegacyMessages:
