@@ -332,9 +332,9 @@ class LDAIConfigTracker:
         non-``None`` ``duration_ms`` field, that value is used as the measured duration
         instead of the wall-clock elapsed time.
 
-        Because each inner metric is at-most-once per Tracker, calling this twice
-        on the same Tracker will run the inner block again but produce no
-        additional metric events.
+        Subsequent calls re-run the operation but emit only metrics not
+        already recorded on this Tracker. Call create_tracker on the AI Config
+        to start a new run.
 
         :param metrics_extractor: Function that extracts LDAIMetrics from the operation result
         :param func: Synchronous callable that runs the operation
@@ -367,9 +367,9 @@ class LDAIConfigTracker:
         non-``None`` ``duration_ms`` field, that value is used as the measured duration
         instead of the wall-clock elapsed time.
 
-        Because each inner metric is at-most-once per Tracker, calling this twice
-        on the same Tracker will run the inner block again but produce no
-        additional metric events.
+        Subsequent calls re-run the operation but emit only metrics not
+        already recorded on this Tracker. Call create_tracker on the AI Config
+        to start a new run.
 
         :param metrics_extractor: Function that extracts LDAIMetrics from the operation result
         :param func: Async callable or zero-arg callable that returns an awaitable when called
