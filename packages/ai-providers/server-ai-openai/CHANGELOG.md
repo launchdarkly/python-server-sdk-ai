@@ -2,6 +2,13 @@
 
 All notable changes to the LaunchDarkly Python AI OpenAI provider package will be documented in this file. This project adheres to [Semantic Versioning](http://semver.org).
 
+## [0.6.1](https://github.com/launchdarkly/python-server-sdk-ai/compare/launchdarkly-server-sdk-ai-openai-0.6.0...launchdarkly-server-sdk-ai-openai-0.6.1) (2026-05-14)
+
+
+### Bug Fixes
+
+* Make judge runners non-multi-turn ([#185](https://github.com/launchdarkly/python-server-sdk-ai/issues/185)) ([5c21bd0](https://github.com/launchdarkly/python-server-sdk-ai/commit/5c21bd08bebfbdc5672afa93ad99099202955c92))
+
 ## [0.6.0](https://github.com/launchdarkly/python-server-sdk-ai/compare/launchdarkly-server-sdk-ai-openai-0.5.0...launchdarkly-server-sdk-ai-openai-0.6.0) (2026-05-13)
 
 
