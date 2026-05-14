@@ -129,10 +129,6 @@ async def main():
         
         response2 = await model.run("What's the status?")
         print(response2.content)
-        
-        # Access conversation history
-        messages = model.get_config().messages
-        print(f'Conversation has {len(messages)} messages')
 
 asyncio.run(main())
 ```
