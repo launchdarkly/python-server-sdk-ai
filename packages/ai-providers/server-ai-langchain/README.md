@@ -126,7 +126,7 @@ model = await ai_client.create_model("ai-config-key", context)
 if model:
     result = await model.run("Explain feature flags.")
     # Metrics are tracked automatically; access them via result.metrics
-    print(result.metrics.usage)
+    print(result.metrics.tokens)
 ```
 
 ### Static Utility Methods
