@@ -282,6 +282,41 @@ class TestRunCompletion:
         assert second_call_messages[2].content == 'Second question'
 
     @pytest.mark.asyncio
+    async def test_multi_turn_false_does_not_accumulate_history(self, mock_llm):
+        """When multi_turn=False the runner must not append to history on success."""
+        mock_llm.ainvoke = AsyncMock(side_effect=[
+            AIMessage(content='First response'),
+            AIMessage(content='Second response'),
+        ])
+        provider = LangChainModelRunner(mock_llm, multi_turn=False)
+        baseline_len = len(provider._chat_history.messages)
+
+        await provider.run('First question')
+        assert len(provider._chat_history.messages) == baseline_len
+
+        await provider.run('Second question')
+        assert len(provider._chat_history.messages) == baseline_len
+
+        second_call_messages = mock_llm.ainvoke.call_args_list[1][0][0]
+        assert len(second_call_messages) == 1
+        assert second_call_messages[0].content == 'Second question'
+
+    @pytest.mark.asyncio
+    async def test_multi_turn_default_accumulates_history(self, mock_llm):
+        """Default behavior (multi_turn omitted) still accumulates history (preserves PR #166)."""
+        mock_llm.ainvoke = AsyncMock(side_effect=[
+            AIMessage(content='First response'),
+            AIMessage(content='Second response'),
+        ])
+        provider = LangChainModelRunner(mock_llm)
+        baseline_len = len(provider._chat_history.messages)
+
+        await provider.run('First question')
+        await provider.run('Second question')
+
+        assert len(provider._chat_history.messages) == baseline_len + 4
+
+    @pytest.mark.asyncio
     async def test_does_not_accumulate_history_on_failed_call(self, mock_llm):
         """Should not add to history when the call fails."""
         mock_llm.ainvoke = AsyncMock(side_effect=Exception('Model error'))

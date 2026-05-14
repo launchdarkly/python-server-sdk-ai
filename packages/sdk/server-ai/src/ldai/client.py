@@ -339,7 +339,9 @@ class LDAIClient:
             if not judge_config.enabled:
                 return None
 
-            provider = RunnerFactory.create_model(judge_config, default_ai_provider)
+            provider = RunnerFactory.create_model(
+                judge_config, default_ai_provider, multi_turn=False
+            )
             if not provider:
                 return None
 

@@ -1,9 +1,10 @@
 """Tests for RunnerFactory provider loading and error messages."""
 
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
+from ldai.providers.ai_provider import AIProvider
 from ldai.providers.runner_factory import RunnerFactory, _PYPI_PACKAGE_NAMES
 
 
@@ -82,3 +83,65 @@ class TestGetProviderFactory:
             RunnerFactory._get_provider_factory('openai')
         warning_text = mock_log.warning.call_args[0][0]
         assert 'pip install' not in warning_text
+
+
+class TestCreateModelMultiTurn:
+    """create_model forwards the multi_turn flag to the provider factory."""
+
+    def _make_config(self, provider_name='openai'):
+        config = MagicMock()
+        config.provider = MagicMock()
+        config.provider.name = provider_name
+        return config
+
+    def test_forwards_multi_turn_false_to_provider(self):
+        sentinel_runner = object()
+        provider_factory = MagicMock(spec=AIProvider)
+        provider_factory.create_model.return_value = sentinel_runner
+
+        with patch.object(
+            RunnerFactory, '_get_provider_factory', return_value=provider_factory
+        ):
+            result = RunnerFactory.create_model(
+                self._make_config(), default_ai_provider='openai', multi_turn=False
+            )
+
+        assert result is sentinel_runner
+        provider_factory.create_model.assert_called_once()
+        _, kwargs = provider_factory.create_model.call_args
+        assert kwargs.get('multi_turn') is False
+
+    def test_defaults_multi_turn_to_true(self):
+        sentinel_runner = object()
+        provider_factory = MagicMock(spec=AIProvider)
+        provider_factory.create_model.return_value = sentinel_runner
+
+        with patch.object(
+            RunnerFactory, '_get_provider_factory', return_value=provider_factory
+        ):
+            RunnerFactory.create_model(self._make_config(), default_ai_provider='openai')
+
+        _, kwargs = provider_factory.create_model.call_args
+        assert kwargs.get('multi_turn') is True
+
+    def test_constructed_runner_has_multi_turn_false_attribute(self):
+        """End-to-end: when multi_turn=False is passed, the constructed runner has _multi_turn == False."""
+        # Use a stub AIProvider that constructs an OpenAIModelRunner-shaped object.
+        class _StubProvider(AIProvider):
+            def __init__(self):
+                self.last_kwargs = None
+
+            def create_model(self, config, multi_turn: bool = True):
+                self.last_kwargs = {'multi_turn': multi_turn}
+                runner = MagicMock()
+                runner._multi_turn = multi_turn
+                return runner
+
+        stub = _StubProvider()
+        with patch.object(RunnerFactory, '_get_provider_factory', return_value=stub):
+            runner = RunnerFactory.create_model(
+                self._make_config(), default_ai_provider='openai', multi_turn=False
+            )
+
+        assert runner is not None
+        assert runner._multi_turn is False

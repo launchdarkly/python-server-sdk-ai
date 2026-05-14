@@ -84,7 +84,7 @@ class OpenAIRunnerFactory(AIProvider):
         from ldai_openai.openai_agent_graph_runner import OpenAIAgentGraphRunner
         return OpenAIAgentGraphRunner(graph_def, tools)
 
-    def create_model(self, config: AIConfigKind) -> OpenAIModelRunner:
+    def create_model(self, config: AIConfigKind, multi_turn: bool = True) -> OpenAIModelRunner:
         """
         Create a configured OpenAIModelRunner for the given AI config.
 
@@ -93,6 +93,9 @@ class OpenAIRunnerFactory(AIProvider):
         needed; all other fields are passed through from the config.
 
         :param config: The LaunchDarkly AI configuration
+        :param multi_turn: When ``True`` (the default) the runner accumulates
+            successful exchanges into its conversation history. Pass ``False`` to
+            keep history fixed at the configured baseline across ``run()`` calls.
         :return: OpenAIModelRunner ready to invoke the model
         """
         model_name, parameters = self._extract_model_config(config)
@@ -101,7 +104,9 @@ class OpenAIRunnerFactory(AIProvider):
         if tool_defs:
             parameters['tools'] = normalize_tool_types(tool_defs)
         config_messages = list(getattr(config, 'messages', None) or [])
-        return OpenAIModelRunner(self._client, model_name, parameters, config_messages)
+        return OpenAIModelRunner(
+            self._client, model_name, parameters, config_messages, multi_turn=multi_turn
+        )
 
     def get_client(self) -> AsyncOpenAI:
         """

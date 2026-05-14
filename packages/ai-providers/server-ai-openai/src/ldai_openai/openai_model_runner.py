@@ -29,11 +29,13 @@ class OpenAIModelRunner(Runner):
         model_name: str,
         parameters: Dict[str, Any],
         config_messages: Optional[List[LDMessage]] = None,
+        multi_turn: bool = True,
     ):
         self._client = client
         self._model_name = model_name
         self._parameters = parameters
         self._history: List[LDMessage] = list(config_messages or [])
+        self._multi_turn = multi_turn
 
     async def run(
         self,
@@ -58,7 +60,7 @@ class OpenAIModelRunner(Runner):
         else:
             result = await self._run_completion(messages)
 
-        if result.metrics.success and result.content:
+        if result.metrics.success and result.content and self._multi_turn:
             self._history.append(user_message)
             self._history.append(LDMessage(role='assistant', content=result.content))
 

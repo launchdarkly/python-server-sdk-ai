@@ -132,13 +132,19 @@ class Judge:
         """
         Evaluates an AI response from chat messages and response.
 
+        The conversation is rendered for the judge by joining each message as
+        ``"{role}: {content}"`` on newlines, preserving who said what so the
+        judge can distinguish user turns from assistant turns.
+
         :param messages: Array of messages representing the conversation history
         :param response: The runner result to be evaluated
         :param sampling_ratio: Sampling ratio (0-1) to determine if evaluation should be processed.
             When ``None`` (the default), falls back to ``self.sample_rate``.
         :return: The result of the judge evaluation.
         """
-        input_text = '\r\n'.join([msg.content for msg in messages]) if messages else ''
+        input_text = (
+            '\n'.join(f'{msg.role}: {msg.content}' for msg in messages) if messages else ''
+        )
         output_text = response.content
 
         return await self.evaluate(input_text, output_text, sampling_ratio)

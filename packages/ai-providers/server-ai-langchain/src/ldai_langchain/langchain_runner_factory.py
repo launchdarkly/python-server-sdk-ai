@@ -61,13 +61,16 @@ class LangChainRunnerFactory(AIProvider):
         )
         return LangGraphAgentGraphRunner(graph_def, tools)
 
-    def create_model(self, config: AIConfigKind) -> LangChainModelRunner:
+    def create_model(self, config: AIConfigKind, multi_turn: bool = True) -> LangChainModelRunner:
         """
         Create a configured LangChainModelRunner for the given AI config.
 
         :param config: The LaunchDarkly AI configuration
+        :param multi_turn: When ``True`` (the default) the runner accumulates
+            successful exchanges into its conversation history. Pass ``False`` to
+            keep history fixed at the configured baseline across ``run()`` calls.
         :return: LangChainModelRunner ready to invoke the model
         """
         llm = create_langchain_model(config)
         config_messages = list(getattr(config, 'messages', None) or [])
-        return LangChainModelRunner(llm, config_messages)
+        return LangChainModelRunner(llm, config_messages, multi_turn=multi_turn)
