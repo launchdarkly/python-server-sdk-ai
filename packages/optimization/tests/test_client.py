@@ -5094,6 +5094,26 @@ class TestEstimateCost:
         model_config = {"costPerInputToken": 0.001, "costPerOutputToken": 0.002}
         assert estimate_cost(usage, model_config) == pytest.approx(0.0)
 
+    def test_returns_none_when_both_token_counts_are_none(self):
+        # Pricing exists but both input and output are None — no token counts to
+        # compute from, so we must return None rather than 0.0 to avoid
+        # cost-gate treating unknown cost as zero cost.
+        usage = TokenUsage(total=None, input=None, output=None)
+        model_config = {"costPerInputToken": 0.001, "costPerOutputToken": 0.002}
+        assert estimate_cost(usage, model_config) is None
+
+    def test_returns_partial_cost_when_only_input_count_is_none(self):
+        # Only output count available — should still compute a partial cost.
+        usage = TokenUsage(total=40, input=None, output=40)
+        model_config = {"costPerInputToken": 0.001, "costPerOutputToken": 0.002}
+        assert estimate_cost(usage, model_config) == pytest.approx(40 * 0.002)
+
+    def test_returns_partial_cost_when_only_output_count_is_none(self):
+        # Only input count available — should still compute a partial cost.
+        usage = TokenUsage(total=60, input=60, output=None)
+        model_config = {"costPerInputToken": 0.001, "costPerOutputToken": 0.002}
+        assert estimate_cost(usage, model_config) == pytest.approx(60 * 0.001)
+
 
 # ---------------------------------------------------------------------------
 # _acceptance_criteria_implies_cost_optimization
@@ -5629,10 +5649,11 @@ class TestAllJudgesPassing:
         assert self.client._all_judges_passing() is True
 
     def test_uses_most_recent_history_entry(self):
-        """Only the last history entry is inspected."""
+        """In non-GT mode (_last_batch_size=1) only the last history entry is inspected."""
         self.client._options = _make_options(judges={
             "accuracy": OptimizationJudge(threshold=0.8, acceptance_statement="accurate"),
         })
+        self.client._last_batch_size = 1
         self.client._history = [
             self._ctx_with_scores({"accuracy": JudgeResult(score=0.5, rationale="early fail")}, iteration=1),
             self._ctx_with_scores({"accuracy": JudgeResult(score=1.0, rationale="later pass")}, iteration=2),
@@ -5652,6 +5673,60 @@ class TestAllJudgesPassing:
         })
         self.client._history = [self._ctx_with_scores({"toxicity": JudgeResult(score=0.5, rationale="toxic")})]
         assert self.client._all_judges_passing() is False
+
+    # --- GT batch tests ---
+
+    def test_gt_batch_last_sample_passes_but_earlier_fails_returns_false(self):
+        """Core GT bug: if any sample in the batch failed, must return False even if the last passed."""
+        self.client._options = _make_options(judges={
+            "accuracy": OptimizationJudge(threshold=0.8, acceptance_statement="accurate"),
+        })
+        self.client._last_batch_size = 3
+        self.client._history = [
+            self._ctx_with_scores({"accuracy": JudgeResult(score=0.3, rationale="fail")}, iteration=1),  # FAILS
+            self._ctx_with_scores({"accuracy": JudgeResult(score=0.9, rationale="ok")}, iteration=2),
+            self._ctx_with_scores({"accuracy": JudgeResult(score=0.95, rationale="ok")}, iteration=3),
+        ]
+        assert self.client._all_judges_passing() is False
+
+    def test_gt_batch_all_samples_pass_returns_true(self):
+        self.client._options = _make_options(judges={
+            "accuracy": OptimizationJudge(threshold=0.8, acceptance_statement="accurate"),
+        })
+        self.client._last_batch_size = 3
+        self.client._history = [
+            self._ctx_with_scores({"accuracy": JudgeResult(score=0.85, rationale="ok")}, iteration=1),
+            self._ctx_with_scores({"accuracy": JudgeResult(score=0.90, rationale="ok")}, iteration=2),
+            self._ctx_with_scores({"accuracy": JudgeResult(score=0.95, rationale="ok")}, iteration=3),
+        ]
+        assert self.client._all_judges_passing() is True
+
+    def test_gt_batch_middle_sample_fails_returns_false(self):
+        self.client._options = _make_options(judges={
+            "accuracy": OptimizationJudge(threshold=0.8, acceptance_statement="accurate"),
+        })
+        self.client._last_batch_size = 3
+        self.client._history = [
+            self._ctx_with_scores({"accuracy": JudgeResult(score=0.95, rationale="ok")}, iteration=1),
+            self._ctx_with_scores({"accuracy": JudgeResult(score=0.20, rationale="fail")}, iteration=2),  # FAILS
+            self._ctx_with_scores({"accuracy": JudgeResult(score=0.95, rationale="ok")}, iteration=3),
+        ]
+        assert self.client._all_judges_passing() is False
+
+    def test_gt_batch_size_respected_ignores_older_batches(self):
+        """Entries outside the current batch window should not influence the result."""
+        self.client._options = _make_options(judges={
+            "accuracy": OptimizationJudge(threshold=0.8, acceptance_statement="accurate"),
+        })
+        self.client._last_batch_size = 2
+        # 4 entries; batch covers last 2; first 2 are stale (from a previous attempt)
+        self.client._history = [
+            self._ctx_with_scores({"accuracy": JudgeResult(score=0.1, rationale="old fail")}, iteration=1),
+            self._ctx_with_scores({"accuracy": JudgeResult(score=0.1, rationale="old fail")}, iteration=2),
+            self._ctx_with_scores({"accuracy": JudgeResult(score=0.9, rationale="ok")}, iteration=3),
+            self._ctx_with_scores({"accuracy": JudgeResult(score=0.9, rationale="ok")}, iteration=4),
+        ]
+        assert self.client._all_judges_passing() is True
 
 
 class TestBuildNewVariationPromptCost:

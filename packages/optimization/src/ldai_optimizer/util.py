@@ -336,7 +336,8 @@ def estimate_cost(
 
     :param usage: Token usage from the agent call. When ``None``, returns ``None``.
     :param model_config: Model config dict from ``get_model_configs()``, or ``None``.
-    :return: Estimated cost in USD, or ``None`` if usage or pricing data is absent.
+    :return: Estimated cost in USD, or ``None`` if usage or pricing data is absent, or if
+        both ``usage.input`` and ``usage.output`` are ``None`` (no token counts available).
     """
     if usage is None:
         return None
@@ -348,8 +349,11 @@ def estimate_cost(
         return None
 
     cost = 0.0
+    computed = False
     if input_price is not None and usage.input is not None:
         cost += usage.input * input_price
+        computed = True
     if output_price is not None and usage.output is not None:
         cost += usage.output * output_price
-    return cost
+        computed = True
+    return cost if computed else None

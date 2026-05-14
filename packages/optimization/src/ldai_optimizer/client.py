@@ -212,6 +212,7 @@ class OptimizationClient:
         self._initial_tool_keys: List[str] = []
         self._total_token_usage: int = 0
         self._model_configs: List[Dict[str, Any]] = []
+        self._last_batch_size: int = 1
 
         if os.environ.get("LAUNCHDARKLY_API_KEY"):
             self._has_api_key = True
@@ -1123,6 +1124,7 @@ class OptimizationClient:
         self._last_succeeded_context = None
         self._last_optimization_result_id = None
         self._total_token_usage = 0
+        self._last_batch_size = 1
         self._initialize_class_members_from_config(agent_config)
 
         # Seed from the first model choice on the first iteration
@@ -1331,6 +1333,9 @@ class OptimizationClient:
                 self._record_baseline_from_batch(attempt_results)
             self._history.extend(attempt_results)
             self._history = _trim_history(self._history, n)
+            # Track batch size so _all_judges_passing checks every sample in this
+            # attempt, not just the last one.
+            self._last_batch_size = n
 
             logger.info(
                 "[GT Attempt %d] -> %d/%d samples failed — generating new variation",
@@ -2140,28 +2145,35 @@ class OptimizationClient:
         return passed
 
     def _all_judges_passing(self) -> bool:
-        """Return True if every user-configured judge passed in the most recent history entry.
+        """Return True if every user-configured judge passed in every sample of the most recent batch.
 
-        Inspects the last context in ``_history`` and checks each score key that
-        corresponds to a judge defined in ``_options.judges`` (skipping synthetic gate
-        entries whose keys begin with ``_``). Returns False when history is empty or any
-        judge score does not meet its threshold.
+        In ground-truth mode the last ``_last_batch_size`` entries in ``_history``
+        correspond to the samples from the latest attempt. All of them must pass;
+        checking only the last entry would incorrectly return True when a middle sample
+        failed but the final sample passed.
+
+        In single-sample (non-GT) mode ``_last_batch_size`` is 1, so only the most
+        recent entry is inspected (original behaviour).
+
+        Synthetic gate entries (keys beginning with ``_``) are skipped.
+        Returns False when history is empty or any judge score does not meet its threshold.
 
         This is used to decide whether variation generation should preserve the current
-        behavior and only optimise for cost, rather than trying to improve quality further.
+        behaviour and only optimise for cost, rather than trying to improve quality further.
         """
         if not self._history or not self._options.judges:
             return False
-        recent = self._history[-1]
-        if not recent.scores:
-            return False
-        for key, judge in self._options.judges.items():
-            result = recent.scores.get(key)
-            if result is None:
+        batch = self._history[-self._last_batch_size:]
+        for ctx in batch:
+            if not ctx.scores:
                 return False
-            threshold = judge.threshold if judge.threshold is not None else 1.0
-            if not judge_passed(result.score, threshold, judge.is_inverted):
-                return False
+            for key, judge in self._options.judges.items():
+                result = ctx.scores.get(key)
+                if result is None:
+                    return False
+                threshold = judge.threshold if judge.threshold is not None else 1.0
+                if not judge_passed(result.score, threshold, judge.is_inverted):
+                    return False
         return True
 
     def _apply_duration_gate(
@@ -2201,15 +2213,12 @@ class OptimizationClient:
                 rationale = "Latency gate passed (no baseline)."
             score = 1.0
         else:
-            if self._baseline_duration_ms is not None and ctx.duration_ms is not None:
-                rationale = (
-                    f"Latency improvement gate failed: {ctx.duration_ms:.0f}ms did not improve "
-                    f"by {int((1 - _DURATION_TOLERANCE) * 100)}% vs baseline "
-                    f"{self._baseline_duration_ms:.0f}ms "
-                    f"(required < {self._baseline_duration_ms * _DURATION_TOLERANCE:.0f}ms)."
-                )
-            else:
-                rationale = "Latency gate failed (no baseline data)."
+            rationale = (
+                f"Latency improvement gate failed: {ctx.duration_ms:.0f}ms did not improve "
+                f"by {int((1 - _DURATION_TOLERANCE) * 100)}% vs baseline "
+                f"{self._baseline_duration_ms:.0f}ms "
+                f"(required < {self._baseline_duration_ms * _DURATION_TOLERANCE:.0f}ms)."
+            )
             score = 0.0
         ctx = dataclasses.replace(
             ctx,
@@ -2257,15 +2266,12 @@ class OptimizationClient:
                 rationale = "Cost gate passed (no baseline)."
             score = 1.0
         else:
-            if self._baseline_cost_usd is not None and ctx.estimated_cost_usd is not None:
-                rationale = (
-                    f"Cost improvement gate failed: {ctx.estimated_cost_usd:.6f} did not improve "
-                    f"by {int((1 - _COST_TOLERANCE) * 100)}% vs baseline "
-                    f"{self._baseline_cost_usd:.6f} "
-                    f"(required < {self._baseline_cost_usd * _COST_TOLERANCE:.6f})."
-                )
-            else:
-                rationale = "Cost gate failed (no baseline data)."
+            rationale = (
+                f"Cost improvement gate failed: {ctx.estimated_cost_usd:.6f} did not improve "
+                f"by {int((1 - _COST_TOLERANCE) * 100)}% vs baseline "
+                f"{self._baseline_cost_usd:.6f} "
+                f"(required < {self._baseline_cost_usd * _COST_TOLERANCE:.6f})."
+            )
             score = 0.0
         ctx = dataclasses.replace(
             ctx,
@@ -2600,6 +2606,7 @@ class OptimizationClient:
         self._last_succeeded_context = None
         self._last_optimization_result_id = None
         self._total_token_usage = 0
+        self._last_batch_size = 1
         self._initialize_class_members_from_config(agent_config)
 
         # If the LD flag doesn't carry a model name, seed from the first model choice
