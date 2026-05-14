@@ -37,12 +37,12 @@ pip install langchain-google-genai
 ```python
 import asyncio
 from ldclient import LDClient, Config, Context
-from ldai import init
+from ldai import LDAIClient
 from ldai.models import AICompletionConfigDefault, ModelConfig, ProviderConfig
 
 # Initialize LaunchDarkly client
 ld_client = LDClient(Config("your-sdk-key"))
-ai_client = init(ld_client)
+ai_client = LDAIClient(ld_client)
 
 context = Context.builder("user-123").build()
 
@@ -84,11 +84,11 @@ if model:
 ### Using the runner directly
 
 If you need to construct a runner manually (e.g. for testing), you can use
-`LangChainRunnerFactory` from the `ldai_langchain` package:
+`LangChainModelRunner` from the `ldai_langchain` package:
 
 ```python
 from langchain_openai import ChatOpenAI
-from ldai_langchain import LangChainRunnerFactory
+from ldai_langchain import LangChainModelRunner
 
 llm = ChatOpenAI(model="gpt-4", temperature=0.7)
 runner = LangChainModelRunner(llm)
