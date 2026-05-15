@@ -1,5 +1,6 @@
 """Tests for ManagedAgentGraph and LDAIClient.create_agent_graph()."""
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -12,6 +13,8 @@ from ldai.providers.types import (
     AgentGraphRunnerResult,
     AIGraphMetrics,
     AIGraphMetricSummary,
+    EvalRequest,
+    JudgeResult,
     LDAIMetrics,
 )
 from ldai.tracker import TokenUsage
@@ -230,6 +233,186 @@ async def test_managed_agent_graph_failure_calls_track_graph_metrics():
 
     assert result.metrics.success is False
     mock_tracker.track_graph_metrics_of_async.assert_called_once()
+
+
+# --- evaluations awaitable ---
+
+
+class _StubRunnerWithEvalRequests(AgentGraphRunner):
+    """Runner that produces eval_requests for one or more nodes."""
+    def __init__(self, eval_requests):
+        self._eval_requests = eval_requests
+
+    async def run(self, input) -> AgentGraphRunnerResult:
+        return AgentGraphRunnerResult(
+            content='final output',
+            metrics=AIGraphMetrics(success=True),
+            eval_requests=self._eval_requests,
+            raw={'input': input},
+        )
+
+
+def _make_node_with_evaluator(node_tracker, eval_results):
+    """Build a mock node whose config.evaluator.evaluate returns a Task resolving to eval_results."""
+    cfg = MagicMock()
+    cfg.create_tracker = MagicMock(return_value=node_tracker)
+
+    async def fake_evaluate_coro():
+        return list(eval_results)
+
+    def fake_evaluate(input_text, output_text):
+        return asyncio.create_task(fake_evaluate_coro())
+
+    cfg.evaluator.evaluate = fake_evaluate
+    node = MagicMock()
+    node.get_config = MagicMock(return_value=cfg)
+    return node
+
+
+@pytest.mark.asyncio
+async def test_evaluations_field_is_always_a_task():
+    """ManagedGraphResult.evaluations is always an asyncio.Task, never None."""
+    runner = StubAgentGraphRunner()
+    runner_result = await runner.run('input')
+
+    mock_graph = MagicMock()
+    mock_graph.create_tracker = MagicMock(return_value=_make_graph_tracker_mock(runner_result))
+    mock_graph.get_node = MagicMock(return_value=None)
+
+    managed = ManagedAgentGraph(mock_graph, runner)
+    result = await managed.run('input')
+    assert result.evaluations is not None
+    assert isinstance(result.evaluations, asyncio.Task)
+
+
+@pytest.mark.asyncio
+async def test_evaluations_resolves_to_empty_when_no_eval_requests():
+    """eval_requests absent → evaluations awaitable resolves to empty list."""
+    runner = _StubRunnerWithEvalRequests(eval_requests=None)
+    runner_result = await runner.run('input')
+
+    mock_graph = MagicMock()
+    mock_graph.create_tracker = MagicMock(return_value=_make_graph_tracker_mock(runner_result))
+    mock_graph.get_node = MagicMock(return_value=None)
+
+    managed = ManagedAgentGraph(mock_graph, runner)
+    result = await managed.run('input')
+    results = await result.evaluations
+    assert results == []
+
+
+@pytest.mark.asyncio
+async def test_evaluations_resolves_to_empty_when_eval_requests_empty():
+    """eval_requests empty list → evaluations awaitable resolves to empty list."""
+    runner = _StubRunnerWithEvalRequests(eval_requests=[])
+    runner_result = await runner.run('input')
+
+    mock_graph = MagicMock()
+    mock_graph.create_tracker = MagicMock(return_value=_make_graph_tracker_mock(runner_result))
+    mock_graph.get_node = MagicMock(return_value=None)
+
+    managed = ManagedAgentGraph(mock_graph, runner)
+    result = await managed.run('input')
+    results = await result.evaluations
+    assert results == []
+
+
+@pytest.mark.asyncio
+async def test_evaluations_dispatches_and_tracks_per_node():
+    """Each EvalRequest is dispatched to its node's evaluator and tracked on the per-node tracker."""
+    eval_requests = [
+        EvalRequest(node_key='root', input='hi', output='hello'),
+        EvalRequest(node_key='specialist', input='hello', output='specialist out'),
+    ]
+    runner = _StubRunnerWithEvalRequests(eval_requests=eval_requests)
+    runner_result = await runner.run('input')
+
+    mock_graph = MagicMock()
+    mock_graph.create_tracker = MagicMock(return_value=_make_graph_tracker_mock(runner_result))
+
+    root_tracker = MagicMock()
+    specialist_tracker = MagicMock()
+    root_results = [JudgeResult(judge_config_key='j1', success=True, sampled=True, score=0.9)]
+    specialist_results = [JudgeResult(judge_config_key='j2', success=True, sampled=True, score=0.7)]
+
+    root_node = _make_node_with_evaluator(root_tracker, root_results)
+    specialist_node = _make_node_with_evaluator(specialist_tracker, specialist_results)
+
+    def get_node(key):
+        return {'root': root_node, 'specialist': specialist_node}.get(key)
+
+    mock_graph.get_node = get_node
+
+    managed = ManagedAgentGraph(mock_graph, runner)
+    result = await managed.run('input')
+
+    combined = await result.evaluations
+    assert len(combined) == 2
+    keys = {r.judge_config_key for r in combined}
+    assert keys == {'j1', 'j2'}
+
+    root_tracker.track_judge_result.assert_called_once_with(root_results[0])
+    specialist_tracker.track_judge_result.assert_called_once_with(specialist_results[0])
+
+
+@pytest.mark.asyncio
+async def test_evaluations_skips_unsampled_results():
+    """Unsampled judge results are returned but not tracked."""
+    eval_requests = [EvalRequest(node_key='root', input='hi', output='hello')]
+    runner = _StubRunnerWithEvalRequests(eval_requests=eval_requests)
+    runner_result = await runner.run('input')
+
+    mock_graph = MagicMock()
+    mock_graph.create_tracker = MagicMock(return_value=_make_graph_tracker_mock(runner_result))
+
+    root_tracker = MagicMock()
+    root_results = [JudgeResult(judge_config_key='j1', success=True, sampled=False)]
+    root_node = _make_node_with_evaluator(root_tracker, root_results)
+    mock_graph.get_node = MagicMock(return_value=root_node)
+
+    managed = ManagedAgentGraph(mock_graph, runner)
+    result = await managed.run('input')
+
+    combined = await result.evaluations
+    assert combined == root_results
+    root_tracker.track_judge_result.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_run_returns_before_evaluations_resolve():
+    """run() must return without awaiting the evaluations task."""
+    eval_started = asyncio.Event()
+    eval_finish = asyncio.Event()
+
+    async def slow_evaluate_coro():
+        eval_started.set()
+        await eval_finish.wait()
+        return [JudgeResult(judge_config_key='j1', success=True, sampled=True, score=0.5)]
+
+    eval_requests = [EvalRequest(node_key='root', input='hi', output='hello')]
+    runner = _StubRunnerWithEvalRequests(eval_requests=eval_requests)
+    runner_result = await runner.run('input')
+
+    mock_graph = MagicMock()
+    mock_graph.create_tracker = MagicMock(return_value=_make_graph_tracker_mock(runner_result))
+
+    root_tracker = MagicMock()
+    cfg = MagicMock()
+    cfg.create_tracker = MagicMock(return_value=root_tracker)
+    cfg.evaluator.evaluate = MagicMock(return_value=asyncio.create_task(slow_evaluate_coro()))
+    root_node = MagicMock()
+    root_node.get_config = MagicMock(return_value=cfg)
+    mock_graph.get_node = MagicMock(return_value=root_node)
+
+    managed = ManagedAgentGraph(mock_graph, runner)
+    result = await managed.run('input')
+
+    # run() returned before the evaluations task resolved.
+    assert not result.evaluations.done()
+    eval_finish.set()
+    combined = await result.evaluations
+    assert len(combined) == 1
+    root_tracker.track_judge_result.assert_called_once()
 
 
 # --- LDAIClient.create_agent_graph() integration tests ---
