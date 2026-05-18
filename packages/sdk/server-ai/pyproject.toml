@@ -67,6 +67,7 @@ non_interactive = true
 [tool.pytest.ini_options]
 addopts = ["-ra"]
 testpaths = ["tests"]
+asyncio_mode = "strict"
 
 [tool.isort]
 profile = "black"
