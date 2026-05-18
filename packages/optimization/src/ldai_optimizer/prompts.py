@@ -16,6 +16,13 @@ _DURATION_KEYWORDS = re.compile(
     re.IGNORECASE,
 )
 
+_COST_KEYWORDS = re.compile(
+    r"\b(cheap|cheaper|cheapest|costs?|costly|expensive|budget|affordable|"
+    r"spend|spending|economical|cost-effective|frugal|"
+    r"price|pricing|bill|billing)\b",
+    re.IGNORECASE,
+)
+
 
 def _acceptance_criteria_implies_duration_optimization(
     judges: Optional[Dict[str, OptimizationJudge]],
@@ -33,6 +40,28 @@ def _acceptance_criteria_implies_duration_optimization(
         return False
     for judge in judges.values():
         if judge.acceptance_statement and _DURATION_KEYWORDS.search(
+            judge.acceptance_statement
+        ):
+            return True
+    return False
+
+
+def _acceptance_criteria_implies_cost_optimization(
+    judges: Optional[Dict[str, OptimizationJudge]],
+) -> bool:
+    """Return True if any judge acceptance statement implies a cost reduction goal.
+
+    Scans each judge's acceptance_statement for cost-related keywords. The
+    check is case-insensitive. Returns False when judges is None or no judge
+    carries an acceptance statement.
+
+    :param judges: Judge configuration dict from OptimizationOptions, or None.
+    :return: True if cost optimization should be applied.
+    """
+    if not judges:
+        return False
+    for judge in judges.values():
+        if judge.acceptance_statement and _COST_KEYWORDS.search(
             judge.acceptance_statement
         ):
             return True
@@ -114,6 +143,8 @@ def build_new_variation_prompt(
     variable_choices: List[Dict[str, Any]],
     initial_instructions: str,
     optimize_for_duration: bool = False,
+    optimize_for_cost: bool = False,
+    quality_already_passing: bool = False,
 ) -> str:
     """
     Build the LLM prompt for generating an improved agent configuration.
@@ -133,6 +164,11 @@ def build_new_variation_prompt(
     :param initial_instructions: The original unmodified instructions template
     :param optimize_for_duration: When True, appends a duration optimization section
         instructing the LLM to prefer faster models and simpler instructions.
+    :param optimize_for_cost: When True, appends a cost optimization section
+        instructing the LLM to prefer cheaper models and reduce token usage.
+    :param quality_already_passing: When True, signals that all judge criteria are
+        currently passing and the cost optimization section should instruct the LLM
+        to preserve existing behavior while only reducing cost.
     :return: The assembled prompt string
     """
     sections = [
@@ -147,6 +183,7 @@ def build_new_variation_prompt(
             history, model_choices, variable_choices, initial_instructions
         ),
         variation_prompt_duration_optimization(model_choices) if optimize_for_duration else "",
+        variation_prompt_cost_optimization(model_choices, quality_already_passing=quality_already_passing) if optimize_for_cost else "",
     ]
 
     return "\n\n".join(s for s in sections if s)
@@ -248,6 +285,8 @@ def variation_prompt_configuration(
         lines.append(f"Agent response: <untrusted>{previous_ctx.completion_response}</untrusted>")
         if previous_ctx.duration_ms is not None:
             lines.append(f"Agent duration: {previous_ctx.duration_ms:.0f}ms")
+        if previous_ctx.estimated_cost_usd is not None:
+            lines.append(f"Estimated agent cost: ${previous_ctx.estimated_cost_usd:.6f}")
         return "\n".join(lines)
     else:
         return "\n".join(
@@ -301,6 +340,8 @@ def variation_prompt_feedback(
                 lines.append(feedback_line)
         if ctx.duration_ms is not None:
             lines.append(f"Agent duration: {ctx.duration_ms:.0f}ms")
+        if ctx.estimated_cost_usd is not None:
+            lines.append(f"Estimated agent cost: ${ctx.estimated_cost_usd:.6f}")
     return "\n".join(lines)
 
 
@@ -556,3 +597,76 @@ def variation_prompt_duration_optimization(model_choices: List[str]) -> str:
             "Quality criteria remain the primary objective — do not sacrifice passing scores to achieve lower latency.",
         ]
     )
+
+
+def variation_prompt_cost_optimization(
+    model_choices: List[str],
+    quality_already_passing: bool = False,
+) -> str:
+    """
+    Cost optimization section of the variation prompt.
+
+    Included when acceptance criteria imply a cost reduction goal. Instructs
+    the LLM to treat token usage as a secondary objective — quality criteria
+    must still be met first — and provides concrete guidance on how to reduce
+    cost through model selection and instruction simplification.
+
+    When ``quality_already_passing`` is True, the framing shifts: since all
+    judge criteria are already satisfied, the LLM is instructed to preserve
+    the existing behavior exactly and only apply changes that reduce cost
+    without affecting output quality.
+
+    :param model_choices: List of model IDs the LLM may select from, so it can
+        apply its own knowledge of which models tend to be cheaper.
+    :param quality_already_passing: When True, signals that all judge criteria
+        are currently passing. The section will direct the LLM to preserve
+        output quality and focus exclusively on cost reduction strategies.
+    :return: The cost optimization prompt block.
+    """
+    if quality_already_passing:
+        intent_lines = [
+            "## Cost Optimization:",
+            "The acceptance criteria for this optimization implies that token usage / cost should be reduced.",
+            "*** IMPORTANT: All quality acceptance criteria are currently passing. ***",
+            "The goal of this variation is to reduce cost WITHOUT changing the behavior or quality of the agent's responses.",
+            "Do NOT alter the instructions in ways that would change what the agent says or how it reasons.",
+            "Only apply changes that reduce token usage or switch to a cheaper model while preserving the same output quality.",
+            "If you cannot reduce cost without risking quality, keep the instructions unchanged and only consider a cheaper model.",
+            "",
+        ]
+    else:
+        intent_lines = [
+            "## Cost Optimization:",
+            "The acceptance criteria for this optimization implies that token usage / cost should be reduced.",
+            "In addition to improving quality, generate a variation that aims to reduce the agent's cost.",
+            "",
+        ]
+
+    shared_lines = [
+        "Cost is driven by two factors: (1) the number of tokens processed, and (2) the per-token price of the model.",
+        "Target both factors with the strategies below.",
+        "",
+        "### Reducing token usage (input tokens):",
+        "- Remove redundant, verbose, or repeated phrasing from the instructions.",
+        "- Collapse multi-sentence explanations into a single concise directive.",
+        "- Remove examples or few-shot demonstrations unless they are essential for accuracy.",
+        "- Eliminate instructional scaffolding that the model does not need (e.g. 'You are a helpful assistant that...').",
+        "- Use bullet points instead of prose where possible — they are more token-efficient.",
+        "",
+        "### Reducing token usage (output tokens):",
+        "- Instruct the agent to be concise and avoid unnecessary elaboration.",
+        "- Specify the exact format and length of the expected response (e.g. 'Respond in one sentence.').",
+        "- Set or reduce max_tokens if the current value allows longer responses than needed.",
+        "- Avoid instructions that encourage the agent to 'explain its reasoning' unless required by the acceptance criteria.",
+        "",
+        "### Reducing per-token cost via model selection:",
+        "- Consider switching to a cheaper model from the available choices if quality requirements can still be met.",
+        f"  Available models: {model_choices}",
+        "  Use your knowledge of relative model pricing to prefer lower-cost options.",
+        "  Only switch models if the cheaper model is capable of satisfying the acceptance criteria.",
+        "",
+        "Quality criteria remain the primary objective — do not sacrifice passing scores to achieve lower cost.",
+        "Apply cost-reduction changes incrementally: prefer the smallest change that measurably reduces cost.",
+    ]
+
+    return "\n".join(intent_lines + shared_lines)

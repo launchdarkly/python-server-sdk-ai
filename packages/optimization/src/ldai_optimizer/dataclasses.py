@@ -43,6 +43,7 @@ class JudgeResult:
     rationale: Optional[str] = None
     duration_ms: Optional[float] = None
     usage: Optional[TokenUsage] = None
+    estimated_cost_usd: Optional[float] = None
 
     def to_json(self) -> Dict[str, Any]:
         """
@@ -61,6 +62,8 @@ class JudgeResult:
                 "input": self.usage.input,
                 "output": self.usage.output,
             }
+        if self.estimated_cost_usd is not None:
+            result["estimated_cost_usd"] = self.estimated_cost_usd
         return result
 
 
@@ -217,6 +220,8 @@ class OptimizationContext:
     iteration: int = 0  # current iteration number
     duration_ms: Optional[float] = None  # wall-clock time for the agent call in milliseconds
     usage: Optional[TokenUsage] = None  # token usage reported by the agent for this iteration
+    estimated_cost_usd: Optional[float] = None  # estimated cost; USD when pricing available, else total tokens
+    accumulated_token_usage: Optional[int] = None  # single running total across ALL calls in this run (generation + judges + variation)
 
     def copy_without_history(self) -> OptimizationContext:
         """
@@ -236,6 +241,8 @@ class OptimizationContext:
             iteration=self.iteration,
             duration_ms=self.duration_ms,
             usage=self.usage,
+            estimated_cost_usd=self.estimated_cost_usd,
+            accumulated_token_usage=self.accumulated_token_usage,
         )
 
     def to_json(self) -> Dict[str, Any]:
@@ -261,6 +268,8 @@ class OptimizationContext:
             "history": history_list,
             "iteration": self.iteration,
             "duration_ms": self.duration_ms,
+            "estimated_cost_usd": self.estimated_cost_usd,
+            "accumulated_token_usage": self.accumulated_token_usage,
         }
         if self.usage is not None:
             result["usage"] = {

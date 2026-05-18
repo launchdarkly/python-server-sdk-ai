@@ -1,7 +1,7 @@
 [project]
-name = "ldai_optimizer"
+name = "launchdarkly-ai-optimizer"
 version = "0.1.0"  # x-release-please-version
-description = "LaunchDarkly AI tool — optimizer"
+description = "LaunchDarkly AI tool — Optimization"
 authors = [{name = "LaunchDarkly", email = "dev@launchdarkly.com"}]
 license = {text = "Apache-2.0"}
 readme = "README.md"

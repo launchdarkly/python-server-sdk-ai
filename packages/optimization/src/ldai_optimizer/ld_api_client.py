@@ -118,7 +118,7 @@ class AgentOptimizationResultPatch(TypedDict, total=False):
     completionResponse: str
     scores: Dict[str, Any]
     generationLatency: int
-    generationTokens: Dict[str, int]
+    generationTokens: Dict[str, Any]
     evaluationLatencies: Dict[str, float]
     evaluationTokens: Dict[str, Dict[str, int]]
     variation: Dict[str, Any]
