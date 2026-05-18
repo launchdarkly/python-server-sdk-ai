@@ -1019,6 +1019,42 @@ class OptimizationClient:
             logger.exception("[Optimization] -> Failed to get agent configuration")
             raise
 
+    def _fetch_model_configs(
+        self,
+        project_key: Optional[str],
+        base_url: Optional[str],
+        judges: Optional[Dict[str, "OptimizationJudge"]],
+    ) -> None:
+        """Populate ``_model_configs`` from the LD API when credentials are available.
+
+        When an API key and project key are both present, fetches the model pricing
+        catalogue so that ``estimate_cost`` can produce USD figures and the cost gate
+        can make meaningful comparisons.  If either is absent, ``_model_configs`` is
+        reset to an empty list and a warning is emitted when cost judges are in use —
+        cost optimization will silently pass rather than blocking the run.
+
+        :param project_key: LaunchDarkly project key, or None if not provided.
+        :param base_url: Optional API base URL override.
+        :param judges: Judge map from the caller's options, used only to decide
+            whether a cost-related warning is appropriate.
+        """
+        self._model_configs = []
+        if self._has_api_key and project_key:
+            assert self._api_key is not None
+            try:
+                api_client = LDApiClient(
+                    self._api_key,
+                    **({"base_url": base_url} if base_url else {}),
+                )
+                self._model_configs = api_client.get_model_configs(project_key)
+            except Exception as exc:
+                logger.debug("Could not pre-fetch model configs: %s", exc)
+        elif _acceptance_criteria_implies_cost_optimization(judges or {}):
+            logger.warning(
+                "Cost optimization requires LAUNCHDARKLY_API_KEY and project_key to be set; "
+                "cost data will not be available and the cost gate will pass unconditionally"
+            )
+
     async def optimize_from_options(
         self, agent_key: str, options: OptimizationOptions
     ) -> Any:
@@ -1038,6 +1074,7 @@ class OptimizationClient:
                     "auto_commit requires project_key to be set on OptimizationOptions"
                 )
         self._agent_key = agent_key
+        self._fetch_model_configs(options.project_key, options.base_url, options.judges)
         context = random.choice(options.context_choices)
         agent_config = await self._get_agent_config(agent_key, context)
         result = await self._run_optimization(agent_config, options)
@@ -1076,6 +1113,7 @@ class OptimizationClient:
                     "auto_commit requires project_key to be set on GroundTruthOptimizationOptions"
                 )
         self._agent_key = agent_key
+        self._fetch_model_configs(options.project_key, options.base_url, options.judges)
         context = random.choice(options.context_choices)
         agent_config = await self._get_agent_config(agent_key, context)
         result = await self._run_ground_truth_optimization(agent_config, options)
