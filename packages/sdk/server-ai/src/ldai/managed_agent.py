@@ -45,7 +45,7 @@ class ManagedAgent:
             lambda: self._agent_runner.run(input),
         )
 
-        evaluations_task = self._track_judge_results(tracker, input, result.content)
+        evaluations_task = await self._track_judge_results(tracker, input, result.content)
 
         return ManagedResult(
             content=result.content,
@@ -54,7 +54,7 @@ class ManagedAgent:
             evaluations=evaluations_task,
         )
 
-    def _track_judge_results(
+    async def _track_judge_results(
         self,
         tracker: LDAIConfigTracker,
         input_text: str,
