@@ -40,9 +40,9 @@ class Evaluator:
         """
         Run all configured judges against the given input/output pair.
 
-        Schedules the judge evaluations as an asyncio Task and returns it
-        immediately. The caller can await the task to get results or pass it
-        to tracking helpers.
+        The returned Task starts judge evaluations immediately. The caller
+        must retain a reference to the results until it resolves to ensure
+        Judge evaluations are completed.
 
         :param input_text: The input that was provided to the AI model
         :param output_text: The AI-generated output to evaluate
