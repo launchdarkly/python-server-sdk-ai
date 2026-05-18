@@ -500,35 +500,13 @@ class LDAIConfigTracker:
             "$ld:ai:generation:error", self._context, self.__get_track_data(), 1
         )
 
-    def track_bedrock_converse_metrics(self, res: dict) -> dict:
-        """
-        Track AWS Bedrock conversation operations.
-
-
-        This function will track the duration of the operation, the token
-        usage, and the success or error status.
-
-        :param res: Response dictionary from Bedrock.
-        :return: The original response dictionary.
-        """
-        status_code = res.get("ResponseMetadata", {}).get("HTTPStatusCode", 0)
-        if status_code == 200:
-            self.track_success()
-        elif status_code >= 400:
-            self.track_error()
-        if res.get("metrics", {}).get("latencyMs"):
-            self.track_duration(res["metrics"]["latencyMs"])
-        if res.get("usage"):
-            self.track_tokens(_bedrock_to_token_usage(res["usage"]))
-        return res
-
     def track_tokens(self, tokens: TokenUsage) -> None:
         """
         Track token usage metrics.
 
         Records at most once per Tracker; further calls are ignored.
 
-        :param tokens: Token usage data from either custom, OpenAI, or Bedrock sources.
+        :param tokens: Token usage data.
         """
         if self._summary.tokens is not None:
             log.warning(
@@ -585,20 +563,6 @@ class LDAIConfigTracker:
         :return: Summary of AI metrics.
         """
         return self._summary
-
-
-def _bedrock_to_token_usage(data: dict) -> TokenUsage:
-    """
-    Convert a Bedrock usage dictionary to a TokenUsage object.
-
-    :param data: Dictionary containing Bedrock usage data.
-    :return: TokenUsage object containing usage data.
-    """
-    return TokenUsage(
-        total=data.get("totalTokens", 0),
-        input=data.get("inputTokens", 0),
-        output=data.get("outputTokens", 0),
-    )
 
 
 class AIGraphTracker:
