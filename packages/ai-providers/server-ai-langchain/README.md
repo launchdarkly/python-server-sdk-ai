@@ -48,7 +48,7 @@ context = Context.builder("user-123").build()
 
 async def main():
     # Create a ManagedModel backed by the LangChain provider
-    model = await ai_client.create_model(
+    model = ai_client.create_model(
         "ai-config-key",
         context,
         AICompletionConfigDefault(
@@ -74,7 +74,7 @@ LaunchDarkly AI config flag, selects the LangChain runner automatically, and
 returns a `ManagedModel` that wraps the runner:
 
 ```python
-model = await ai_client.create_model("ai-config-key", context)
+model = ai_client.create_model("ai-config-key", context)
 
 if model:
     result = await model.run("What is feature flagging?")
@@ -121,7 +121,7 @@ print(result.parsed)  # {"sentiment": "positive", "confidence": 0.95}
 `LDAIConfigTracker`. For manual tracking, use the tracker directly:
 
 ```python
-model = await ai_client.create_model("ai-config-key", context)
+model = ai_client.create_model("ai-config-key", context)
 
 if model:
     result = await model.run("Explain feature flags.")

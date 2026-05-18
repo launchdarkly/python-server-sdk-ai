@@ -383,7 +383,7 @@ class LDAIClient:
                 judge_instances.append(judge)
         return Evaluator(judge_instances)
 
-    async def create_model(
+    def create_model(
         self,
         key: str,
         context: Context,
@@ -404,7 +404,7 @@ class LDAIClient:
 
         Example::
 
-            model = await client.create_model(
+            model = client.create_model(
                 "customer-support-chat",
                 context,
                 AICompletionConfigDefault(
@@ -435,7 +435,7 @@ class LDAIClient:
 
         return ManagedModel(config, runner)
 
-    async def create_agent(
+    def create_agent(
         self,
         key: str,
         context: Context,
@@ -463,7 +463,7 @@ class LDAIClient:
 
         Example::
 
-            agent = await client.create_agent(
+            agent = client.create_agent(
                 "customer-support-agent",
                 context,
                 tools={"get-order": fetch_order_fn},
@@ -722,7 +722,7 @@ class LDAIClient:
             create_tracker=graph_tracker_factory,
         )
 
-    async def create_agent_graph(
+    def create_agent_graph(
         self,
         key: str,
         context: Context,
@@ -748,7 +748,7 @@ class LDAIClient:
 
         Example::
 
-            graph = await client.create_agent_graph(
+            graph = client.create_agent_graph(
                 "travel-assistant-graph",
                 context,
                 tools={
