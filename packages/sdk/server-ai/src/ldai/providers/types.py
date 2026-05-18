@@ -87,6 +87,29 @@ class ManagedResult:
 
 
 @dataclass
+class EvalRequest:
+    """
+    Per-node input/output pair captured by an :class:`AgentGraphRunner` for later judge evaluation.
+
+    The agent graph runner is the only layer with access to a node's prompt and
+    response, but it does not invoke judges itself.  Instead it records one
+    ``EvalRequest`` per executed node whose ``AIAgentConfig`` has a
+    ``judge_configuration`` so the managed layer
+    (:class:`~ldai.managed_agent_graph.ManagedAgentGraph`) can fire evaluations
+    as background work after the runner returns.
+    """
+
+    node_key: str
+    """The config key of the node being evaluated."""
+
+    input: str
+    """The prompt or input the node received."""
+
+    output: str
+    """The content the node produced."""
+
+
+@dataclass
 class AIGraphMetrics:
     """Contains raw metrics from a single agent graph run."""
 
@@ -131,7 +154,7 @@ class AIGraphMetricSummary:
 
 @dataclass
 class ManagedGraphResult:
-    """Contains the result of a managed agent graph run, including metrics and optional judge evaluations."""
+    """Contains the result of a managed agent graph run, including metrics and judge evaluations."""
 
     content: str
     """The graph's final output content."""
@@ -139,11 +162,17 @@ class ManagedGraphResult:
     metrics: AIGraphMetricSummary
     """Aggregated metric summary from the graph tracker for this run."""
 
+    evaluations: asyncio.Task[List[JudgeResult]]
+    """
+    An asyncio Task that resolves to the combined list of :class:`JudgeResult`
+    instances across every node that had judges configured.  The managed layer
+    always populates this field; when no nodes had judges (or
+    ``AgentGraphRunnerResult.eval_requests`` was absent or empty) the task
+    resolves immediately to an empty list.
+    """
+
     raw: Optional[Any] = None
     """Optional provider-native response object for advanced consumers."""
-
-    evaluations: Optional[asyncio.Task[List[JudgeResult]]] = None
-    """Optional asyncio Task that resolves to the list of :class:`JudgeResult` instances when awaited."""
 
 
 @dataclass
@@ -158,6 +187,15 @@ class AgentGraphRunnerResult:
 
     raw: Optional[Any] = None
     """Optional provider-native response object for advanced consumers."""
+
+    eval_requests: Optional[List[EvalRequest]] = None
+    """
+    Per-node input/output pairs captured for nodes that have judges configured.
+
+    The managed layer consumes these to fire judge evaluations after the
+    runner returns. Absent or empty when no executed node has a
+    ``judge_configuration`` with at least one judge.
+    """
 
 
 @dataclass

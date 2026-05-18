@@ -1,11 +1,14 @@
 """ManagedAgentGraph — LaunchDarkly managed wrapper for agent graph execution."""
 
-from typing import Dict
+import asyncio
+from typing import Dict, List
 
+from ldai import log
 from ldai.agent_graph import AgentGraphDefinition
 from ldai.providers import AgentGraphRunner
 from ldai.providers.types import (
     AgentGraphRunnerResult,
+    JudgeResult,
     LDAIMetrics,
     ManagedGraphResult,
 )
@@ -58,12 +61,57 @@ class ManagedAgentGraph:
         summary = graph_tracker.get_summary()
         summary.node_metrics = self._track_node_metrics(result.metrics.node_metrics)
 
+        evaluations_task = self._track_judge_results(result)
+
         return ManagedGraphResult(
             content=result.content,
             metrics=summary,
+            evaluations=evaluations_task,
             raw=result.raw,
-            evaluations=None,
         )
+
+    def _track_judge_results(
+        self,
+        runner_result: AgentGraphRunnerResult,
+    ) -> asyncio.Task[List[JudgeResult]]:
+        """
+        Start judge evaluations for every captured :class:`EvalRequest` as a
+        single background asyncio Task and return it.
+
+        The returned task awaits each node's evaluator, fires
+        ``track_judge_result`` on the matching per-node tracker for every
+        sampled+successful judge result, and resolves to the combined list of
+        :class:`JudgeResult` across all nodes.  When the runner produced no
+        eval requests, the task resolves immediately to an empty list.
+        """
+        eval_requests = runner_result.eval_requests or []
+
+        async def _run_and_track() -> List[JudgeResult]:
+            combined: List[JudgeResult] = []
+            for req in eval_requests:
+                node = self._graph.get_node(req.node_key)
+                if node is None:
+                    continue
+                node_config = node.get_config()
+                eval_task = node_config.evaluator.evaluate(req.input, req.output)
+                results = await eval_task
+                if not results:
+                    continue
+                node_tracker = node_config.create_tracker()
+                for r in results:
+                    combined.append(r)
+                    if not r.sampled:
+                        continue
+                    if r.success:
+                        try:
+                            node_tracker.track_judge_result(r)
+                        except Exception as exc:
+                            log.warning("Judge evaluation failed: %s", exc)
+                    else:
+                        log.warning("Judge evaluation failed: %s", r.error_message)
+            return combined
+
+        return asyncio.create_task(_run_and_track())
 
     def _track_node_metrics(
         self, node_metrics: Dict[str, LDAIMetrics]
