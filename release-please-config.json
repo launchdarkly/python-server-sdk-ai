@@ -10,7 +10,8 @@
         "src/ldai/__init__.py",
         "PROVENANCE.md",
         "/packages/ai-providers/server-ai-langchain/pyproject.toml",
-        "/packages/ai-providers/server-ai-openai/pyproject.toml"
+        "/packages/ai-providers/server-ai-openai/pyproject.toml",
+        "/packages/ai-providers/server-ai-bedrock/pyproject.toml"
       ],
       "component": "launchdarkly-server-sdk-ai"
     },
@@ -33,6 +34,16 @@
         "src/ldai_openai/__init__.py"
       ],
       "component": "launchdarkly-server-sdk-ai-openai"
+    },
+    "packages/ai-providers/server-ai-bedrock": {
+      "release-type": "python",
+      "versioning": "default",
+      "bump-minor-pre-major": true,
+      "include-v-in-tag": false,
+      "extra-files": [
+        "src/ldai_bedrock/__init__.py"
+      ],
+      "component": "launchdarkly-server-sdk-ai-bedrock"
     },
     "packages/optimization": {
       "release-type": "python",
