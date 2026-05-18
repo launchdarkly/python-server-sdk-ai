@@ -1,10 +1,4 @@
 PYTEST_FLAGS=-W error::SyntaxWarning
-SPHINXOPTS    = -W --keep-going
-SPHINXBUILD   = sphinx-build
-
-# Configurable docs paths (can be overridden from root Makefile)
-DOCS_DIR ?= docs
-DOCS_BUILD_DIR ?= docs/build
 
 .PHONY: help
 help: #! Show this help message
@@ -37,4 +31,4 @@ build: install
 .PHONY: docs
 docs: #! Generate sphinx-based documentation
 	uv sync --group docs
-	uv run $(SPHINXBUILD) -M html "$(DOCS_DIR)" "$(DOCS_BUILD_DIR)" $(SPHINXOPTS)
+	uv run sphinx-build -W --keep-going -M html docs docs/build

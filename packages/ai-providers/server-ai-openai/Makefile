@@ -27,3 +27,8 @@ lint: install
 build: #! Build distribution files
 build: install
 	uv build --out-dir dist
+
+.PHONY: docs
+docs: #! Generate sphinx-based documentation
+	uv sync --group docs
+	uv run sphinx-build -W --keep-going -M html docs docs/build
