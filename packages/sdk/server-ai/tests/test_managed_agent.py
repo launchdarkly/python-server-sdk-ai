@@ -310,16 +310,14 @@ class TestManagedAgentEvaluations:
 class TestLDAIClientCreateAgent:
     """Tests for LDAIClient.create_agent."""
 
-    @pytest.mark.asyncio
-    async def test_returns_none_when_agent_is_disabled(self, ldai_client: LDAIClient):
+    def test_returns_none_when_agent_is_disabled(self, ldai_client: LDAIClient):
         """Should return None when agent config is disabled."""
         context = Context.create('user-key')
-        result = await ldai_client.create_agent('disabled-agent', context)
+        result = ldai_client.create_agent('disabled-agent', context)
 
         assert result is None
 
-    @pytest.mark.asyncio
-    async def test_returns_none_when_provider_unavailable(self, ldai_client: LDAIClient):
+    def test_returns_none_when_provider_unavailable(self, ldai_client: LDAIClient):
         """Should return None when no AI provider is available."""
         import ldai.providers.runner_factory as rf
         context = Context.create('user-key')
@@ -327,13 +325,12 @@ class TestLDAIClientCreateAgent:
         original = rf.RunnerFactory.create_agent
         rf.RunnerFactory.create_agent = MagicMock(return_value=None)
         try:
-            result = await ldai_client.create_agent('customer-support-agent', context)
+            result = ldai_client.create_agent('customer-support-agent', context)
             assert result is None
         finally:
             rf.RunnerFactory.create_agent = original
 
-    @pytest.mark.asyncio
-    async def test_returns_managed_agent_when_runner_available(self, ldai_client: LDAIClient):
+    def test_returns_managed_agent_when_runner_available(self, ldai_client: LDAIClient):
         """Should return ManagedAgent when runner is successfully created."""
         import ldai.providers.runner_factory as rf
         context = Context.create('user-key')
@@ -346,7 +343,7 @@ class TestLDAIClientCreateAgent:
         original = rf.RunnerFactory.create_agent
         rf.RunnerFactory.create_agent = MagicMock(return_value=mock_runner)
         try:
-            result = await ldai_client.create_agent('customer-support-agent', context)
+            result = ldai_client.create_agent('customer-support-agent', context)
             assert isinstance(result, ManagedAgent)
             assert result.get_agent_runner() is mock_runner
         finally:

@@ -303,7 +303,7 @@ async def test_create_agent_graph_returns_managed_agent_graph(ldai_client: LDAIC
         'ldai.providers.runner_factory.RunnerFactory.create_agent_graph',
         new=MagicMock(return_value=stub_runner),
     ):
-        managed = await ldai_client.create_agent_graph('travel-graph', context)
+        managed = ldai_client.create_agent_graph('travel-graph', context)
 
     assert managed is not None
     assert isinstance(managed, ManagedAgentGraph)
@@ -313,7 +313,7 @@ async def test_create_agent_graph_returns_managed_agent_graph(ldai_client: LDAIC
 @pytest.mark.asyncio
 async def test_create_agent_graph_returns_none_when_disabled(ldai_client: LDAIClient):
     context = Context.create('user-key')
-    managed = await ldai_client.create_agent_graph('disabled-graph', context)
+    managed = ldai_client.create_agent_graph('disabled-graph', context)
     assert managed is None
 
 
@@ -325,7 +325,7 @@ async def test_create_agent_graph_returns_none_when_runner_factory_fails(ldai_cl
         'ldai.providers.runner_factory.RunnerFactory.create_agent_graph',
         new=MagicMock(return_value=None),
     ):
-        managed = await ldai_client.create_agent_graph('travel-graph', context)
+        managed = ldai_client.create_agent_graph('travel-graph', context)
 
     assert managed is None
 
@@ -344,7 +344,7 @@ async def test_create_agent_graph_passes_tools_to_factory(ldai_client: LDAIClien
         'ldai.providers.runner_factory.RunnerFactory.create_agent_graph',
         new=fake_create_agent_graph,
     ):
-        await ldai_client.create_agent_graph('travel-graph', context, tools=tools)
+        ldai_client.create_agent_graph('travel-graph', context, tools=tools)
 
     assert captured['tools'] is tools
 
@@ -357,7 +357,7 @@ async def test_create_agent_graph_run_produces_result(ldai_client: LDAIClient):
         'ldai.providers.runner_factory.RunnerFactory.create_agent_graph',
         new=MagicMock(return_value=StubAgentGraphRunner("final answer")),
     ):
-        managed = await ldai_client.create_agent_graph('travel-graph', context)
+        managed = ldai_client.create_agent_graph('travel-graph', context)
 
     assert managed is not None
     result = await managed.run("find restaurants")

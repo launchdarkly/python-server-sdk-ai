@@ -115,7 +115,7 @@ from ldai import LDAIClient, AICompletionConfigDefault, ModelConfig, LDMessage
 # Use the same default_config from the retrieval section above
 async def main():
     context = Context.create("user-123")
-    model = await ai_client.create_model(
+    model = ai_client.create_model(
         'customer-support-chat',
         context,
         default_config,

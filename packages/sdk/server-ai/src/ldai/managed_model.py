@@ -44,7 +44,7 @@ class ManagedModel:
             lambda: self._model_runner.run(prompt),
         )
 
-        evaluations_task = self._track_judge_results(tracker, prompt, result.content)
+        evaluations_task = await self._track_judge_results(tracker, prompt, result.content)
 
         return ManagedResult(
             content=result.content,
@@ -54,7 +54,7 @@ class ManagedModel:
             evaluations=evaluations_task,
         )
 
-    def _track_judge_results(
+    async def _track_judge_results(
         self,
         tracker: LDAIConfigTracker,
         input_text: str,
