@@ -9,7 +9,7 @@ To verify build provenance attestations, we recommend using the [GitHub CLI `att
 <!-- x-release-please-start-version -->
 ```
 # Set the version of the library to verify
-VERSION=1.0.0
+VERSION=1.0.1
 ```
 <!-- x-release-please-end -->
 
