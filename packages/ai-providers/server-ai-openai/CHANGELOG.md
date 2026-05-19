@@ -2,6 +2,17 @@
 
 All notable changes to the LaunchDarkly Python AI OpenAI provider package will be documented in this file. This project adheres to [Semantic Versioning](http://semver.org).
 
+## [0.7.0](https://github.com/launchdarkly/python-server-sdk-ai/compare/launchdarkly-server-sdk-ai-openai-0.6.1...launchdarkly-server-sdk-ai-openai-0.7.0) (2026-05-19)
+
+
+### ⚠ BREAKING CHANGES
+
+* Remove async from create_model/agent/agent_graph methods ([#187](https://github.com/launchdarkly/python-server-sdk-ai/issues/187))
+
+### Features
+
+* Remove async from create_model/agent/agent_graph methods ([#187](https://github.com/launchdarkly/python-server-sdk-ai/issues/187)) ([dddc00a](https://github.com/launchdarkly/python-server-sdk-ai/commit/dddc00ab3d8b57cd58b71b57296680b8e95560fd))
+
 ## [0.6.1](https://github.com/launchdarkly/python-server-sdk-ai/compare/launchdarkly-server-sdk-ai-openai-0.6.0...launchdarkly-server-sdk-ai-openai-0.6.1) (2026-05-14)
 
 

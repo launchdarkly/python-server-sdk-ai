@@ -2,6 +2,19 @@
 
 All notable changes to the LaunchDarkly Python AI package will be documented in this file. This project adheres to [Semantic Versioning](http://semver.org).
 
+## [1.0.0](https://github.com/launchdarkly/python-server-sdk-ai/compare/launchdarkly-server-sdk-ai-0.20.1...launchdarkly-server-sdk-ai-1.0.0) (2026-05-19)
+
+
+### ⚠ BREAKING CHANGES
+
+* Remove bedrock-specific tracker method, use track_metrics_of method with custom extractor ([#191](https://github.com/launchdarkly/python-server-sdk-ai/issues/191))
+* Remove async from create_model/agent/agent_graph methods ([#187](https://github.com/launchdarkly/python-server-sdk-ai/issues/187))
+
+### Features
+
+* Remove async from create_model/agent/agent_graph methods ([#187](https://github.com/launchdarkly/python-server-sdk-ai/issues/187)) ([dddc00a](https://github.com/launchdarkly/python-server-sdk-ai/commit/dddc00ab3d8b57cd58b71b57296680b8e95560fd))
+* Remove bedrock-specific tracker method, use track_metrics_of method with custom extractor ([#191](https://github.com/launchdarkly/python-server-sdk-ai/issues/191)) ([33e4a65](https://github.com/launchdarkly/python-server-sdk-ai/commit/33e4a6556d245f9ce26eb88bafaf3fbf9842c4fe))
+
 ## [0.20.1](https://github.com/launchdarkly/python-server-sdk-ai/compare/launchdarkly-server-sdk-ai-0.20.0...launchdarkly-server-sdk-ai-0.20.1) (2026-05-14)
 
 
