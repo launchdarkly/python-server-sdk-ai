@@ -6,7 +6,8 @@ from typing import Any, Dict
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from ldai import AIAgentConfig, AIJudgeConfig, AIJudgeConfigDefault, LDAIClient
+from ldai import AIAgentConfig, AIJudgeConfig, LDAIClient
+from ldai.client import Evaluator
 from ldai.models import LDMessage, ModelConfig
 from ldai.tracker import TokenUsage
 from ldclient import Context
@@ -74,6 +75,7 @@ def _make_agent_config(
         key="test-agent",
         enabled=True,
         create_tracker=MagicMock,
+        evaluator=Evaluator.noop(),
         model=ModelConfig(name=model_name, parameters=parameters or {}),
         instructions=instructions,
     )

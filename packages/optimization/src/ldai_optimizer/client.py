@@ -320,6 +320,7 @@ class OptimizationClient:
             key=self._agent_key,
             enabled=True,
             create_tracker=self._agent_config.create_tracker,
+            evaluator=self._agent_config.evaluator,
             model=ModelConfig(
                 name=ctx.current_model or "",
                 parameters=ctx.current_parameters,
