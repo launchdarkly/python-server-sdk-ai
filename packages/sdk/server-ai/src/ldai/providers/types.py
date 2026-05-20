@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import asyncio
+from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional
 
-from ldai.models import LDMessage
-from ldai.tracker import TokenUsage
+from ldai.tracker import LDAIMetricSummary, TokenUsage
 
 # Type alias for a registry of tools available to an agent.
 # Keys are tool names; values are the callable implementations.
@@ -15,11 +15,19 @@ ToolRegistry = Dict[str, Callable]
 
 @dataclass
 class LDAIMetrics:
-    """
-    Metrics information for AI operations that includes success status and token usage.
-    """
+    """Contains metrics for a single AI invocation."""
+
     success: bool
-    usage: Optional[TokenUsage] = None
+    """Whether the invocation succeeded."""
+
+    tokens: Optional[TokenUsage] = None
+    """Optional token usage information."""
+
+    tool_calls: Optional[List[str]] = None
+    """Ordered list of tool-call names observed during the invocation."""
+
+    duration_ms: Optional[int] = None
+    """Wall-clock duration of the runner invocation in milliseconds."""
 
     def to_dict(self) -> Dict[str, Any]:
         """
@@ -28,47 +36,154 @@ class LDAIMetrics:
         result: Dict[str, Any] = {
             'success': self.success,
         }
-        if self.usage is not None:
-            result['usage'] = {
-                'total': self.usage.total,
-                'input': self.usage.input,
-                'output': self.usage.output,
+        if self.tokens is not None:
+            result['tokens'] = {
+                'total': self.tokens.total,
+                'input': self.tokens.input,
+                'output': self.tokens.output,
             }
+        if self.tool_calls is not None:
+            result['toolCalls'] = self.tool_calls
+        if self.duration_ms is not None:
+            result['durationMs'] = self.duration_ms
         return result
 
 
 @dataclass
-class ModelResponse:
-    """
-    Response from a model invocation.
-    """
-    message: LDMessage
+class RunnerResult:
+    """Contains the result of a single AI model invocation."""
+
+    content: str
+    """The text content returned by the model."""
+
     metrics: LDAIMetrics
-    evaluations: Optional[List[JudgeResult]] = None
+    """Metrics for this invocation."""
+
+    raw: Optional[Any] = None
+    """Optional provider-native response object for advanced consumers."""
+
+    parsed: Optional[Dict[str, Any]] = None
+    """Optional parsed structured output, populated when ``output_type`` was supplied."""
 
 
 @dataclass
-class StructuredResponse:
-    """
-    Structured response from AI models.
-    """
-    data: Dict[str, Any]
-    raw_response: str
-    metrics: LDAIMetrics
+class ManagedResult:
+    """Contains the result of a managed AI invocation, including metrics and optional judge evaluations."""
+
+    content: str
+    """The text content returned by the model."""
+
+    metrics: LDAIMetricSummary
+    """Aggregated metric summary from the tracker for this invocation."""
+
+    raw: Optional[Any] = None
+    """Optional provider-native response object for advanced consumers."""
+
+    parsed: Optional[Dict[str, Any]] = None
+    """Optional parsed structured output, populated when ``output_type`` was supplied."""
+
+    evaluations: Optional[asyncio.Task[List[JudgeResult]]] = None
+    """Optional asyncio Task that resolves to the list of :class:`JudgeResult` instances when awaited."""
+
+
+@dataclass
+class AIGraphMetrics:
+    """Contains raw metrics from a single agent graph run."""
+
+    success: bool
+    """Whether the graph run succeeded."""
+
+    path: List[str] = field(default_factory=list)
+    """Ordered list of node keys visited during the run."""
+
+    duration_ms: Optional[int] = None
+    """Wall-clock duration of the graph run in milliseconds."""
+
+    tokens: Optional[TokenUsage] = None
+    """Optional aggregate token usage information across all nodes in the graph run."""
+
+    node_metrics: Dict[str, LDAIMetrics] = field(default_factory=dict)
+    """Per-node metrics keyed by node key."""
+
+
+@dataclass
+class AIGraphMetricSummary:
+    """Contains a summary of metrics for an agent graph run."""
+
+    success: Optional[bool] = None
+    """Whether the graph run succeeded. Absent if invocation status has not been tracked."""
+
+    path: List[str] = field(default_factory=list)
+    """Ordered list of node keys visited during the run."""
+
+    duration_ms: Optional[int] = None
+    """Wall-clock duration of the graph run in milliseconds."""
+
+    tokens: Optional[TokenUsage] = None
+    """Optional aggregate token usage information across all nodes in the graph run."""
+
+    node_metrics: Dict[str, LDAIMetricSummary] = field(default_factory=dict)
+    """Per-node metric summaries keyed by node key."""
+
+    resumption_token: Optional[str] = None
+    """Optional resumption token from the graph tracker for cross-process resumption."""
+
+
+@dataclass
+class ManagedGraphResult:
+    """Contains the result of a managed agent graph run, including metrics and optional judge evaluations."""
+
+    content: str
+    """The graph's final output content."""
+
+    metrics: AIGraphMetricSummary
+    """Aggregated metric summary from the graph tracker for this run."""
+
+    raw: Optional[Any] = None
+    """Optional provider-native response object for advanced consumers."""
+
+    evaluations: Optional[asyncio.Task[List[JudgeResult]]] = None
+    """Optional asyncio Task that resolves to the list of :class:`JudgeResult` instances when awaited."""
+
+
+@dataclass
+class AgentGraphRunnerResult:
+    """Contains the result of an agent graph runner invocation."""
+
+    content: str
+    """The graph's final output content."""
+
+    metrics: AIGraphMetrics
+    """Metrics from the graph run."""
+
+    raw: Optional[Any] = None
+    """Optional provider-native response object for advanced consumers."""
 
 
 @dataclass
 class JudgeResult:
-    """
-    Result from a judge evaluation.
-    """
+    """Contains the result of a single judge evaluation."""
+
     judge_config_key: Optional[str] = None
+    """The configuration key of the judge that produced this result."""
+
     success: bool = False
+    """Whether the judge evaluation completed successfully."""
+
     error_message: Optional[str] = None
-    sampled: bool = False  # True when the evaluation was sampled and run
+    """Error message describing why the evaluation failed, if any."""
+
+    sampled: bool = False
+    """True when the evaluation was sampled and run."""
+
     metric_key: Optional[str] = None
+    """The metric key under which this judge's score is reported."""
+
     score: Optional[float] = None
+    """The numeric score (0-1) returned by the judge."""
+
     reasoning: Optional[str] = None
+    """The judge's reasoning text accompanying the score."""
 
     def to_dict(self) -> Dict[str, Any]:
         """
@@ -89,23 +204,3 @@ class JudgeResult:
         if self.error_message is not None:
             result['errorMessage'] = self.error_message
         return result
-
-
-@dataclass
-class AgentResult:
-    """
-    Result from a single-agent run.
-    """
-    output: str
-    raw: Any
-    metrics: LDAIMetrics
-
-
-@dataclass
-class AgentGraphResult:
-    """
-    Result from an agent graph run.
-    """
-    output: str
-    raw: Any
-    metrics: LDAIMetrics

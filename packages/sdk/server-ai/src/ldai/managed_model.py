@@ -1,11 +1,10 @@
 import asyncio
-from typing import Any, Dict, List, Optional
+from typing import List
 
 from ldai import log
-from ldai.judge import Judge
-from ldai.models import AICompletionConfig, LDMessage
-from ldai.providers.model_runner import ModelRunner
-from ldai.providers.types import JudgeResult, ModelResponse
+from ldai.models import AICompletionConfig
+from ldai.providers.runner import Runner
+from ldai.providers.types import JudgeResult, ManagedResult, RunnerResult
 from ldai.tracker import LDAIConfigTracker
 
 
@@ -13,110 +12,80 @@ class ManagedModel:
     """
     LaunchDarkly managed wrapper for AI model invocations.
 
-    Holds a ModelRunner. Handles conversation management, judge evaluation
-    dispatch, and tracking automatically via ``create_tracker()``.
-    Obtain an instance via ``LDAIClient.create_model()``.
+    Holds a Runner. Handles judge evaluation dispatch and tracking
+    automatically via ``create_tracker()``. Conversation history is
+    managed by the runner. Obtain an instance via
+    ``LDAIClient.create_model()``.
     """
 
     def __init__(
         self,
         ai_config: AICompletionConfig,
-        model_runner: ModelRunner,
-        judges: Optional[Dict[str, Judge]] = None,
+        model_runner: Runner,
     ):
         self._ai_config = ai_config
         self._model_runner = model_runner
-        self._judges = judges or {}
-        self._messages: List[LDMessage] = []
 
-    async def invoke(self, prompt: str) -> ModelResponse:
+    async def run(self, prompt: str) -> ManagedResult:
         """
-        Invoke the model with a prompt string.
+        Run the model with a prompt string.
 
-        Appends the prompt to the conversation history, prepends any
-        system messages from the config, delegates to the runner, and
-        appends the response to the history.
+        Delegates to the runner, then dispatches judge evaluations and
+        records tracking metrics.
 
         :param prompt: The user prompt to send to the model
-        :return: ModelResponse containing the model's response and metrics
+        :return: ManagedResult containing the model's response, metric summary,
+            and an optional evaluations task
         """
         tracker = self._ai_config.create_tracker()
 
-        user_message = LDMessage(role='user', content=prompt)
-        self._messages.append(user_message)
-
-        config_messages = self._ai_config.messages or []
-        all_messages = config_messages + self._messages
-
-        response = await tracker.track_metrics_of_async(
-            lambda: self._model_runner.invoke_model(all_messages),
-            lambda result: result.metrics,
+        result: RunnerResult = await tracker.track_metrics_of_async(
+            lambda r: r.metrics,
+            lambda: self._model_runner.run(prompt),
         )
 
-        if (
-            self._ai_config.judge_configuration
-            and self._ai_config.judge_configuration.judges
-        ):
-            response.evaluations = self._start_judge_evaluations(tracker, self._messages, response)
+        evaluations_task = await self._track_judge_results(tracker, prompt, result.content)
 
-        self._messages.append(response.message)
-        return response
+        return ManagedResult(
+            content=result.content,
+            metrics=tracker.get_summary(),
+            raw=result.raw,
+            parsed=result.parsed,
+            evaluations=evaluations_task,
+        )
 
-    def _start_judge_evaluations(
+    async def _track_judge_results(
         self,
         tracker: LDAIConfigTracker,
-        messages: List[LDMessage],
-        response: ModelResponse,
-    ) -> List[asyncio.Task[Optional[JudgeResult]]]:
-        if not self._ai_config.judge_configuration or not self._ai_config.judge_configuration.judges:
-            return []
+        input_text: str,
+        output_text: str,
+    ) -> asyncio.Task[List[JudgeResult]]:
+        evaluator_task = self._ai_config.evaluator.evaluate(input_text, output_text)
 
-        async def evaluate_judge(judge_config: Any) -> Optional[JudgeResult]:
-            judge = self._judges.get(judge_config.key)
-            if not judge:
-                log.warning(f'Judge configuration is not enabled: {judge_config.key}')
-                return None
-            judge_result = await judge.evaluate_messages(messages, response, judge_config.sampling_rate)
-            if judge_result.success:
-                tracker.track_judge_result(judge_result)
-            return judge_result
+        async def _run_and_track(eval_task: asyncio.Task) -> List[JudgeResult]:
+            results = await eval_task
+            for r in results:
+                if not r.sampled:
+                    continue
+                if r.success:
+                    try:
+                        tracker.track_judge_result(r)
+                    except Exception as exc:
+                        log.warning("Judge evaluation failed: %s", exc)
+                else:
+                    log.warning("Judge evaluation failed: %s", r.error_message)
+            return results
 
-        return [
-            asyncio.create_task(evaluate_judge(jc))
-            for jc in self._ai_config.judge_configuration.judges
-        ]
+        return asyncio.create_task(_run_and_track(evaluator_task))
 
-    def get_messages(self, include_config_messages: bool = False) -> List[LDMessage]:
+    def get_model_runner(self) -> Runner:
         """
-        Get all messages in the conversation history.
+        Return the underlying runner for advanced use.
 
-        :param include_config_messages: When True, prepends config messages.
-        :return: List of conversation messages.
-        """
-        if include_config_messages:
-            return (self._ai_config.messages or []) + self._messages
-        return list(self._messages)
-
-    def append_messages(self, messages: List[LDMessage]) -> None:
-        """
-        Append messages to the conversation history without invoking the model.
-
-        :param messages: Messages to append.
-        """
-        self._messages.extend(messages)
-
-    def get_model_runner(self) -> ModelRunner:
-        """
-        Return the underlying ModelRunner for advanced use.
-
-        :return: The ModelRunner instance.
+        :return: The Runner instance.
         """
         return self._model_runner
 
     def get_config(self) -> AICompletionConfig:
         """Return the AI completion config."""
         return self._ai_config
-
-    def get_judges(self) -> Dict[str, Judge]:
-        """Return the judges associated with this model."""
-        return self._judges

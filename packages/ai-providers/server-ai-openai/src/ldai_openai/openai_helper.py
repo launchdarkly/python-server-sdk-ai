@@ -75,7 +75,7 @@ def get_ai_metrics_from_response(response: Any) -> LDAIMetrics:
     :param response: An OpenAI chat completions response or openai-agents RunResult
     :return: LDAIMetrics with success status and token usage
     """
-    return LDAIMetrics(success=True, usage=get_ai_usage_from_response(response))
+    return LDAIMetrics(success=True, tokens=get_ai_usage_from_response(response))
 
 
 # Canonical names for OpenAI hosted tools (LD config / Chat Completions ``type``).

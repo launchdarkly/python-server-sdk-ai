@@ -2,6 +2,98 @@
 
 All notable changes to the LaunchDarkly Python AI package will be documented in this file. This project adheres to [Semantic Versioning](http://semver.org).
 
+## [1.0.1](https://github.com/launchdarkly/python-server-sdk-ai/compare/launchdarkly-server-sdk-ai-1.0.0...launchdarkly-server-sdk-ai-1.0.1) (2026-05-19)
+
+
+### Bug Fixes
+
+* Remove pre-release caution note from server-ai README ([#194](https://github.com/launchdarkly/python-server-sdk-ai/issues/194)) ([32d52c4](https://github.com/launchdarkly/python-server-sdk-ai/commit/32d52c48b01489c8b850947136f13b84be0c97f2))
+
+## [1.0.0](https://github.com/launchdarkly/python-server-sdk-ai/compare/launchdarkly-server-sdk-ai-0.20.1...launchdarkly-server-sdk-ai-1.0.0) (2026-05-19)
+
+
+### ⚠ BREAKING CHANGES
+
+* Remove bedrock-specific tracker method, use track_metrics_of method with custom extractor ([#191](https://github.com/launchdarkly/python-server-sdk-ai/issues/191))
+* Remove async from create_model/agent/agent_graph methods ([#187](https://github.com/launchdarkly/python-server-sdk-ai/issues/187))
+
+### Features
+
+* Remove async from create_model/agent/agent_graph methods ([#187](https://github.com/launchdarkly/python-server-sdk-ai/issues/187)) ([dddc00a](https://github.com/launchdarkly/python-server-sdk-ai/commit/dddc00ab3d8b57cd58b71b57296680b8e95560fd))
+* Remove bedrock-specific tracker method, use track_metrics_of method with custom extractor ([#191](https://github.com/launchdarkly/python-server-sdk-ai/issues/191)) ([33e4a65](https://github.com/launchdarkly/python-server-sdk-ai/commit/33e4a6556d245f9ce26eb88bafaf3fbf9842c4fe))
+
+## [0.20.1](https://github.com/launchdarkly/python-server-sdk-ai/compare/launchdarkly-server-sdk-ai-0.20.0...launchdarkly-server-sdk-ai-0.20.1) (2026-05-14)
+
+
+### Bug Fixes
+
+* Make judge runners non-multi-turn ([#185](https://github.com/launchdarkly/python-server-sdk-ai/issues/185)) ([5c21bd0](https://github.com/launchdarkly/python-server-sdk-ai/commit/5c21bd08bebfbdc5672afa93ad99099202955c92))
+
+## [0.20.0](https://github.com/launchdarkly/python-server-sdk-ai/compare/launchdarkly-server-sdk-ai-0.19.0...launchdarkly-server-sdk-ai-0.20.0) (2026-05-13)
+
+
+### ⚠ BREAKING CHANGES
+
+* Remove deprecated client method aliases and type aliases ([#179](https://github.com/launchdarkly/python-server-sdk-ai/issues/179))
+* Narrow AgentGraphRunner.run input from Any to str ([#177](https://github.com/launchdarkly/python-server-sdk-ai/issues/177))
+* Strip legacy judge messages on direct judge_config() path ([#174](https://github.com/launchdarkly/python-server-sdk-ai/issues/174))
+* Rename LDAIMetrics.usage and AIGraphMetrics.usage to .tokens ([#175](https://github.com/launchdarkly/python-server-sdk-ai/issues/175))
+* rename GraphMetrics/GraphMetricSummary to AIGraphMetrics/AIGraphMetricSummary ([#173](https://github.com/launchdarkly/python-server-sdk-ai/issues/173))
+* Remove stale ManagedModel message management and AgentGraphResult type ([#170](https://github.com/launchdarkly/python-server-sdk-ai/issues/170))
+
+### Features
+
+* Narrow AgentGraphRunner.run input from Any to str ([#177](https://github.com/launchdarkly/python-server-sdk-ai/issues/177)) ([cc7a0fe](https://github.com/launchdarkly/python-server-sdk-ai/commit/cc7a0fe64549337c71036cd67973bf0af91c7a42))
+* Remove deprecated client method aliases and type aliases ([#179](https://github.com/launchdarkly/python-server-sdk-ai/issues/179)) ([20df94b](https://github.com/launchdarkly/python-server-sdk-ai/commit/20df94b3bf817d22b09b42c5918ba594ef4f2ee6))
+* rename GraphMetrics/GraphMetricSummary to AIGraphMetrics/AIGraphMetricSummary ([#173](https://github.com/launchdarkly/python-server-sdk-ai/issues/173)) ([583939d](https://github.com/launchdarkly/python-server-sdk-ai/commit/583939dbe5c11c3c11ed960ee0b46ec377f1bb70))
+* Rename LDAIMetrics.usage and AIGraphMetrics.usage to .tokens ([#175](https://github.com/launchdarkly/python-server-sdk-ai/issues/175)) ([d8c4a70](https://github.com/launchdarkly/python-server-sdk-ai/commit/d8c4a702d4b68f146de7ca520bc35f2aa0b155f6))
+
+
+### Bug Fixes
+
+* Remove stale ManagedModel message management and AgentGraphResult type ([#170](https://github.com/launchdarkly/python-server-sdk-ai/issues/170)) ([7d6ad23](https://github.com/launchdarkly/python-server-sdk-ai/commit/7d6ad2340717c48ccde9e718ee7f2b92fb748e9e))
+* Strip legacy judge messages on direct judge_config() path ([#174](https://github.com/launchdarkly/python-server-sdk-ai/issues/174)) ([b7db754](https://github.com/launchdarkly/python-server-sdk-ai/commit/b7db7549c95bacf1fd62ec066b844ed6389b0cd1))
+
+## [0.19.0](https://github.com/launchdarkly/python-server-sdk-ai/compare/launchdarkly-server-sdk-ai-0.18.0...launchdarkly-server-sdk-ai-0.19.0) (2026-05-05)
+
+
+### ⚠ BREAKING CHANGES
+
+* StructuredResponse replaced by RunnerResult with new "parsed" property
+* AgentResult replaced by RunnerResult and Managed Result
+* Removed ModelRunner and AgentRunner protocols
+* Removed invoke_model, invoke_structured_model from AIProvider base class.
+* ModelResponse was replaced by RunnerResult
+* Add ManagedResult, RunnerResult, and Runner protocol; rename invoke() to run() ([#148](https://github.com/launchdarkly/python-server-sdk-ai/issues/148))
+* Swap track_metrics_of parameter order to match spec ([#144](https://github.com/launchdarkly/python-server-sdk-ai/issues/144))
+
+### Features
+
+* Add evaluations support to ManagedAgent.run() ([#153](https://github.com/launchdarkly/python-server-sdk-ai/issues/153)) ([442f46a](https://github.com/launchdarkly/python-server-sdk-ai/commit/442f46aa65996a4b986e9421a3348180a43b520e))
+* Add judge evaluation support to agent graphs ([#142](https://github.com/launchdarkly/python-server-sdk-ai/issues/142)) ([3d5a6a9](https://github.com/launchdarkly/python-server-sdk-ai/commit/3d5a6a91a87c7475a83a7e440cd4b71337cfd56f))
+* Add ManagedGraphResult, GraphMetricSummary, and AgentGraphRunnerResult types ([#151](https://github.com/launchdarkly/python-server-sdk-ai/issues/151)) ([301e24c](https://github.com/launchdarkly/python-server-sdk-ai/commit/301e24c3f84168ba8f4fed2a172c0391b3017c29))
+* Add ManagedResult, RunnerResult, and Runner protocol; rename invoke() to run() ([#148](https://github.com/launchdarkly/python-server-sdk-ai/issues/148)) ([88d4ddc](https://github.com/launchdarkly/python-server-sdk-ai/commit/88d4ddce26c17fbf5509802367156e50a66d0a68))
+* Add root-level tools map with customParameters to AI Config types ([#141](https://github.com/launchdarkly/python-server-sdk-ai/issues/141)) ([f17c535](https://github.com/launchdarkly/python-server-sdk-ai/commit/f17c53571e707a46c695f0955163776a2999f49a))
+* bake sampling_rate into Judge at construction; simplify Evaluator to List[Judge] ([#159](https://github.com/launchdarkly/python-server-sdk-ai/issues/159)) ([86c79e6](https://github.com/launchdarkly/python-server-sdk-ai/commit/86c79e6a65c88cf9f59e8ed8ca4d29897b5ce059))
+* Update LangChain runners to implement Runner protocol returning RunnerResult ([#150](https://github.com/launchdarkly/python-server-sdk-ai/issues/150)) ([62a8e25](https://github.com/launchdarkly/python-server-sdk-ai/commit/62a8e252f4389884fa2f6a90e325db4a8f79376a))
+
+
+### Bug Fixes
+
+* Add runtime DeprecationWarnings to deprecated methods ([#145](https://github.com/launchdarkly/python-server-sdk-ai/issues/145)) ([2189b81](https://github.com/launchdarkly/python-server-sdk-ai/commit/2189b812df257e122d7c7001158a219d34d9e3d0))
+* AgentResult replaced by RunnerResult and Managed Result ([fbb0b4b](https://github.com/launchdarkly/python-server-sdk-ai/commit/fbb0b4b45090144e3cb14d3966ed46a2884518fb))
+* build judge input as string; strip legacy judge config messages ([#165](https://github.com/launchdarkly/python-server-sdk-ai/issues/165)) ([e6942a6](https://github.com/launchdarkly/python-server-sdk-ai/commit/e6942a6e2d4db17ae1fa6191521f8ac4fb48f30d))
+* Fall back to model.parameters.tools when root tools absent ([#146](https://github.com/launchdarkly/python-server-sdk-ai/issues/146)) ([2c30d75](https://github.com/launchdarkly/python-server-sdk-ai/commit/2c30d75a7df83207e8ff13bcb1af30e001554e8a))
+* Graph tracking refactor — ManagedAgentGraph drives tracking for new runner shape ([#154](https://github.com/launchdarkly/python-server-sdk-ai/issues/154)) ([20a5020](https://github.com/launchdarkly/python-server-sdk-ai/commit/20a50206a58b3aa1c0d256955a3dfda59a1e20f6))
+* ModelResponse was replaced by RunnerResult ([fbb0b4b](https://github.com/launchdarkly/python-server-sdk-ai/commit/fbb0b4b45090144e3cb14d3966ed46a2884518fb))
+* parse model.parameters.tools as list ([#160](https://github.com/launchdarkly/python-server-sdk-ai/issues/160)) ([fb53e99](https://github.com/launchdarkly/python-server-sdk-ai/commit/fb53e99ea66634ee79867494535a28d3eac37646))
+* reference correct PyPI package names in provider load error messages ([#164](https://github.com/launchdarkly/python-server-sdk-ai/issues/164)) ([48761c9](https://github.com/launchdarkly/python-server-sdk-ai/commit/48761c998d58aa8ca2f8bbbe8a886e395d3a431a))
+* Removed invoke_model, invoke_structured_model from AIProvider base class. ([fbb0b4b](https://github.com/launchdarkly/python-server-sdk-ai/commit/fbb0b4b45090144e3cb14d3966ed46a2884518fb))
+* Removed ModelRunner and AgentRunner protocols ([fbb0b4b](https://github.com/launchdarkly/python-server-sdk-ai/commit/fbb0b4b45090144e3cb14d3966ed46a2884518fb))
+* Replace done_callback with coroutine chain for judge tracking ([#147](https://github.com/launchdarkly/python-server-sdk-ai/issues/147)) ([1e1f36b](https://github.com/launchdarkly/python-server-sdk-ai/commit/1e1f36b08ba28dafa4eb7b1dc8e192ef6a0891ad))
+* StructuredResponse replaced by RunnerResult with new "parsed" property ([fbb0b4b](https://github.com/launchdarkly/python-server-sdk-ai/commit/fbb0b4b45090144e3cb14d3966ed46a2884518fb))
+* Swap track_metrics_of parameter order to match spec ([#144](https://github.com/launchdarkly/python-server-sdk-ai/issues/144)) ([53db736](https://github.com/launchdarkly/python-server-sdk-ai/commit/53db736e71fbdcb0cd83e4ed20ce1b8c1084db78))
+
 ## [0.18.0](https://github.com/launchdarkly/python-server-sdk-ai/compare/launchdarkly-server-sdk-ai-0.17.0...launchdarkly-server-sdk-ai-0.18.0) (2026-04-21)
 
 

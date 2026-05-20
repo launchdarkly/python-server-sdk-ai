@@ -4,8 +4,6 @@ import pytest
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from ldai import LDMessage
-
 from ldai_openai import OpenAIModelRunner, OpenAIRunnerFactory, get_ai_metrics_from_response, get_ai_usage_from_response
 
 
@@ -89,10 +87,10 @@ class TestGetAIMetricsFromResponse:
         """Should create metrics with success=True and token usage."""
         result = get_ai_metrics_from_response(_make_completions_response(total=100, prompt=50, completion=50))
         assert result.success is True
-        assert result.usage is not None
-        assert result.usage.total == 100
-        assert result.usage.input == 50
-        assert result.usage.output == 50
+        assert result.tokens is not None
+        assert result.tokens.total == 100
+        assert result.tokens.input == 50
+        assert result.tokens.output == 50
 
     def test_creates_metrics_with_success_true_and_no_usage_when_usage_missing(self):
         """Should create metrics with success=True and no usage when usage is missing."""
@@ -103,7 +101,7 @@ class TestGetAIMetricsFromResponse:
         result = get_ai_metrics_from_response(mock_response)
 
         assert result.success is True
-        assert result.usage is None
+        assert result.tokens is None
 
     def test_handles_partial_usage_data(self):
         """Should handle partial usage data."""
@@ -114,14 +112,14 @@ class TestGetAIMetricsFromResponse:
         result = get_ai_metrics_from_response(mock_response)
 
         assert result.success is True
-        assert result.usage is not None
-        assert result.usage.total == 0
-        assert result.usage.input == 30
-        assert result.usage.output == 0
+        assert result.tokens is not None
+        assert result.tokens.total == 0
+        assert result.tokens.input == 30
+        assert result.tokens.output == 0
 
 
-class TestInvokeModel:
-    """Tests for invoke_model instance method."""
+class TestRunCompletion:
+    """Tests for the unified run() method (chat-completion path)."""
 
     @pytest.fixture
     def mock_client(self):
@@ -143,21 +141,19 @@ class TestInvokeModel:
         mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
 
         provider = OpenAIModelRunner(mock_client, 'gpt-3.5-turbo', {})
-        messages = [LDMessage(role='user', content='Hello!')]
-        result = await provider.invoke_model(messages)
+        result = await provider.run('Hello!')
 
         mock_client.chat.completions.create.assert_called_once_with(
             model='gpt-3.5-turbo',
             messages=[{'role': 'user', 'content': 'Hello!'}],
         )
 
-        assert result.message.role == 'assistant'
-        assert result.message.content == 'Hello! How can I help you today?'
+        assert result.content == 'Hello! How can I help you today?'
         assert result.metrics.success is True
-        assert result.metrics.usage is not None
-        assert result.metrics.usage.total == 25
-        assert result.metrics.usage.input == 10
-        assert result.metrics.usage.output == 15
+        assert result.metrics.tokens is not None
+        assert result.metrics.tokens.total == 25
+        assert result.metrics.tokens.input == 10
+        assert result.metrics.tokens.output == 15
 
     @pytest.mark.asyncio
     async def test_returns_unsuccessful_response_when_no_content(self, mock_client):
@@ -173,11 +169,9 @@ class TestInvokeModel:
         mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
 
         provider = OpenAIModelRunner(mock_client, 'gpt-3.5-turbo', {})
-        messages = [LDMessage(role='user', content='Hello!')]
-        result = await provider.invoke_model(messages)
+        result = await provider.run('Hello!')
 
-        assert result.message.role == 'assistant'
-        assert result.message.content == ''
+        assert result.content == ''
         assert result.metrics.success is False
 
     @pytest.mark.asyncio
@@ -192,11 +186,9 @@ class TestInvokeModel:
         mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
 
         provider = OpenAIModelRunner(mock_client, 'gpt-3.5-turbo', {})
-        messages = [LDMessage(role='user', content='Hello!')]
-        result = await provider.invoke_model(messages)
+        result = await provider.run('Hello!')
 
-        assert result.message.role == 'assistant'
-        assert result.message.content == ''
+        assert result.content == ''
         assert result.metrics.success is False
 
     @pytest.mark.asyncio
@@ -207,16 +199,128 @@ class TestInvokeModel:
         mock_client.chat.completions.create = AsyncMock(side_effect=Exception('API Error'))
 
         provider = OpenAIModelRunner(mock_client, 'gpt-3.5-turbo', {})
-        messages = [LDMessage(role='user', content='Hello!')]
-        result = await provider.invoke_model(messages)
+        result = await provider.run('Hello!')
 
-        assert result.message.role == 'assistant'
-        assert result.message.content == ''
+        assert result.content == ''
         assert result.metrics.success is False
 
+    @pytest.mark.asyncio
+    async def test_accumulates_history_across_successful_calls(self, mock_client):
+        """Should include prior exchange in messages on subsequent calls."""
+        def make_response(text: str):
+            r = MagicMock()
+            r.context_wrapper = None
+            r.choices = [MagicMock()]
+            r.choices[0].message = MagicMock()
+            r.choices[0].message.content = text
+            r.usage = None
+            return r
 
-class TestInvokeStructuredModel:
-    """Tests for invoke_structured_model instance method."""
+        mock_client.chat = MagicMock()
+        mock_client.chat.completions = MagicMock()
+        mock_client.chat.completions.create = AsyncMock(side_effect=[
+            make_response('First response'),
+            make_response('Second response'),
+        ])
+
+        provider = OpenAIModelRunner(mock_client, 'gpt-4o', {})
+        await provider.run('First question')
+        await provider.run('Second question')
+
+        second_call_messages = mock_client.chat.completions.create.call_args_list[1].kwargs['messages']
+        assert second_call_messages == [
+            {'role': 'user', 'content': 'First question'},
+            {'role': 'assistant', 'content': 'First response'},
+            {'role': 'user', 'content': 'Second question'},
+        ]
+
+    @pytest.mark.asyncio
+    async def test_multi_turn_false_does_not_accumulate_history(self, mock_client):
+        """When multi_turn=False the runner must not append to history on success."""
+        def make_response(text: str):
+            r = MagicMock()
+            r.context_wrapper = None
+            r.choices = [MagicMock()]
+            r.choices[0].message = MagicMock()
+            r.choices[0].message.content = text
+            r.usage = None
+            return r
+
+        mock_client.chat = MagicMock()
+        mock_client.chat.completions = MagicMock()
+        mock_client.chat.completions.create = AsyncMock(side_effect=[
+            make_response('First response'),
+            make_response('Second response'),
+        ])
+
+        provider = OpenAIModelRunner(mock_client, 'gpt-4o', {}, multi_turn=False)
+        baseline_len = len(provider._history)
+
+        await provider.run('First question')
+        assert len(provider._history) == baseline_len
+
+        await provider.run('Second question')
+        assert len(provider._history) == baseline_len
+
+        # Each call must see only the configured baseline, never the prior turn.
+        second_call_messages = mock_client.chat.completions.create.call_args_list[1].kwargs['messages']
+        assert second_call_messages == [{'role': 'user', 'content': 'Second question'}]
+
+    @pytest.mark.asyncio
+    async def test_multi_turn_default_accumulates_history(self, mock_client):
+        """Default behavior (multi_turn omitted) still accumulates history (preserves PR #166)."""
+        def make_response(text: str):
+            r = MagicMock()
+            r.context_wrapper = None
+            r.choices = [MagicMock()]
+            r.choices[0].message = MagicMock()
+            r.choices[0].message.content = text
+            r.usage = None
+            return r
+
+        mock_client.chat = MagicMock()
+        mock_client.chat.completions = MagicMock()
+        mock_client.chat.completions.create = AsyncMock(side_effect=[
+            make_response('First response'),
+            make_response('Second response'),
+        ])
+
+        provider = OpenAIModelRunner(mock_client, 'gpt-4o', {})
+        baseline_len = len(provider._history)
+
+        await provider.run('First question')
+        await provider.run('Second question')
+
+        assert len(provider._history) == baseline_len + 4
+
+    @pytest.mark.asyncio
+    async def test_does_not_accumulate_history_on_failed_call(self, mock_client):
+        """Should not add to history when the call fails."""
+        mock_client.chat = MagicMock()
+        mock_client.chat.completions = MagicMock()
+        mock_client.chat.completions.create = AsyncMock(side_effect=Exception('API Error'))
+
+        provider = OpenAIModelRunner(mock_client, 'gpt-4o', {})
+        await provider.run('Hello!')
+
+        def make_ok_response():
+            r = MagicMock()
+            r.context_wrapper = None
+            r.choices = [MagicMock()]
+            r.choices[0].message = MagicMock()
+            r.choices[0].message.content = 'Recovery'
+            r.usage = None
+            return r
+
+        mock_client.chat.completions.create = AsyncMock(return_value=make_ok_response())
+        await provider.run('Try again')
+
+        second_call_messages = mock_client.chat.completions.create.call_args.kwargs['messages']
+        assert second_call_messages == [{'role': 'user', 'content': 'Try again'}]
+
+
+class TestRunStructured:
+    """Tests for the unified run() method (structured-output path)."""
 
     @pytest.fixture
     def mock_client(self):
@@ -238,7 +342,6 @@ class TestInvokeStructuredModel:
         mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
 
         provider = OpenAIModelRunner(mock_client, 'gpt-3.5-turbo', {})
-        messages = [LDMessage(role='user', content='Tell me about a person')]
         response_structure = {
             'type': 'object',
             'properties': {
@@ -249,15 +352,15 @@ class TestInvokeStructuredModel:
             'required': ['name', 'age', 'city'],
         }
 
-        result = await provider.invoke_structured_model(messages, response_structure)
+        result = await provider.run('Tell me about a person', output_type=response_structure)
 
-        assert result.data == {'name': 'John', 'age': 30, 'city': 'New York'}
-        assert result.raw_response == '{"name": "John", "age": 30, "city": "New York"}'
+        assert result.parsed == {'name': 'John', 'age': 30, 'city': 'New York'}
+        assert result.content == '{"name": "John", "age": 30, "city": "New York"}'
         assert result.metrics.success is True
-        assert result.metrics.usage is not None
-        assert result.metrics.usage.total == 30
-        assert result.metrics.usage.input == 20
-        assert result.metrics.usage.output == 10
+        assert result.metrics.tokens is not None
+        assert result.metrics.tokens.total == 30
+        assert result.metrics.tokens.input == 20
+        assert result.metrics.tokens.output == 10
 
     @pytest.mark.asyncio
     async def test_returns_unsuccessful_when_no_content_in_structured_response(self, mock_client):
@@ -273,13 +376,12 @@ class TestInvokeStructuredModel:
         mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
 
         provider = OpenAIModelRunner(mock_client, 'gpt-3.5-turbo', {})
-        messages = [LDMessage(role='user', content='Tell me about a person')]
         response_structure = {'type': 'object'}
 
-        result = await provider.invoke_structured_model(messages, response_structure)
+        result = await provider.run('Tell me about a person', output_type=response_structure)
 
-        assert result.data == {}
-        assert result.raw_response == ''
+        assert result.parsed is None
+        assert result.content == ''
         assert result.metrics.success is False
 
     @pytest.mark.asyncio
@@ -297,16 +399,15 @@ class TestInvokeStructuredModel:
         mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
 
         provider = OpenAIModelRunner(mock_client, 'gpt-3.5-turbo', {})
-        messages = [LDMessage(role='user', content='Tell me about a person')]
         response_structure = {'type': 'object'}
 
-        result = await provider.invoke_structured_model(messages, response_structure)
+        result = await provider.run('Tell me about a person', output_type=response_structure)
 
-        assert result.data == {}
-        assert result.raw_response == 'invalid json content'
+        assert result.parsed is None
+        assert result.content == 'invalid json content'
         assert result.metrics.success is False
-        assert result.metrics.usage is not None
-        assert result.metrics.usage.total == 15
+        assert result.metrics.tokens is not None
+        assert result.metrics.tokens.total == 15
 
     @pytest.mark.asyncio
     async def test_returns_unsuccessful_response_when_exception_thrown(self, mock_client):
@@ -316,13 +417,12 @@ class TestInvokeStructuredModel:
         mock_client.chat.completions.create = AsyncMock(side_effect=Exception('API Error'))
 
         provider = OpenAIModelRunner(mock_client, 'gpt-3.5-turbo', {})
-        messages = [LDMessage(role='user', content='Tell me about a person')]
         response_structure = {'type': 'object'}
 
-        result = await provider.invoke_structured_model(messages, response_structure)
+        result = await provider.run('Tell me about a person', output_type=response_structure)
 
-        assert result.data == {}
-        assert result.raw_response == ''
+        assert result.parsed is None
+        assert result.content == ''
         assert result.metrics.success is False
 
 
@@ -465,22 +565,23 @@ class TestOpenAIAgentRunner:
 
     @pytest.mark.asyncio
     async def test_runs_agent_and_returns_result_with_no_tool_calls(self):
-        """Should return AgentResult when Runner.run returns a final output."""
+        """Should return RunnerResult when Runner.run returns a final output."""
         import sys
 
         from ldai_openai import OpenAIAgentRunner
 
         mock_run_result = self._make_run_result("The answer is 42.", total=15, input_tokens=10, output_tokens=5)
+        mock_run_result.new_items = []
         agents_mock, tc_mock = _make_agents_mock(AsyncMock(return_value=mock_run_result))
 
         runner = OpenAIAgentRunner('gpt-4', {}, 'You are helpful.', [], {})
         with patch.dict(sys.modules, {'agents': agents_mock, 'agents.tool_context': tc_mock}):
             result = await runner.run("What is the answer?")
 
-        assert result.output == "The answer is 42."
+        assert result.content == "The answer is 42."
         assert result.metrics.success is True
-        assert result.metrics.usage is not None
-        assert result.metrics.usage.total == 15
+        assert result.metrics.tokens is not None
+        assert result.metrics.tokens.total == 15
 
     @pytest.mark.asyncio
     async def test_executes_tool_calls_and_returns_final_response(self):
@@ -490,6 +591,7 @@ class TestOpenAIAgentRunner:
         from ldai_openai import OpenAIAgentRunner
 
         mock_run_result = self._make_run_result("It is sunny in Paris.", total=43, input_tokens=30, output_tokens=13)
+        mock_run_result.new_items = []
         agents_mock, tc_mock = _make_agents_mock(AsyncMock(return_value=mock_run_result))
 
         weather_fn = MagicMock(return_value="Sunny, 25°C")
@@ -501,13 +603,13 @@ class TestOpenAIAgentRunner:
         with patch.dict(sys.modules, {'agents': agents_mock, 'agents.tool_context': tc_mock}):
             result = await runner.run("What is the weather in Paris?")
 
-        assert result.output == "It is sunny in Paris."
+        assert result.content == "It is sunny in Paris."
         assert result.metrics.success is True
-        assert result.metrics.usage.total == 43
+        assert result.metrics.tokens.total == 43
 
     @pytest.mark.asyncio
     async def test_returns_failure_when_exception_thrown(self):
-        """Should return unsuccessful AgentResult when Runner.run raises."""
+        """Should return unsuccessful RunnerResult when Runner.run raises."""
         import sys
 
         from ldai_openai import OpenAIAgentRunner
@@ -518,12 +620,12 @@ class TestOpenAIAgentRunner:
         with patch.dict(sys.modules, {'agents': agents_mock, 'agents.tool_context': tc_mock}):
             result = await runner.run("Hello")
 
-        assert result.output == ""
+        assert result.content == ""
         assert result.metrics.success is False
 
     @pytest.mark.asyncio
     async def test_returns_failure_when_openai_agents_not_installed(self):
-        """Should return unsuccessful AgentResult when openai-agents is not installed."""
+        """Should return unsuccessful RunnerResult when openai-agents is not installed."""
         import sys
 
         from ldai_openai import OpenAIAgentRunner
@@ -532,5 +634,5 @@ class TestOpenAIAgentRunner:
         with patch.dict(sys.modules, {'agents': None}):
             result = await runner.run("Hello")
 
-        assert result.output == ""
+        assert result.content == ""
         assert result.metrics.success is False
