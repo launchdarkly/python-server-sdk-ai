@@ -2117,7 +2117,7 @@ class OptimizationClient:
         :return: True if a positive token limit is set and ``_total_token_usage >= token_limit``.
         """
         limit: Optional[int] = getattr(self._options, "token_limit", None)
-        return bool(limit) and self._total_token_usage >= limit
+        return limit is not None and limit > 0 and self._total_token_usage >= limit
 
     def _evaluate_response(self, optimize_context: OptimizationContext) -> bool:
         """
@@ -2282,11 +2282,12 @@ class OptimizationClient:
                 rationale = "Latency gate passed (no baseline)."
             score = 1.0
         else:
+            baseline_dur = self._baseline_duration_ms or 0.0
             rationale = (
                 f"Latency improvement gate failed: {ctx.duration_ms:.0f}ms did not improve "
                 f"by {int((1 - _DURATION_TOLERANCE) * 100)}% vs baseline "
-                f"{self._baseline_duration_ms:.0f}ms "
-                f"(required < {self._baseline_duration_ms * _DURATION_TOLERANCE:.0f}ms)."
+                f"{baseline_dur:.0f}ms "
+                f"(required < {baseline_dur * _DURATION_TOLERANCE:.0f}ms)."
             )
             score = 0.0
         ctx = dataclasses.replace(
@@ -2335,11 +2336,12 @@ class OptimizationClient:
                 rationale = "Cost gate passed (no baseline)."
             score = 1.0
         else:
+            baseline_cost = self._baseline_cost_usd or 0.0
             rationale = (
                 f"Cost improvement gate failed: {ctx.estimated_cost_usd:.6f} did not improve "
                 f"by {int((1 - _COST_TOLERANCE) * 100)}% vs baseline "
-                f"{self._baseline_cost_usd:.6f} "
-                f"(required < {self._baseline_cost_usd * _COST_TOLERANCE:.6f})."
+                f"{baseline_cost:.6f} "
+                f"(required < {baseline_cost * _COST_TOLERANCE:.6f})."
             )
             score = 0.0
         ctx = dataclasses.replace(
