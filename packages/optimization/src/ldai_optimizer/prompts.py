@@ -183,7 +183,9 @@ def build_new_variation_prompt(
             history, model_choices, variable_choices, initial_instructions
         ),
         variation_prompt_duration_optimization(model_choices) if optimize_for_duration else "",
-        variation_prompt_cost_optimization(model_choices, quality_already_passing=quality_already_passing) if optimize_for_cost else "",
+        variation_prompt_cost_optimization(
+            model_choices, quality_already_passing=quality_already_passing
+        ) if optimize_for_cost else "",
     ]
 
     return "\n\n".join(s for s in sections if s)
@@ -628,10 +630,13 @@ def variation_prompt_cost_optimization(
             "## Cost Optimization:",
             "The acceptance criteria for this optimization implies that token usage / cost should be reduced.",
             "*** IMPORTANT: All quality acceptance criteria are currently passing. ***",
-            "The goal of this variation is to reduce cost WITHOUT changing the behavior or quality of the agent's responses.",
+            "The goal of this variation is to reduce cost WITHOUT changing the behavior or quality"
+            " of the agent's responses.",
             "Do NOT alter the instructions in ways that would change what the agent says or how it reasons.",
-            "Only apply changes that reduce token usage or switch to a cheaper model while preserving the same output quality.",
-            "If you cannot reduce cost without risking quality, keep the instructions unchanged and only consider a cheaper model.",
+            "Only apply changes that reduce token usage or switch to a cheaper model while preserving"
+            " the same output quality.",
+            "If you cannot reduce cost without risking quality, keep the instructions unchanged and"
+            " only consider a cheaper model.",
             "",
         ]
     else:
@@ -650,14 +655,16 @@ def variation_prompt_cost_optimization(
         "- Remove redundant, verbose, or repeated phrasing from the instructions.",
         "- Collapse multi-sentence explanations into a single concise directive.",
         "- Remove examples or few-shot demonstrations unless they are essential for accuracy.",
-        "- Eliminate instructional scaffolding that the model does not need (e.g. 'You are a helpful assistant that...').",
+        "- Eliminate instructional scaffolding that the model does not need"
+        " (e.g. 'You are a helpful assistant that...').",
         "- Use bullet points instead of prose where possible — they are more token-efficient.",
         "",
         "### Reducing token usage (output tokens):",
         "- Instruct the agent to be concise and avoid unnecessary elaboration.",
         "- Specify the exact format and length of the expected response (e.g. 'Respond in one sentence.').",
         "- Set or reduce max_tokens if the current value allows longer responses than needed.",
-        "- Avoid instructions that encourage the agent to 'explain its reasoning' unless required by the acceptance criteria.",
+        "- Avoid instructions that encourage the agent to 'explain its reasoning' unless required"
+        " by the acceptance criteria.",
         "",
         "### Reducing per-token cost via model selection:",
         "- Consider switching to a cheaper model from the available choices if quality requirements can still be met.",

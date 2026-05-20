@@ -221,7 +221,8 @@ class OptimizationContext:
     duration_ms: Optional[float] = None  # wall-clock time for the agent call in milliseconds
     usage: Optional[TokenUsage] = None  # token usage reported by the agent for this iteration
     estimated_cost_usd: Optional[float] = None  # estimated cost; USD when pricing available, else total tokens
-    accumulated_token_usage: Optional[int] = None  # single running total across ALL calls in this run (generation + judges + variation)
+    # single running total across ALL calls in this run (generation + judges + variation)
+    accumulated_token_usage: Optional[int] = None
 
     def copy_without_history(self) -> OptimizationContext:
         """

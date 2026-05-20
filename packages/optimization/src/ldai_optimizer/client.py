@@ -179,6 +179,7 @@ def _trim_history(
         return history
     return history[-max_len:]
 
+
 # Maps SDK status strings to the API status/activity values expected by
 # agent_optimization_result records. Defined at module level to avoid
 # allocating the dict on every on_status_update invocation.
@@ -192,7 +193,6 @@ _OPTIMIZATION_STATUS_MAP: Dict[str, Dict[str, str]] = {
     "success": {"status": "PASSED", "activity": "COMPLETED"},
     "failure": {"status": "FAILED", "activity": "COMPLETED"},
 }
-
 
 
 class OptimizationClient:
