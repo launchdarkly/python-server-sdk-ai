@@ -1,10 +1,11 @@
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional, cast
 
+from langchain_core.chat_history import InMemoryChatMessageHistory
 from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_core.messages import BaseMessage
+from langchain_core.messages import BaseMessage, HumanMessage
 from ldai import LDMessage, log
-from ldai.providers.model_runner import ModelRunner
-from ldai.providers.types import LDAIMetrics, ModelResponse, StructuredResponse
+from ldai.providers.runner import Runner
+from ldai.providers.types import LDAIMetrics, RunnerResult
 
 from ldai_langchain.langchain_helper import (
     convert_messages_to_langchain,
@@ -13,16 +14,28 @@ from ldai_langchain.langchain_helper import (
 )
 
 
-class LangChainModelRunner(ModelRunner):
+class LangChainModelRunner(Runner):
     """
-    ModelRunner implementation for LangChain.
+    Runner implementation for LangChain chat models.
 
     Holds a fully-configured BaseChatModel.
-    Returned by LangChainConnector.create_model(config).
+    Returned by LangChainRunnerFactory.create_model(config).
+
+    Implements the unified :class:`~ldai.providers.runner.Runner` protocol via
+    :meth:`run`.
     """
 
-    def __init__(self, llm: BaseChatModel):
+    def __init__(
+        self,
+        llm: BaseChatModel,
+        config_messages: Optional[List[LDMessage]] = None,
+        multi_turn: bool = True,
+    ):
         self._llm = llm
+        self._chat_history = InMemoryChatMessageHistory(
+            messages=cast(List[BaseMessage], convert_messages_to_langchain(config_messages or []))
+        )
+        self._multi_turn = multi_turn
 
     def get_llm(self) -> BaseChatModel:
         """
@@ -32,16 +45,37 @@ class LangChainModelRunner(ModelRunner):
         """
         return self._llm
 
-    async def invoke_model(self, messages: List[LDMessage]) -> ModelResponse:
+    async def run(
+        self,
+        input: str,
+        output_type: Optional[Dict[str, Any]] = None,
+    ) -> RunnerResult:
         """
-        Invoke the LangChain model with an array of messages.
+        Run the LangChain model with the given input.
 
-        :param messages: Array of LDMessage objects representing the conversation
-        :return: ModelResponse containing the model's response and metrics
+        :param input: A string prompt
+        :param output_type: Optional JSON schema dict requesting structured output.
+            When provided, ``parsed`` on the returned :class:`RunnerResult` is
+            populated with the parsed JSON document.
+        :return: :class:`RunnerResult` containing ``content``, ``metrics``,
+            ``raw`` and (when ``output_type`` is set) ``parsed``.
         """
+        langchain_messages = self._chat_history.messages + [HumanMessage(content=input)]
+
+        if output_type is not None:
+            result = await self._run_structured(langchain_messages, output_type)
+        else:
+            result = await self._run_completion(langchain_messages)
+
+        if result.metrics.success and result.content and self._multi_turn:
+            self._chat_history.add_user_message(input)
+            self._chat_history.add_ai_message(result.content)
+
+        return result
+
+    async def _run_completion(self, messages: List[BaseMessage]) -> RunnerResult:
         try:
-            langchain_messages = convert_messages_to_langchain(messages)
-            response: BaseMessage = await self._llm.ainvoke(langchain_messages)
+            response: BaseMessage = await self._llm.ainvoke(messages)
             metrics = get_ai_metrics_from_response(response)
 
             content: str = ''
@@ -52,58 +86,68 @@ class LangChainModelRunner(ModelRunner):
                     f'Multimodal response not supported, expecting a string. '
                     f'Content type: {type(response.content)}, Content: {response.content}'
                 )
-                metrics = LDAIMetrics(success=False, usage=metrics.usage)
+                return RunnerResult(
+                    content='',
+                    metrics=LDAIMetrics(success=False, tokens=metrics.tokens),
+                    raw=response,
+                )
 
-            return ModelResponse(
-                message=LDMessage(role='assistant', content=content),
-                metrics=metrics,
-            )
+            return RunnerResult(content=content, metrics=metrics, raw=response)
         except Exception as error:
             log.warning(f'LangChain model invocation failed: {error}')
-            return ModelResponse(
-                message=LDMessage(role='assistant', content=''),
-                metrics=LDAIMetrics(success=False, usage=None),
+            return RunnerResult(
+                content='',
+                metrics=LDAIMetrics(success=False, tokens=None),
             )
 
-    async def invoke_structured_model(
+    async def _run_structured(
         self,
-        messages: List[LDMessage],
-        response_structure: Dict[str, Any],
-    ) -> StructuredResponse:
-        """
-        Invoke the LangChain model with structured output support.
-
-        :param messages: Array of LDMessage objects representing the conversation
-        :param response_structure: Dictionary defining the output structure
-        :return: StructuredResponse containing the structured data
-        """
-        structured_response = StructuredResponse(
-            data={},
-            raw_response='',
-            metrics=LDAIMetrics(success=False, usage=None),
-        )
+        messages: List[BaseMessage],
+        output_type: Dict[str, Any],
+    ) -> RunnerResult:
         try:
-            langchain_messages = convert_messages_to_langchain(messages)
-            structured_llm = self._llm.with_structured_output(response_structure, include_raw=True)
-            response = await structured_llm.ainvoke(langchain_messages)
+            structured_llm = self._llm.with_structured_output(output_type, include_raw=True)
+            response = await structured_llm.ainvoke(messages)
 
             if not isinstance(response, dict):
                 log.warning(f'Structured output did not return a dict. Got: {type(response)}')
-                return structured_response
+                return RunnerResult(
+                    content='',
+                    metrics=LDAIMetrics(success=False, tokens=None),
+                )
 
             raw_response = response.get('raw')
+            tokens = None
+            raw_content = ''
             if raw_response is not None:
                 if hasattr(raw_response, 'content'):
-                    structured_response.raw_response = raw_response.content
-                structured_response.metrics.usage = get_ai_usage_from_response(raw_response)
+                    if isinstance(raw_response.content, str):
+                        raw_content = raw_response.content
+                    else:
+                        log.warning(
+                            f'Multimodal response not supported in structured mode. '
+                            f'Content type: {type(raw_response.content)}, Content: {raw_response.content}'
+                        )
+                tokens = get_ai_usage_from_response(raw_response)
 
             if response.get('parsing_error'):
                 log.warning('LangChain structured model invocation had a parsing error')
-                return structured_response
+                return RunnerResult(
+                    content=raw_content,
+                    metrics=LDAIMetrics(success=False, tokens=tokens),
+                    raw=raw_response,
+                )
 
-            structured_response.metrics.success = True
-            structured_response.data = response.get('parsed') or {}
-            return structured_response
+            parsed = response.get('parsed') or {}
+            return RunnerResult(
+                content=raw_content,
+                metrics=LDAIMetrics(success=True, tokens=tokens),
+                raw=raw_response,
+                parsed=parsed,
+            )
         except Exception as error:
             log.warning(f'LangChain structured model invocation failed: {error}')
-            return structured_response
+            return RunnerResult(
+                content='',
+                metrics=LDAIMetrics(success=False, tokens=None),
+            )

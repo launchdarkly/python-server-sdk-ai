@@ -1,9 +1,9 @@
 import json
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from ldai import LDMessage, log
-from ldai.providers.model_runner import ModelRunner
-from ldai.providers.types import LDAIMetrics, ModelResponse, StructuredResponse
+from ldai.providers.runner import Runner
+from ldai.providers.types import LDAIMetrics, RunnerResult
 from openai import AsyncOpenAI
 
 from ldai_openai.openai_helper import (
@@ -12,12 +12,15 @@ from ldai_openai.openai_helper import (
 )
 
 
-class OpenAIModelRunner(ModelRunner):
+class OpenAIModelRunner(Runner):
     """
-    ModelRunner implementation for OpenAI.
+    Runner implementation for OpenAI chat completions.
 
     Holds a fully-configured AsyncOpenAI client, model name, and parameters.
-    Returned by OpenAIConnector.create_model(config).
+    Returned by ``OpenAIRunnerFactory.create_model(config)``.
+
+    Implements the unified :class:`~ldai.providers.runner.Runner` protocol via
+    :meth:`run`.
     """
 
     def __init__(
@@ -25,18 +28,45 @@ class OpenAIModelRunner(ModelRunner):
         client: AsyncOpenAI,
         model_name: str,
         parameters: Dict[str, Any],
+        config_messages: Optional[List[LDMessage]] = None,
+        multi_turn: bool = True,
     ):
         self._client = client
         self._model_name = model_name
         self._parameters = parameters
+        self._history: List[LDMessage] = list(config_messages or [])
+        self._multi_turn = multi_turn
 
-    async def invoke_model(self, messages: List[LDMessage]) -> ModelResponse:
+    async def run(
+        self,
+        input: str,
+        output_type: Optional[Dict[str, Any]] = None,
+    ) -> RunnerResult:
         """
-        Invoke the OpenAI model with an array of messages.
+        Run the OpenAI model with the given input.
 
-        :param messages: Array of LDMessage objects representing the conversation
-        :return: ModelResponse containing the model's response and metrics
+        :param input: A string prompt
+        :param output_type: Optional JSON schema dict requesting structured output.
+            When provided, ``parsed`` on the returned :class:`RunnerResult` is
+            populated with the parsed JSON document.
+        :return: :class:`RunnerResult` containing ``content``, ``metrics``,
+            ``raw`` and (when ``output_type`` is set) ``parsed``.
         """
+        user_message = LDMessage(role='user', content=input)
+        messages = self._history + [user_message]
+
+        if output_type is not None:
+            result = await self._run_structured(messages, output_type)
+        else:
+            result = await self._run_completion(messages)
+
+        if result.metrics.success and result.content and self._multi_turn:
+            self._history.append(user_message)
+            self._history.append(LDMessage(role='assistant', content=result.content))
+
+        return result
+
+    async def _run_completion(self, messages: List[LDMessage]) -> RunnerResult:
         try:
             response = await self._client.chat.completions.create(
                 model=self._model_name,
@@ -45,40 +75,29 @@ class OpenAIModelRunner(ModelRunner):
             )
 
             metrics = get_ai_metrics_from_response(response)
-
-            content = ''
-            if response.choices and len(response.choices) > 0:
-                message = response.choices[0].message
-                if message and message.content:
-                    content = message.content
+            content = self._extract_content(response)
 
             if not content:
                 log.warning('OpenAI response has no content available')
-                metrics = LDAIMetrics(success=False, usage=metrics.usage)
+                return RunnerResult(
+                    content='',
+                    metrics=LDAIMetrics(success=False, tokens=metrics.tokens),
+                    raw=response,
+                )
 
-            return ModelResponse(
-                message=LDMessage(role='assistant', content=content),
-                metrics=metrics,
-            )
+            return RunnerResult(content=content, metrics=metrics, raw=response)
         except Exception as error:
             log.warning(f'OpenAI model invocation failed: {error}')
-            return ModelResponse(
-                message=LDMessage(role='assistant', content=''),
-                metrics=LDAIMetrics(success=False, usage=None),
+            return RunnerResult(
+                content='',
+                metrics=LDAIMetrics(success=False, tokens=None),
             )
 
-    async def invoke_structured_model(
+    async def _run_structured(
         self,
         messages: List[LDMessage],
-        response_structure: Dict[str, Any],
-    ) -> StructuredResponse:
-        """
-        Invoke the OpenAI model with structured output support.
-
-        :param messages: Array of LDMessage objects representing the conversation
-        :param response_structure: Dictionary defining the JSON schema for output structure
-        :return: StructuredResponse containing the structured data
-        """
+        output_type: Dict[str, Any],
+    ) -> RunnerResult:
         try:
             response = await self._client.chat.completions.create(
                 model=self._model_name,
@@ -87,7 +106,7 @@ class OpenAIModelRunner(ModelRunner):
                     'type': 'json_schema',
                     'json_schema': {
                         'name': 'structured_output',
-                        'schema': response_structure,
+                        'schema': output_type,
                         'strict': True,
                     },
                 },
@@ -95,35 +114,42 @@ class OpenAIModelRunner(ModelRunner):
             )
 
             metrics = get_ai_metrics_from_response(response)
-
-            content = ''
-            if response.choices and len(response.choices) > 0:
-                message = response.choices[0].message
-                if message and message.content:
-                    content = message.content
+            content = self._extract_content(response)
 
             if not content:
                 log.warning('OpenAI structured response has no content available')
-                return StructuredResponse(
-                    data={},
-                    raw_response='',
-                    metrics=LDAIMetrics(success=False, usage=metrics.usage),
+                return RunnerResult(
+                    content='',
+                    metrics=LDAIMetrics(success=False, tokens=metrics.tokens),
+                    raw=response,
                 )
 
             try:
-                data = json.loads(content)
-                return StructuredResponse(data=data, raw_response=content, metrics=metrics)
+                parsed = json.loads(content)
+                return RunnerResult(
+                    content=content,
+                    metrics=metrics,
+                    raw=response,
+                    parsed=parsed,
+                )
             except json.JSONDecodeError as parse_error:
                 log.warning(f'OpenAI structured response contains invalid JSON: {parse_error}')
-                return StructuredResponse(
-                    data={},
-                    raw_response=content,
-                    metrics=LDAIMetrics(success=False, usage=metrics.usage),
+                return RunnerResult(
+                    content=content,
+                    metrics=LDAIMetrics(success=False, tokens=metrics.tokens),
+                    raw=response,
                 )
         except Exception as error:
             log.warning(f'OpenAI structured model invocation failed: {error}')
-            return StructuredResponse(
-                data={},
-                raw_response='',
-                metrics=LDAIMetrics(success=False, usage=None),
+            return RunnerResult(
+                content='',
+                metrics=LDAIMetrics(success=False, tokens=None),
             )
+
+    @staticmethod
+    def _extract_content(response: Any) -> str:
+        if response.choices and len(response.choices) > 0:
+            message = response.choices[0].message
+            if message and message.content:
+                return message.content
+        return ''

@@ -2,6 +2,64 @@
 
 All notable changes to the LaunchDarkly Python AI OpenAI provider package will be documented in this file. This project adheres to [Semantic Versioning](http://semver.org).
 
+## [0.7.0](https://github.com/launchdarkly/python-server-sdk-ai/compare/launchdarkly-server-sdk-ai-openai-0.6.1...launchdarkly-server-sdk-ai-openai-0.7.0) (2026-05-19)
+
+
+### ⚠ BREAKING CHANGES
+
+* Remove async from create_model/agent/agent_graph methods ([#187](https://github.com/launchdarkly/python-server-sdk-ai/issues/187))
+
+### Features
+
+* Remove async from create_model/agent/agent_graph methods ([#187](https://github.com/launchdarkly/python-server-sdk-ai/issues/187)) ([dddc00a](https://github.com/launchdarkly/python-server-sdk-ai/commit/dddc00ab3d8b57cd58b71b57296680b8e95560fd))
+
+## [0.6.1](https://github.com/launchdarkly/python-server-sdk-ai/compare/launchdarkly-server-sdk-ai-openai-0.6.0...launchdarkly-server-sdk-ai-openai-0.6.1) (2026-05-14)
+
+
+### Bug Fixes
+
+* Make judge runners non-multi-turn ([#185](https://github.com/launchdarkly/python-server-sdk-ai/issues/185)) ([5c21bd0](https://github.com/launchdarkly/python-server-sdk-ai/commit/5c21bd08bebfbdc5672afa93ad99099202955c92))
+
+## [0.6.0](https://github.com/launchdarkly/python-server-sdk-ai/compare/launchdarkly-server-sdk-ai-openai-0.5.0...launchdarkly-server-sdk-ai-openai-0.6.0) (2026-05-13)
+
+
+### ⚠ BREAKING CHANGES
+
+* Narrow AgentGraphRunner.run input from Any to str ([#177](https://github.com/launchdarkly/python-server-sdk-ai/issues/177))
+* Rename LDAIMetrics.usage and AIGraphMetrics.usage to .tokens ([#175](https://github.com/launchdarkly/python-server-sdk-ai/issues/175))
+* rename GraphMetrics/GraphMetricSummary to AIGraphMetrics/AIGraphMetricSummary ([#173](https://github.com/launchdarkly/python-server-sdk-ai/issues/173))
+
+### Features
+
+* Narrow AgentGraphRunner.run input from Any to str ([#177](https://github.com/launchdarkly/python-server-sdk-ai/issues/177)) ([cc7a0fe](https://github.com/launchdarkly/python-server-sdk-ai/commit/cc7a0fe64549337c71036cd67973bf0af91c7a42))
+* rename GraphMetrics/GraphMetricSummary to AIGraphMetrics/AIGraphMetricSummary ([#173](https://github.com/launchdarkly/python-server-sdk-ai/issues/173)) ([583939d](https://github.com/launchdarkly/python-server-sdk-ai/commit/583939dbe5c11c3c11ed960ee0b46ec377f1bb70))
+* Rename LDAIMetrics.usage and AIGraphMetrics.usage to .tokens ([#175](https://github.com/launchdarkly/python-server-sdk-ai/issues/175)) ([d8c4a70](https://github.com/launchdarkly/python-server-sdk-ai/commit/d8c4a702d4b68f146de7ca520bc35f2aa0b155f6))
+
+
+### Bug Fixes
+
+* Always return ModelSettings from _build_model_settings ([#169](https://github.com/launchdarkly/python-server-sdk-ai/issues/169)) ([6d1ce4c](https://github.com/launchdarkly/python-server-sdk-ai/commit/6d1ce4c921a0ef4ea483316dcb8dd6fe7766b59e))
+
+## [0.5.0](https://github.com/launchdarkly/python-server-sdk-ai/compare/launchdarkly-server-sdk-ai-openai-0.4.0...launchdarkly-server-sdk-ai-openai-0.5.0) (2026-05-05)
+
+
+### ⚠ BREAKING CHANGES
+
+* `OpenAIModelRunner` no longer exposes `invoke_model()` or `invoke_structured_model()`. It now implements the unified `Runner` protocol — use `run(input: str)` instead. The return type is `RunnerResult` (replacing `ModelResponse` / `StructuredResponse`). ([#149](https://github.com/launchdarkly/python-server-sdk-ai/issues/149))
+
+
+### Features
+
+* Add judge evaluation support to agent graphs ([#142](https://github.com/launchdarkly/python-server-sdk-ai/issues/142)) ([3d5a6a9](https://github.com/launchdarkly/python-server-sdk-ai/commit/3d5a6a91a87c7475a83a7e440cd4b71337cfd56f))
+* Support conversation history directly in AI Provider model runners ([#166](https://github.com/launchdarkly/python-server-sdk-ai/issues/166)) ([4bb3e78](https://github.com/launchdarkly/python-server-sdk-ai/commit/4bb3e7813f7c087302ba8446dea6a4a41f012c2e))
+* Update OpenAI graph runner to return AgentGraphRunnerResult with GraphMetrics ([#155](https://github.com/launchdarkly/python-server-sdk-ai/issues/155)) ([388b7af](https://github.com/launchdarkly/python-server-sdk-ai/commit/388b7af70c23180607764a0fc4783ae4d0cd096d))
+* Update OpenAI runners to implement Runner protocol returning RunnerResult ([#149](https://github.com/launchdarkly/python-server-sdk-ai/issues/149)) ([382e662](https://github.com/launchdarkly/python-server-sdk-ai/commit/382e662af00b224f7269397beea94c70c2872b9a))
+
+
+### Bug Fixes
+
+* build judge input as string; strip legacy judge config messages ([#165](https://github.com/launchdarkly/python-server-sdk-ai/issues/165)) ([e6942a6](https://github.com/launchdarkly/python-server-sdk-ai/commit/e6942a6e2d4db17ae1fa6191521f8ac4fb48f30d))
+
 ## [0.4.0](https://github.com/launchdarkly/python-server-sdk-ai/compare/launchdarkly-server-sdk-ai-openai-0.3.0...launchdarkly-server-sdk-ai-openai-0.4.0) (2026-04-21)
 
 

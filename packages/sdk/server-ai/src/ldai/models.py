@@ -1,8 +1,35 @@
-import warnings
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Literal, Optional, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Literal, Optional, Union
+
+if TYPE_CHECKING:
+    from ldai.evaluator import Evaluator
 
 from typing_extensions import Self
+
+
+@dataclass(frozen=True)
+class LDTool:
+    """
+    A single tool entry from the root-level tools map in an AI Config flag variation.
+    Distinct from model.parameters.tools[] which is the raw array passed to LLM providers.
+    """
+    name: str
+    description: Optional[str] = None
+    type: Optional[str] = None
+    parameters: Optional[Dict[str, Any]] = None
+    custom_parameters: Optional[Dict[str, Any]] = None
+
+    def to_dict(self) -> dict:
+        result: Dict[str, Any] = {'name': self.name}
+        if self.description is not None:
+            result['description'] = self.description
+        if self.type is not None:
+            result['type'] = self.type
+        if self.parameters is not None:
+            result['parameters'] = self.parameters
+        if self.custom_parameters is not None:
+            result['customParameters'] = self.custom_parameters  # camelCase in wire format
+        return result
 
 
 @dataclass
@@ -176,10 +203,20 @@ class AIConfig:
 
     Instances are always created by the SDK client, which injects a real
     ``create_tracker`` factory.  User code should never need to construct
-    this directly — use the ``*Default`` variants for default values.
+    this directly -- use the ``*Default`` variants for default values.
+
+    ``create_tracker`` is a zero-argument callable: each invocation creates a
+    new tracker for a fresh AI run. Each call mints a new ``runId`` (a UUIDv4)
+    that LaunchDarkly uses to correlate the run's events in metrics views.
+    Call it once per AI run; metrics from different ``runId``s cannot be
+    combined.
     """
     key: str
     enabled: bool
+    #: Factory that creates a new tracker for a fresh AI run. Each call mints a
+    #: new ``runId`` (a UUIDv4) so LaunchDarkly can correlate the run's events
+    #: in metrics views. Call this once per AI run; metrics from different
+    #: ``runId``s cannot be combined.
     create_tracker: Callable[[], Any]
     model: Optional[ModelConfig] = None
     provider: Optional[ProviderConfig] = None
@@ -208,6 +245,7 @@ class AICompletionConfigDefault(AIConfigDefault):
     """
     messages: Optional[List[LDMessage]] = None
     judge_configuration: Optional[JudgeConfiguration] = None
+    tools: Optional[Dict[str, 'LDTool']] = None
 
     def to_dict(self) -> dict:
         """
@@ -217,6 +255,8 @@ class AICompletionConfigDefault(AIConfigDefault):
         result['messages'] = [message.to_dict() for message in self.messages] if self.messages else None
         if self.judge_configuration is not None:
             result['judgeConfiguration'] = self.judge_configuration.to_dict()
+        if self.tools is not None:
+            result['tools'] = {k: v.to_dict() for k, v in self.tools.items()}
         return result
 
 
@@ -225,8 +265,10 @@ class AICompletionConfig(AIConfig):
     """
     Completion AI Config (default mode).
     """
+    evaluator: 'Evaluator' = field(kw_only=True, repr=False, compare=False, hash=False)
     messages: Optional[List[LDMessage]] = None
     judge_configuration: Optional[JudgeConfiguration] = None
+    tools: Optional[Dict[str, 'LDTool']] = None
 
     def to_dict(self) -> dict:
         """
@@ -236,6 +278,8 @@ class AICompletionConfig(AIConfig):
         result['messages'] = [message.to_dict() for message in self.messages] if self.messages else None
         if self.judge_configuration is not None:
             result['judgeConfiguration'] = self.judge_configuration.to_dict()
+        if self.tools is not None:
+            result['tools'] = {k: v.to_dict() for k, v in self.tools.items()}
         return result
 
 
@@ -250,6 +294,7 @@ class AIAgentConfigDefault(AIConfigDefault):
     """
     instructions: Optional[str] = None
     judge_configuration: Optional[JudgeConfiguration] = None
+    tools: Optional[Dict[str, 'LDTool']] = None
 
     def to_dict(self) -> Dict[str, Any]:
         """
@@ -260,6 +305,8 @@ class AIAgentConfigDefault(AIConfigDefault):
             result['instructions'] = self.instructions
         if self.judge_configuration is not None:
             result['judgeConfiguration'] = self.judge_configuration.to_dict()
+        if self.tools is not None:
+            result['tools'] = {k: v.to_dict() for k, v in self.tools.items()}
         return result
 
 
@@ -268,8 +315,10 @@ class AIAgentConfig(AIConfig):
     """
     Agent-specific AI Config with instructions.
     """
+    evaluator: 'Evaluator' = field(kw_only=True, repr=False, compare=False, hash=False)
     instructions: Optional[str] = None
     judge_configuration: Optional[JudgeConfiguration] = None
+    tools: Optional[Dict[str, 'LDTool']] = None
 
     def to_dict(self) -> Dict[str, Any]:
         """
@@ -280,6 +329,8 @@ class AIAgentConfig(AIConfig):
             result['instructions'] = self.instructions
         if self.judge_configuration is not None:
             result['judgeConfiguration'] = self.judge_configuration.to_dict()
+        if self.tools is not None:
+            result['tools'] = {k: v.to_dict() for k, v in self.tools.items()}
         return result
 
 
@@ -293,8 +344,6 @@ class AIJudgeConfigDefault(AIConfigDefault):
     Default Judge-specific AI Config with required evaluation metric key.
     """
     messages: Optional[List[LDMessage]] = None
-    # Deprecated: evaluation_metric_key is used instead
-    evaluation_metric_keys: Optional[List[str]] = None
     evaluation_metric_key: Optional[str] = None
 
     def to_dict(self) -> dict:
@@ -304,9 +353,6 @@ class AIJudgeConfigDefault(AIConfigDefault):
         result = self._base_to_dict()
         result['messages'] = [message.to_dict() for message in self.messages] if self.messages else None
         result['evaluationMetricKey'] = self.evaluation_metric_key
-        # Include deprecated evaluationMetricKeys for backward compatibility
-        if self.evaluation_metric_keys:
-            result['evaluationMetricKeys'] = self.evaluation_metric_keys
         return result
 
 
@@ -315,8 +361,6 @@ class AIJudgeConfig(AIConfig):
     """
     Judge-specific AI Config with required evaluation metric key.
     """
-    # Deprecated: evaluation_metric_key is used instead
-    evaluation_metric_keys: List[str] = field(default_factory=list)
     messages: Optional[List[LDMessage]] = None
     evaluation_metric_key: Optional[str] = None
 
@@ -382,22 +426,3 @@ class AIAgentGraphConfig:
     root_config_key: str
     edges: List[Edge]
     enabled: bool = True
-
-
-# ============================================================================
-# Deprecated Type Aliases for Backward Compatibility
-# ============================================================================
-
-# Note: AIConfig is now defined above as a base class (line 169).
-# For backward compatibility, code should migrate to:
-# - Use AICompletionConfigDefault for default/input values
-# - Use AICompletionConfig for return values
-
-# Deprecated: Use AIAgentConfigDefault instead
-LDAIAgentDefaults = AIAgentConfigDefault
-
-# Deprecated: Use AIAgentConfigRequest instead
-LDAIAgentConfig = AIAgentConfigRequest
-
-# Deprecated: Use AIAgentConfig instead (note: this was the old return type)
-LDAIAgent = AIAgentConfig

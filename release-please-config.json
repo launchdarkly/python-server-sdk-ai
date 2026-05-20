@@ -5,11 +5,12 @@
     "packages/sdk/server-ai": {
       "release-type": "python",
       "versioning": "default",
-      "bump-minor-pre-major": true,
       "include-v-in-tag": false,
       "extra-files": [
         "src/ldai/__init__.py",
-        "PROVENANCE.md"
+        "PROVENANCE.md",
+        "/packages/ai-providers/server-ai-langchain/pyproject.toml",
+        "/packages/ai-providers/server-ai-openai/pyproject.toml"
       ],
       "component": "launchdarkly-server-sdk-ai"
     },
