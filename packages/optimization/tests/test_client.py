@@ -35,8 +35,6 @@ from ldai_optimizer.dataclasses import (
     ToolDefinition,
 )
 from ldai_optimizer.prompts import (
-    _acceptance_criteria_implies_cost_optimization,
-    _acceptance_criteria_implies_duration_optimization,
     build_new_variation_prompt,
     variation_prompt_acceptance_criteria,
     variation_prompt_cost_optimization,
@@ -561,13 +559,13 @@ class TestEvaluateAcceptanceJudge:
         _, _, ctx, _ = call_args.args
         assert ctx.current_variables == variables
 
-    async def test_duration_context_added_to_instructions_when_latency_keyword_present(self):
-        """When acceptance statement has a latency keyword and agent_duration_ms is provided,
-        the instructions mention the duration."""
-        judge = OptimizationJudge(
-            threshold=0.8,
-            acceptance_statement="The response must be fast.",
+    async def test_duration_context_added_when_latency_optimization_true_and_duration_provided(self):
+        """When latency_optimization=True and agent_duration_ms is provided,
+        the judge instructions mention the duration."""
+        self.client._options = _make_options(
+            handle_judge_call=self.handle_judge_call, latency_optimization=True
         )
+        judge = OptimizationJudge(threshold=0.8, acceptance_statement="Be accurate.")
         await self.client._evaluate_acceptance_judge(
             judge_key="speed",
             optimization_judge=judge,
@@ -583,6 +581,9 @@ class TestEvaluateAcceptanceJudge:
 
     async def test_duration_context_includes_baseline_comparison_when_history_present(self):
         """When a baseline duration is captured, the judge instructions include a baseline comparison."""
+        self.client._options = _make_options(
+            handle_judge_call=self.handle_judge_call, latency_optimization=True
+        )
         self.client._history = [
             OptimizationContext(
                 scores={},
@@ -595,10 +596,7 @@ class TestEvaluateAcceptanceJudge:
             )
         ]
         self.client._baseline_duration_ms = 2000.0
-        judge = OptimizationJudge(
-            threshold=0.8,
-            acceptance_statement="Responses should have low latency.",
-        )
+        judge = OptimizationJudge(threshold=0.8, acceptance_statement="Be accurate.")
         await self.client._evaluate_acceptance_judge(
             judge_key="latency",
             optimization_judge=judge,
@@ -615,6 +613,9 @@ class TestEvaluateAcceptanceJudge:
 
     async def test_duration_context_says_slower_when_candidate_is_slower(self):
         """When the candidate is slower than baseline, the instructions say 'slower'."""
+        self.client._options = _make_options(
+            handle_judge_call=self.handle_judge_call, latency_optimization=True
+        )
         self.client._history = [
             OptimizationContext(
                 scores={},
@@ -627,10 +628,7 @@ class TestEvaluateAcceptanceJudge:
             )
         ]
         self.client._baseline_duration_ms = 1000.0
-        judge = OptimizationJudge(
-            threshold=0.8,
-            acceptance_statement="The response must be fast.",
-        )
+        judge = OptimizationJudge(threshold=0.8, acceptance_statement="Be accurate.")
         await self.client._evaluate_acceptance_judge(
             judge_key="speed",
             optimization_judge=judge,
@@ -643,12 +641,9 @@ class TestEvaluateAcceptanceJudge:
         _, config, _, _ = self.handle_judge_call.call_args.args
         assert "slower" in config.instructions
 
-    async def test_duration_context_not_added_when_no_latency_keyword(self):
-        """When acceptance statement has no latency keyword, duration is not injected."""
-        judge = OptimizationJudge(
-            threshold=0.8,
-            acceptance_statement="The response must be accurate.",
-        )
+    async def test_duration_context_not_added_when_latency_optimization_is_none(self):
+        """When latency_optimization is None (not set), duration is not injected."""
+        judge = OptimizationJudge(threshold=0.8, acceptance_statement="Be accurate.")
         await self.client._evaluate_acceptance_judge(
             judge_key="accuracy",
             optimization_judge=judge,
@@ -660,14 +655,13 @@ class TestEvaluateAcceptanceJudge:
         )
         _, config, _, _ = self.handle_judge_call.call_args.args
         assert "2000ms" not in config.instructions
-        assert "duration" not in config.instructions.lower() or "acceptance" in config.instructions.lower()
 
     async def test_duration_context_not_added_when_agent_duration_ms_is_none(self):
-        """When agent_duration_ms is None, no duration block is added even if keyword matches."""
-        judge = OptimizationJudge(
-            threshold=0.8,
-            acceptance_statement="The response must be fast.",
+        """When agent_duration_ms is None, no duration block is added even if latency_optimization=True."""
+        self.client._options = _make_options(
+            handle_judge_call=self.handle_judge_call, latency_optimization=True
         )
+        judge = OptimizationJudge(threshold=0.8, acceptance_statement="Be accurate.")
         await self.client._evaluate_acceptance_judge(
             judge_key="speed",
             optimization_judge=judge,
@@ -3863,132 +3857,6 @@ class TestBuildOptionsFromConfigGroundTruth:
 
 
 # ---------------------------------------------------------------------------
-# _acceptance_criteria_implies_duration_optimization
-# ---------------------------------------------------------------------------
-
-
-class TestAcceptanceCriteriaImpliesDurationOptimization:
-    def test_returns_false_when_judges_is_none(self):
-        assert _acceptance_criteria_implies_duration_optimization(None) is False
-
-    def test_returns_false_when_judges_is_empty(self):
-        assert _acceptance_criteria_implies_duration_optimization({}) is False
-
-    def test_returns_false_when_no_acceptance_statements(self):
-        judges = {"quality": OptimizationJudge(threshold=0.8, judge_key="judge-1")}
-        assert _acceptance_criteria_implies_duration_optimization(judges) is False
-
-    def test_returns_false_when_acceptance_statement_has_no_latency_keywords(self):
-        judges = {
-            "accuracy": OptimizationJudge(
-                threshold=0.8,
-                acceptance_statement="The response must be accurate and complete.",
-            )
-        }
-        assert _acceptance_criteria_implies_duration_optimization(judges) is False
-
-    def test_detects_fast_keyword(self):
-        judges = {
-            "speed": OptimizationJudge(
-                threshold=0.8,
-                acceptance_statement="The response must be fast.",
-            )
-        }
-        assert _acceptance_criteria_implies_duration_optimization(judges) is True
-
-    def test_detects_faster_keyword(self):
-        judges = {
-            "speed": OptimizationJudge(
-                threshold=0.8,
-                acceptance_statement="The agent should respond faster.",
-            )
-        }
-        assert _acceptance_criteria_implies_duration_optimization(judges) is True
-
-    def test_detects_latency_keyword(self):
-        judges = {
-            "perf": OptimizationJudge(
-                threshold=0.8,
-                acceptance_statement="The agent must have low latency.",
-            )
-        }
-        assert _acceptance_criteria_implies_duration_optimization(judges) is True
-
-    def test_detects_duration_keyword(self):
-        judges = {
-            "perf": OptimizationJudge(
-                threshold=0.8,
-                acceptance_statement="Minimize the duration of each response.",
-            )
-        }
-        assert _acceptance_criteria_implies_duration_optimization(judges) is True
-
-    def test_detects_ms_keyword(self):
-        judges = {
-            "perf": OptimizationJudge(
-                threshold=0.8,
-                acceptance_statement="Responses should complete in under 500ms.",
-            )
-        }
-        assert _acceptance_criteria_implies_duration_optimization(judges) is True
-
-    def test_detects_response_time_phrase(self):
-        judges = {
-            "perf": OptimizationJudge(
-                threshold=0.8,
-                acceptance_statement="The response time should be minimized.",
-            )
-        }
-        assert _acceptance_criteria_implies_duration_optimization(judges) is True
-
-    def test_detects_efficient_keyword(self):
-        judges = {
-            "perf": OptimizationJudge(
-                threshold=0.8,
-                acceptance_statement="The model must be efficient.",
-            )
-        }
-        assert _acceptance_criteria_implies_duration_optimization(judges) is True
-
-    def test_detects_snappy_keyword(self):
-        judges = {
-            "perf": OptimizationJudge(
-                threshold=0.8,
-                acceptance_statement="Responses should feel snappy.",
-            )
-        }
-        assert _acceptance_criteria_implies_duration_optimization(judges) is True
-
-    def test_case_insensitive_match(self):
-        judges = {
-            "perf": OptimizationJudge(
-                threshold=0.8,
-                acceptance_statement="The model must be EFFICIENT and FAST.",
-            )
-        }
-        assert _acceptance_criteria_implies_duration_optimization(judges) is True
-
-    def test_returns_true_when_any_judge_matches(self):
-        judges = {
-            "accuracy": OptimizationJudge(
-                threshold=0.8,
-                acceptance_statement="The response must be accurate.",
-            ),
-            "speed": OptimizationJudge(
-                threshold=0.8,
-                acceptance_statement="The response must be fast.",
-            ),
-        }
-        assert _acceptance_criteria_implies_duration_optimization(judges) is True
-
-    def test_returns_false_when_acceptance_statement_is_none(self):
-        judges = {
-            "quality": OptimizationJudge(threshold=0.8, acceptance_statement=None)
-        }
-        assert _acceptance_criteria_implies_duration_optimization(judges) is False
-
-
-# ---------------------------------------------------------------------------
 # _evaluate_duration
 # ---------------------------------------------------------------------------
 
@@ -4069,17 +3937,9 @@ class TestDurationOptimizationChaosMode:
     def setup_method(self):
         self.mock_ldai = _make_ldai_client()
 
-    def _duration_judges(self, statement="The response must be fast."):
-        return {
-            "speed": OptimizationJudge(
-                threshold=0.8,
-                acceptance_statement=statement,
-            )
-        }
-
     def _ctx_with(self, duration_ms, score=1.0, iteration=1):
         return OptimizationContext(
-            scores={"speed": JudgeResult(score=score)},
+            scores={"accuracy": JudgeResult(score=score)},
             completion_response="answer",
             current_instructions="Do X.",
             current_parameters={},
@@ -4105,7 +3965,7 @@ class TestDurationOptimizationChaosMode:
         handle_agent_call = AsyncMock(return_value=OptimizationResponse(output=VARIATION_RESPONSE))
         opts = _make_options(
             handle_agent_call=handle_agent_call,
-            judges=self._duration_judges(),
+            latency_optimization=True,
             max_attempts=5,
         )
 
@@ -4131,7 +3991,7 @@ class TestDurationOptimizationChaosMode:
 
         opts = _make_options(
             handle_agent_call=AsyncMock(return_value=OptimizationResponse(output="answer")),
-            judges=self._duration_judges(),
+            latency_optimization=True,
             max_attempts=3,
         )
 
@@ -4142,26 +4002,20 @@ class TestDurationOptimizationChaosMode:
         # Succeeds because history is empty and duration check is skipped
         assert result.duration_ms == 9999
 
-    async def test_no_duration_gate_when_acceptance_criteria_has_no_latency_keywords(self):
-        """Acceptance statement with no latency keywords → duration gate never applied."""
+    async def test_no_duration_gate_when_latency_optimization_is_none(self):
+        """latency_optimization=None → duration gate never applied."""
         client = _make_client(self.mock_ldai)
 
         # Judge passes on first try; duration would fail if gate were applied (same as baseline)
-        # but since acceptance criteria has no latency keywords, it should succeed anyway
+        # but since latency_optimization=None, the gate is not applied
         execute_side_effects = [
             self._ctx_with(duration_ms=2000, score=1.0, iteration=1),
             self._ctx_with(duration_ms=2000, score=1.0, iteration=2),   # validation
         ]
 
-        non_latency_judges = {
-            "accuracy": OptimizationJudge(
-                threshold=0.8,
-                acceptance_statement="The response must be accurate and complete.",
-            )
-        }
         opts = _make_options(
             handle_agent_call=AsyncMock(return_value=OptimizationResponse(output="answer")),
-            judges=non_latency_judges,
+            latency_optimization=None,
             max_attempts=3,
         )
 
@@ -4193,7 +4047,7 @@ class TestDurationOptimizationChaosMode:
         handle_agent_call = AsyncMock(return_value=OptimizationResponse(output=VARIATION_RESPONSE))
         opts = _make_options(
             handle_agent_call=handle_agent_call,
-            judges=self._duration_judges(),
+            latency_optimization=True,
             max_attempts=5,
         )
 
@@ -4214,17 +4068,9 @@ class TestDurationOptimizationGroundTruthMode:
     def setup_method(self):
         self.mock_ldai = _make_ldai_client()
 
-    def _duration_judges(self):
-        return {
-            "speed": OptimizationJudge(
-                threshold=0.8,
-                acceptance_statement="The response must be fast.",
-            )
-        }
-
     def _gt_ctx(self, duration_ms, score=1.0, iteration=1, user_input="q"):
         return OptimizationContext(
-            scores={"speed": JudgeResult(score=score)},
+            scores={"acc": JudgeResult(score=score)},
             completion_response="answer",
             current_instructions="Do X.",
             current_parameters={},
@@ -4268,7 +4114,7 @@ class TestDurationOptimizationGroundTruthMode:
         handle_agent_call = AsyncMock(return_value=OptimizationResponse(output=VARIATION_RESPONSE))
         opts = _make_gt_options(
             handle_agent_call=handle_agent_call,
-            judges=self._duration_judges(),
+            latency_optimization=True,
             max_attempts=5,
         )
 
@@ -4283,8 +4129,8 @@ class TestDurationOptimizationGroundTruthMode:
         assert handle_agent_call.call_count == 2
         assert mock_execute.call_count == 6
 
-    async def test_no_duration_gate_in_gt_mode_when_no_latency_keywords(self):
-        """In GT mode, duration gate is not applied when acceptance criteria has no latency keywords."""
+    async def test_no_duration_gate_in_gt_mode_when_latency_optimization_not_set(self):
+        """In GT mode, duration gate is not applied when latency_optimization is None."""
         client = _make_client(self.mock_ldai)
 
         execute_side_effects = [
@@ -4292,15 +4138,9 @@ class TestDurationOptimizationGroundTruthMode:
             self._gt_ctx(duration_ms=5000, score=1.0, iteration=2, user_input="q2"),
         ]
 
-        non_latency_judges = {
-            "accuracy": OptimizationJudge(
-                threshold=0.8,
-                acceptance_statement="The response must be accurate.",
-            )
-        }
         opts = _make_gt_options(
             handle_agent_call=AsyncMock(return_value=OptimizationResponse(output="answer")),
-            judges=non_latency_judges,
+            latency_optimization=None,
             max_attempts=3,
         )
 
@@ -4308,7 +4148,7 @@ class TestDurationOptimizationGroundTruthMode:
             mock_execute.side_effect = execute_side_effects
             results = await client.optimize_from_ground_truth_options("test-agent", opts)
 
-        # Succeeds on first attempt even with slow duration (no latency keyword → no gate)
+        # Succeeds on first attempt even with slow duration (latency_optimization=None → no gate)
         assert isinstance(results, list)
         assert mock_execute.call_count == 2
 
@@ -5346,61 +5186,6 @@ class TestEstimateCost:
 
 
 # ---------------------------------------------------------------------------
-# _acceptance_criteria_implies_cost_optimization
-# ---------------------------------------------------------------------------
-
-
-class TestAcceptanceCriteriaImpliesCostOptimization:
-    def _judge(self, statement: str) -> Dict[str, OptimizationJudge]:
-        return {"j": OptimizationJudge(threshold=0.9, acceptance_statement=statement)}
-
-    def test_returns_false_when_judges_none(self):
-        assert _acceptance_criteria_implies_cost_optimization(None) is False
-
-    def test_returns_false_when_no_acceptance_statements(self):
-        judges = {"j": OptimizationJudge(threshold=0.9, judge_key="some-judge")}
-        assert _acceptance_criteria_implies_cost_optimization(judges) is False
-
-    def test_detects_cheap(self):
-        assert _acceptance_criteria_implies_cost_optimization(self._judge("Keep it cheap."))
-
-    def test_detects_cost(self):
-        assert _acceptance_criteria_implies_cost_optimization(self._judge("Reduce overall cost."))
-
-    def test_detects_costs_plural(self):
-        assert _acceptance_criteria_implies_cost_optimization(
-            self._judge("Keep the costs stable or lower them.")
-        )
-
-    def test_detects_budget(self):
-        assert _acceptance_criteria_implies_cost_optimization(self._judge("Stay within budget."))
-
-    def test_does_not_detect_token_to_avoid_false_positives(self):
-        assert not _acceptance_criteria_implies_cost_optimization(self._judge("Generate a valid authentication token."))
-
-    def test_detects_billing(self):
-        assert _acceptance_criteria_implies_cost_optimization(self._judge("Minimize billing."))
-
-    def test_detects_spend(self):
-        assert _acceptance_criteria_implies_cost_optimization(self._judge("Reduce spend on API calls."))
-
-    def test_case_insensitive(self):
-        assert _acceptance_criteria_implies_cost_optimization(self._judge("BUDGET FRIENDLY response"))
-
-    def test_no_match_on_unrelated_statement(self):
-        assert not _acceptance_criteria_implies_cost_optimization(
-            self._judge("Respond accurately and concisely.")
-        )
-
-    def test_multiple_judges_one_matches(self):
-        judges = {
-            "j1": OptimizationJudge(threshold=0.9, acceptance_statement="Be accurate."),
-            "j2": OptimizationJudge(threshold=0.9, acceptance_statement="Keep costs low."),
-        }
-        assert _acceptance_criteria_implies_cost_optimization(judges)
-
-
-# ---------------------------------------------------------------------------
 # _evaluate_cost
 # ---------------------------------------------------------------------------
 
@@ -5516,22 +5301,6 @@ class TestRecordBaselineFromBatch:
 class TestApplyDurationGate:
     """Unit tests for the _apply_duration_gate wrapper method."""
 
-    def _make_judges_with_latency(self):
-        return {
-            "latency": OptimizationJudge(
-                threshold=0.8,
-                acceptance_statement="The response must be faster and reduce latency.",
-            )
-        }
-
-    def _make_judges_no_latency(self):
-        return {
-            "accuracy": OptimizationJudge(
-                threshold=0.8,
-                acceptance_statement="The response must be accurate.",
-            )
-        }
-
     def _ctx(self, duration_ms=None, iteration=2):
         return OptimizationContext(
             scores={},
@@ -5545,12 +5314,12 @@ class TestApplyDurationGate:
 
     def setup_method(self):
         self.client = _make_client()
-        self.client._options = _make_options(judges=self._make_judges_with_latency())
+        self.client._options = _make_options(latency_optimization=True)
         self.client._initialize_class_members_from_config(_make_agent_config())
         self.client._baseline_duration_ms = 2000.0
 
     def test_no_entry_added_when_gate_not_active(self):
-        self.client._options = _make_options(judges=self._make_judges_no_latency())
+        self.client._options = _make_options(latency_optimization=None)
         ctx = self._ctx(1000)
         passed, updated = self.client._apply_duration_gate(True, ctx)
         assert passed is True
@@ -5621,22 +5390,6 @@ class TestApplyDurationGate:
 class TestApplyCostGate:
     """Unit tests for the _apply_cost_gate wrapper method."""
 
-    def _make_judges_with_cost(self):
-        return {
-            "cost": OptimizationJudge(
-                threshold=0.8,
-                acceptance_statement="The response must be cheaper and reduce cost.",
-            )
-        }
-
-    def _make_judges_no_cost(self):
-        return {
-            "accuracy": OptimizationJudge(
-                threshold=0.8,
-                acceptance_statement="The response must be accurate.",
-            )
-        }
-
     def _ctx(self, cost=None, iteration=2):
         return OptimizationContext(
             scores={},
@@ -5650,12 +5403,12 @@ class TestApplyCostGate:
 
     def setup_method(self):
         self.client = _make_client()
-        self.client._options = _make_options(judges=self._make_judges_with_cost())
+        self.client._options = _make_options(token_optimization=True)
         self.client._initialize_class_members_from_config(_make_agent_config())
         self.client._baseline_cost_usd = 0.010
 
     def test_no_entry_added_when_gate_not_active(self):
-        self.client._options = _make_options(judges=self._make_judges_no_cost())
+        self.client._options = _make_options(token_optimization=None)
         ctx = self._ctx(0.005)
         passed, updated = self.client._apply_cost_gate(True, ctx)
         assert passed is True
@@ -5711,12 +5464,8 @@ class TestApplyCostGate:
     def test_both_gates_active_compose_cleanly(self):
         """Duration + cost gate can both fire on the same context."""
         self.client._options = _make_options(
-            judges={
-                "perf": OptimizationJudge(
-                    threshold=0.8,
-                    acceptance_statement="The response must be faster, reduce latency, and cheaper cost.",
-                )
-            }
+            latency_optimization=True,
+            token_optimization=True,
         )
         self.client._baseline_duration_ms = 2000.0
         self.client._baseline_cost_usd = 0.010
@@ -6064,7 +5813,7 @@ class TestEvaluateAcceptanceJudgeCostAugmentation:
             {"id": "gpt-4o", "costPerInputToken": 0.000005, "costPerOutputToken": 0.000015}
         ]
 
-    async def test_cost_context_injected_into_instructions(self):
+    async def test_cost_context_injected_when_token_optimization_true(self):
         self._set_pricing()
         usage = TokenUsage(total=100, input=60, output=40)
         captured: list = []
@@ -6073,7 +5822,9 @@ class TestEvaluateAcceptanceJudgeCostAugmentation:
             captured.append(judge_config.instructions)
             return OptimizationResponse(output=JUDGE_PASS_RESPONSE)
 
-        self.client._options = _make_options(handle_judge_call=_capture_judge_call)
+        self.client._options = _make_options(
+            handle_judge_call=_capture_judge_call, token_optimization=True
+        )
         await self.client._evaluate_acceptance_judge(
             judge_key="cost-judge",
             optimization_judge=self._cost_judge(),
@@ -6088,7 +5839,8 @@ class TestEvaluateAcceptanceJudgeCostAugmentation:
         assert "60 input tokens" in instructions
         assert "40 output tokens" in instructions
 
-    async def test_cost_context_not_injected_for_non_cost_judge(self):
+    async def test_cost_context_not_injected_when_token_optimization_false(self):
+        self._set_pricing()
         usage = TokenUsage(total=100, input=60, output=40)
         captured: list = []
 
@@ -6096,14 +5848,12 @@ class TestEvaluateAcceptanceJudgeCostAugmentation:
             captured.append(judge_config.instructions)
             return OptimizationResponse(output=JUDGE_PASS_RESPONSE)
 
-        self.client._options = _make_options(handle_judge_call=_capture_judge_call)
-        non_cost_judge = OptimizationJudge(
-            threshold=0.9,
-            acceptance_statement="Be accurate and concise.",
+        self.client._options = _make_options(
+            handle_judge_call=_capture_judge_call, token_optimization=False
         )
         await self.client._evaluate_acceptance_judge(
-            judge_key="quality-judge",
-            optimization_judge=non_cost_judge,
+            judge_key="cost-judge",
+            optimization_judge=self._cost_judge(),
             completion_response="response",
             iteration=1,
             reasoning_history="",
@@ -6112,7 +5862,6 @@ class TestEvaluateAcceptanceJudgeCostAugmentation:
         )
         assert captured
         instructions = captured[0]
-        # The cost-specific augmentation phrase should not appear
         assert "cost/token-usage goal" not in instructions
 
     async def test_baseline_cost_shown_when_history_present(self):
@@ -6135,7 +5884,9 @@ class TestEvaluateAcceptanceJudgeCostAugmentation:
         )
         self.client._history = [baseline_ctx]
         self.client._baseline_cost_usd = 500.0
-        self.client._options = _make_options(handle_judge_call=_capture_judge_call)
+        self.client._options = _make_options(
+            handle_judge_call=_capture_judge_call, token_optimization=True
+        )
         await self.client._evaluate_acceptance_judge(
             judge_key="cost-judge",
             optimization_judge=self._cost_judge(),
@@ -6148,3 +5899,205 @@ class TestEvaluateAcceptanceJudgeCostAugmentation:
         assert captured
         instructions = captured[0]
         assert "baseline" in instructions.lower()
+
+
+# ---------------------------------------------------------------------------
+# variation_key in optimize_from_options
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+class TestVariationKeyInOptimizeFromOptions:
+    def _make_client_with_key(self) -> OptimizationClient:
+        with patch.dict("os.environ", {"LAUNCHDARKLY_API_KEY": "test-api-key"}):
+            return OptimizationClient(_make_ldai_client())
+
+    def _make_client_without_key(self) -> OptimizationClient:
+        client = OptimizationClient(_make_ldai_client())
+        client._has_api_key = False
+        client._api_key = None
+        return client
+
+    def _make_ai_config_with_variations(self, *keys: str) -> dict:
+        return {
+            "variations": [
+                {"key": k, "instructions": f"Instructions for {k}.", "mode": "agent"}
+                for k in keys
+            ]
+        }
+
+    async def test_raises_when_variation_key_set_and_no_api_key(self):
+        client = self._make_client_without_key()
+        options = _make_options(variation_key="my-variation", project_key="my-project")
+
+        with pytest.raises(ValueError, match="LAUNCHDARKLY_API_KEY"):
+            await client.optimize_from_options("test-agent", options)
+
+    async def test_raises_when_variation_key_set_and_no_project_key(self):
+        client = self._make_client_with_key()
+        options = _make_options(variation_key="my-variation", project_key=None)
+
+        with pytest.raises(ValueError, match="project_key"):
+            await client.optimize_from_options("test-agent", options)
+
+    async def test_uses_variation_key_as_base_variation(self):
+        client = self._make_client_with_key()
+        ai_config = self._make_ai_config_with_variations("v1", "my-variation", "v3")
+
+        with patch("ldai_optimizer.client.LDApiClient") as mock_api_cls:
+            mock_api_instance = MagicMock()
+            mock_api_instance.get_ai_config.return_value = ai_config
+            mock_api_instance.get_model_configs.return_value = []
+            mock_api_cls.return_value = mock_api_instance
+
+            options = _make_options(
+                variation_key="my-variation",
+                project_key="my-project",
+            )
+            await client.optimize_from_options("test-agent", options)
+
+        mock_api_instance.get_ai_config.assert_called_with("my-project", "test-agent")
+        # Verify that the SDK default variation() was NOT called
+        client._ldClient._client.variation.assert_not_called()
+
+    async def test_raises_when_variation_key_not_found_in_config(self):
+        client = self._make_client_with_key()
+        ai_config = self._make_ai_config_with_variations("v1", "v2")
+
+        with patch("ldai_optimizer.client.LDApiClient") as mock_api_cls:
+            mock_api_instance = MagicMock()
+            mock_api_instance.get_ai_config.return_value = ai_config
+            mock_api_instance.get_model_configs.return_value = []
+            mock_api_cls.return_value = mock_api_instance
+
+            options = _make_options(
+                variation_key="nonexistent-key",
+                project_key="my-project",
+            )
+            with pytest.raises(ValueError, match="nonexistent-key"):
+                await client.optimize_from_options("test-agent", options)
+
+    async def test_no_api_call_when_variation_key_not_set(self):
+        client = self._make_client_without_key()
+        options = _make_options()  # no variation_key
+
+        # Should succeed and use the SDK default variation path
+        result = await client.optimize_from_options("test-agent", options)
+        client._ldClient._client.variation.assert_called()
+        assert result is not None
+
+
+# ---------------------------------------------------------------------------
+# variation_key in optimize_from_ground_truth_options
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+class TestVariationKeyInOptimizeFromGroundTruthOptions:
+    def _make_client_with_key(self) -> OptimizationClient:
+        with patch.dict("os.environ", {"LAUNCHDARKLY_API_KEY": "test-api-key"}):
+            return OptimizationClient(_make_ldai_client())
+
+    def _make_client_without_key(self) -> OptimizationClient:
+        client = OptimizationClient(_make_ldai_client())
+        client._has_api_key = False
+        client._api_key = None
+        return client
+
+    async def test_raises_when_variation_key_set_and_no_api_key(self):
+        client = self._make_client_without_key()
+        options = _make_gt_options(variation_key="my-variation", project_key="my-project")
+
+        with pytest.raises(ValueError, match="LAUNCHDARKLY_API_KEY"):
+            await client.optimize_from_ground_truth_options("test-agent", options)
+
+    async def test_raises_when_variation_key_set_and_no_project_key(self):
+        client = self._make_client_with_key()
+        options = _make_gt_options(variation_key="my-variation", project_key=None)
+
+        with pytest.raises(ValueError, match="project_key"):
+            await client.optimize_from_ground_truth_options("test-agent", options)
+
+    async def test_raises_when_variation_key_not_found_in_config(self):
+        client = self._make_client_with_key()
+        ai_config = {"variations": [{"key": "v1"}, {"key": "v2"}]}
+
+        with patch("ldai_optimizer.client.LDApiClient") as mock_api_cls:
+            mock_api_instance = MagicMock()
+            mock_api_instance.get_ai_config.return_value = ai_config
+            mock_api_instance.get_model_configs.return_value = []
+            mock_api_cls.return_value = mock_api_instance
+
+            options = _make_gt_options(
+                variation_key="nonexistent-key",
+                project_key="my-project",
+            )
+            with pytest.raises(ValueError, match="nonexistent-key"):
+                await client.optimize_from_ground_truth_options("test-agent", options)
+
+
+# ---------------------------------------------------------------------------
+# latency_optimization / token_optimization boolean controls
+# ---------------------------------------------------------------------------
+
+
+class TestLatencyCostOptimizationBooleans:
+    """Verify that latency_optimization and token_optimization booleans directly
+    control gate and prompt behaviour, replacing the old regex approach."""
+
+    def setup_method(self):
+        self.client = _make_client()
+        self.client._initialize_class_members_from_config(_make_agent_config())
+        self.client._baseline_duration_ms = 1000.0
+        self.client._baseline_cost_usd = 0.010
+
+    def _ctx(self, duration_ms=500.0, cost=0.005, iteration=2):
+        return OptimizationContext(
+            scores={},
+            completion_response="response",
+            current_instructions="Do X.",
+            current_parameters={},
+            current_variables={},
+            iteration=iteration,
+            duration_ms=duration_ms,
+            estimated_cost_usd=cost,
+        )
+
+    def test_latency_gate_active_when_true(self):
+        self.client._options = _make_options(latency_optimization=True)
+        _, updated = self.client._apply_duration_gate(True, self._ctx(duration_ms=500.0))
+        assert "_latency_gate" in updated.scores
+
+    def test_latency_gate_inactive_when_none(self):
+        self.client._options = _make_options(latency_optimization=None)
+        _, updated = self.client._apply_duration_gate(True, self._ctx(duration_ms=500.0))
+        assert "_latency_gate" not in updated.scores
+
+    def test_latency_gate_inactive_when_false(self):
+        self.client._options = _make_options(latency_optimization=False)
+        _, updated = self.client._apply_duration_gate(True, self._ctx(duration_ms=500.0))
+        assert "_latency_gate" not in updated.scores
+
+    def test_cost_gate_active_when_true(self):
+        self.client._options = _make_options(token_optimization=True)
+        _, updated = self.client._apply_cost_gate(True, self._ctx(cost=0.005))
+        assert "_cost_gate" in updated.scores
+
+    def test_cost_gate_inactive_when_none(self):
+        self.client._options = _make_options(token_optimization=None)
+        _, updated = self.client._apply_cost_gate(True, self._ctx(cost=0.005))
+        assert "_cost_gate" not in updated.scores
+
+    def test_cost_gate_inactive_when_false(self):
+        self.client._options = _make_options(token_optimization=False)
+        _, updated = self.client._apply_cost_gate(True, self._ctx(cost=0.005))
+        assert "_cost_gate" not in updated.scores
+
+    def test_both_gates_independent(self):
+        """latency_optimization=True, token_optimization=False → only latency gate fires."""
+        self.client._options = _make_options(latency_optimization=True, token_optimization=False)
+        ctx = self._ctx()
+        _, ctx = self.client._apply_duration_gate(True, ctx)
+        _, ctx = self.client._apply_cost_gate(True, ctx)
+        assert "_latency_gate" in ctx.scores
+        assert "_cost_gate" not in ctx.scores

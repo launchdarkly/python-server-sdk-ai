@@ -49,8 +49,6 @@ from ldai_optimizer.ld_api_client import (
     LDApiClient,
 )
 from ldai_optimizer.prompts import (
-    _acceptance_criteria_implies_cost_optimization,
-    _acceptance_criteria_implies_duration_optimization,
     build_message_history_text,
     build_new_variation_prompt,
     build_reasoning_history,
@@ -850,9 +848,7 @@ class OptimizationClient:
 
         if (
             agent_duration_ms is not None
-            and _acceptance_criteria_implies_duration_optimization(
-                {judge_key: optimization_judge}
-            )
+            and bool(self._options.latency_optimization)
         ):
             baseline_ms = self._baseline_duration_ms
             instructions += (
@@ -875,7 +871,7 @@ class OptimizationClient:
                 "These suggestions will be used directly to generate the next variation."
             )
 
-        if _acceptance_criteria_implies_cost_optimization({judge_key: optimization_judge}):
+        if bool(self._options.token_optimization):
             current_cost = estimate_cost(
                 agent_usage,
                 _find_model_config(self._current_model or "", self._model_configs),
@@ -975,7 +971,12 @@ class OptimizationClient:
         return dataclasses.replace(judge_result, duration_ms=judge_duration_ms, usage=judge_response.usage)
 
     async def _get_agent_config(
-        self, agent_key: str, context: Context
+        self,
+        agent_key: str,
+        context: Context,
+        variation_key: Optional[str] = None,
+        project_key: Optional[str] = None,
+        base_url: Optional[str] = None,
     ) -> AIAgentConfig:
         """
         Fetch the agent configuration, replacing the instructions with the raw variation
@@ -985,16 +986,39 @@ class OptimizationClient:
         (including the tracker). We then call variation() separately to retrieve the
         unrendered instruction template and swap it in, keeping everything else intact.
 
+        When ``variation_key`` is provided the specific variation is fetched via the
+        LaunchDarkly REST API instead of using the SDK's default flag evaluation.
+
         :param agent_key: The key for the agent to get the configuration for
         :param context: The evaluation context
+        :param variation_key: Optional specific variation key to use as the base
+        :param project_key: LaunchDarkly project key; required when variation_key is set
+        :param base_url: Optional API base URL override
         :return: AIAgentConfig with raw {{placeholder}} instruction templates intact
         """
         try:
             agent_config = self._ldClient.agent_config(agent_key, context)
 
-            # variation() returns the raw JSON before chevron.render(), so instructions
-            # still contain {{placeholder}} tokens rather than empty strings.
-            raw_variation = self._ldClient._client.variation(agent_key, context, {})
+            if variation_key:
+                assert self._api_key is not None
+                api_client = LDApiClient(
+                    self._api_key,
+                    **({"base_url": base_url} if base_url else {}),
+                )
+                ai_config = api_client.get_ai_config(project_key, agent_key)
+                match = next(
+                    (v for v in (ai_config or {}).get("variations", []) if v.get("key") == variation_key),
+                    None,
+                )
+                if match is None:
+                    raise ValueError(
+                        f"variation_key '{variation_key}' not found in agent config '{agent_key}'"
+                    )
+                raw_variation = match
+            else:
+                # variation() returns the raw JSON before chevron.render(), so instructions
+                # still contain {{placeholder}} tokens rather than empty strings.
+                raw_variation = self._ldClient._client.variation(agent_key, context, {})
             raw_instructions = raw_variation.get(
                 "instructions", agent_config.instructions
             )
@@ -1030,20 +1054,20 @@ class OptimizationClient:
         self,
         project_key: Optional[str],
         base_url: Optional[str],
-        judges: Optional[Dict[str, "OptimizationJudge"]],
+        token_optimization: Optional[bool],
     ) -> None:
         """Populate ``_model_configs`` from the LD API when credentials are available.
 
         When an API key and project key are both present, fetches the model pricing
         catalogue so that ``estimate_cost`` can produce USD figures and the cost gate
         can make meaningful comparisons.  If either is absent, ``_model_configs`` is
-        reset to an empty list and a warning is emitted when cost judges are in use —
-        cost optimization will silently pass rather than blocking the run.
+        reset to an empty list and a warning is emitted when token_optimization is
+        enabled — cost data will be unavailable and the cost gate will pass unconditionally.
 
         :param project_key: LaunchDarkly project key, or None if not provided.
         :param base_url: Optional API base URL override.
-        :param judges: Judge map from the caller's options, used only to decide
-            whether a cost-related warning is appropriate.
+        :param token_optimization: Whether token/cost optimization is enabled; used only to
+            decide whether a cost-related warning is appropriate.
         """
         self._model_configs = []
         if self._has_api_key and project_key:
@@ -1056,9 +1080,9 @@ class OptimizationClient:
                 self._model_configs = api_client.get_model_configs(project_key)
             except Exception as exc:
                 logger.debug("Could not pre-fetch model configs: %s", exc)
-        elif _acceptance_criteria_implies_cost_optimization(judges or {}):
+        elif token_optimization:
             logger.warning(
-                "Cost optimization requires LAUNCHDARKLY_API_KEY and project_key to be set; "
+                "Token optimization requires LAUNCHDARKLY_API_KEY and project_key to be set; "
                 "cost data will not be available and the cost gate will pass unconditionally"
             )
 
@@ -1080,10 +1104,24 @@ class OptimizationClient:
                 raise ValueError(
                     "auto_commit requires project_key to be set on OptimizationOptions"
                 )
+        if options.variation_key:
+            if not self._has_api_key:
+                raise ValueError(
+                    "variation_key requires LAUNCHDARKLY_API_KEY to be set"
+                )
+            if not options.project_key:
+                raise ValueError(
+                    "variation_key requires project_key to be set on OptimizationOptions"
+                )
         self._agent_key = agent_key
-        self._fetch_model_configs(options.project_key, options.base_url, options.judges)
+        self._fetch_model_configs(options.project_key, options.base_url, options.token_optimization)
         context = random.choice(options.context_choices)
-        agent_config = await self._get_agent_config(agent_key, context)
+        agent_config = await self._get_agent_config(
+            agent_key, context,
+            variation_key=options.variation_key,
+            project_key=options.project_key,
+            base_url=options.base_url,
+        )
         result = await self._run_optimization(agent_config, options)
         if options.auto_commit and self._last_run_succeeded and self._last_succeeded_context:
             self._commit_variation(
@@ -1119,10 +1157,24 @@ class OptimizationClient:
                 raise ValueError(
                     "auto_commit requires project_key to be set on GroundTruthOptimizationOptions"
                 )
+        if options.variation_key:
+            if not self._has_api_key:
+                raise ValueError(
+                    "variation_key requires LAUNCHDARKLY_API_KEY to be set"
+                )
+            if not options.project_key:
+                raise ValueError(
+                    "variation_key requires project_key to be set on GroundTruthOptimizationOptions"
+                )
         self._agent_key = agent_key
-        self._fetch_model_configs(options.project_key, options.base_url, options.judges)
+        self._fetch_model_configs(options.project_key, options.base_url, options.token_optimization)
         context = random.choice(options.context_choices)
-        agent_config = await self._get_agent_config(agent_key, context)
+        agent_config = await self._get_agent_config(
+            agent_key, context,
+            variation_key=options.variation_key,
+            project_key=options.project_key,
+            base_url=options.base_url,
+        )
         result = await self._run_ground_truth_optimization(agent_config, options)
         if options.auto_commit and self._last_run_succeeded and self._last_succeeded_context:
             self._commit_variation(
@@ -1162,6 +1214,8 @@ class OptimizationClient:
             on_failing_result=gt_options.on_failing_result,
             on_status_update=gt_options.on_status_update,
             token_limit=gt_options.token_limit,
+            latency_optimization=gt_options.latency_optimization,
+            token_optimization=gt_options.token_optimization,
         )
         self._options = bridge
         self._agent_config = agent_config
@@ -1579,12 +1633,8 @@ class OptimizationClient:
         )
         self._safe_status_update("generating variation", status_ctx, iteration)
 
-        optimize_for_duration = _acceptance_criteria_implies_duration_optimization(
-            self._options.judges
-        )
-        optimize_for_cost = _acceptance_criteria_implies_cost_optimization(
-            self._options.judges
-        )
+        optimize_for_duration = bool(self._options.latency_optimization)
+        optimize_for_cost = bool(self._options.token_optimization)
         quality_already_passing = self._all_judges_passing()
         instructions = build_new_variation_prompt(
             self._history,
@@ -1989,6 +2039,9 @@ class OptimizationClient:
                 on_failing_result=options.on_failing_result,
                 on_status_update=_persist_and_forward,
                 token_limit=config.get("tokenLimit"),
+                latency_optimization=config.get("latencyOptimization"),
+                token_optimization=config.get("tokenOptimization"),
+                auto_commit=config.get("autoCommit", True),
             )
 
         variable_choices: List[Dict[str, Any]] = config["variableChoices"] or [{}]
@@ -2009,6 +2062,9 @@ class OptimizationClient:
             on_failing_result=options.on_failing_result,
             on_status_update=_persist_and_forward,
             token_limit=config.get("tokenLimit"),
+            latency_optimization=config.get("latencyOptimization"),
+            token_optimization=config.get("tokenOptimization"),
+            auto_commit=config.get("autoCommit", True),
         )
 
     async def _execute_agent_turn(
@@ -2269,7 +2325,7 @@ class OptimizationClient:
         :param ctx: Current optimization context.
         :return: (passed, updated_ctx) where passed reflects gate outcome.
         """
-        if not _acceptance_criteria_implies_duration_optimization(self._options.judges):
+        if not bool(self._options.latency_optimization):
             return passed_so_far, ctx
         passed = self._evaluate_duration(ctx)
         if passed:
@@ -2323,7 +2379,7 @@ class OptimizationClient:
         :param ctx: Current optimization context.
         :return: (passed, updated_ctx) where passed reflects gate outcome.
         """
-        if not _acceptance_criteria_implies_cost_optimization(self._options.judges):
+        if not bool(self._options.token_optimization):
             return passed_so_far, ctx
         passed = self._evaluate_cost(ctx)
         if passed:

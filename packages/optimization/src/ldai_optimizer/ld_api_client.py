@@ -90,6 +90,9 @@ class AgentOptimizationConfig(_AgentOptimizationConfigRequired, total=False):
     groundTruthResponses: List[str]
     metricKey: str
     tokenLimit: int
+    latencyOptimization: bool
+    tokenOptimization: bool
+    autoCommit: bool
 
 
 # ---------------------------------------------------------------------------

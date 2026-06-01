@@ -1,6 +1,5 @@
 """Prompt-building functions for LaunchDarkly AI optimization."""
 
-import re
 from typing import Any, Dict, List, Optional
 
 from ldai_optimizer.dataclasses import (
@@ -8,64 +7,6 @@ from ldai_optimizer.dataclasses import (
     OptimizationJudge,
 )
 from ldai_optimizer.util import judge_passed
-
-_DURATION_KEYWORDS = re.compile(
-    r"\b(fast|faster|quickly|quick|latency|low-latency|duration|response\s+time|"
-    r"time\s+to\s+respond|milliseconds|performant|snappy|efficient|seconds)\b|"
-    r"(?<![a-zA-Z])ms\b",
-    re.IGNORECASE,
-)
-
-_COST_KEYWORDS = re.compile(
-    r"\b(cheap|cheaper|cheapest|costs?|costly|expensive|budget|affordable|"
-    r"spend|spending|economical|cost-effective|frugal|"
-    r"price|pricing|bill|billing)\b",
-    re.IGNORECASE,
-)
-
-
-def _acceptance_criteria_implies_duration_optimization(
-    judges: Optional[Dict[str, OptimizationJudge]],
-) -> bool:
-    """Return True if any judge acceptance statement implies a latency optimization goal.
-
-    Scans each judge's acceptance_statement for latency-related keywords. The
-    check is case-insensitive. Returns False when judges is None or no judge
-    carries an acceptance statement.
-
-    :param judges: Judge configuration dict from OptimizationOptions, or None.
-    :return: True if duration optimization should be applied.
-    """
-    if not judges:
-        return False
-    for judge in judges.values():
-        if judge.acceptance_statement and _DURATION_KEYWORDS.search(
-            judge.acceptance_statement
-        ):
-            return True
-    return False
-
-
-def _acceptance_criteria_implies_cost_optimization(
-    judges: Optional[Dict[str, OptimizationJudge]],
-) -> bool:
-    """Return True if any judge acceptance statement implies a cost reduction goal.
-
-    Scans each judge's acceptance_statement for cost-related keywords. The
-    check is case-insensitive. Returns False when judges is None or no judge
-    carries an acceptance statement.
-
-    :param judges: Judge configuration dict from OptimizationOptions, or None.
-    :return: True if cost optimization should be applied.
-    """
-    if not judges:
-        return False
-    for judge in judges.values():
-        if judge.acceptance_statement and _COST_KEYWORDS.search(
-            judge.acceptance_statement
-        ):
-            return True
-    return False
 
 
 def build_message_history_text(

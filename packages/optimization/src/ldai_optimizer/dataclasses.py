@@ -348,9 +348,14 @@ class OptimizationOptions:
     context_choices: List[Context] = field(
         default_factory=lambda: [Context.builder("anonymous").anonymous(True).build()]
     )
+    # Base variation - Optional
+    variation_key: Optional[str] = None  # use this specific variation as the base; defaults to the flag's default variation; requires API key + project_key
+    # Optimization controls - Optional; when None the corresponding gate/prompt is disabled
+    latency_optimization: Optional[bool] = None
+    token_optimization: Optional[bool] = None
     # Auto-commit - Optional
     auto_commit: bool = False
-    project_key: Optional[str] = None  # required when auto_commit=True
+    project_key: Optional[str] = None  # required when auto_commit=True or variation_key is set
     output_key: Optional[str] = None   # variation key/name; auto-generated if omitted
     base_url: Optional[str] = None  # override to target a non-default LD instance
     on_passing_result: Optional[Callable[[OptimizationContext], None]] = None
@@ -440,9 +445,14 @@ class GroundTruthOptimizationOptions:
     context_choices: List[Context] = field(
         default_factory=lambda: [Context.builder("anonymous").anonymous(True).build()]
     )
+    # Base variation - Optional
+    variation_key: Optional[str] = None  # use this specific variation as the base; defaults to the flag's default variation; requires API key + project_key
+    # Optimization controls - Optional; when None the corresponding gate/prompt is disabled
+    latency_optimization: Optional[bool] = None
+    token_optimization: Optional[bool] = None
     # Auto-commit - Optional
     auto_commit: bool = False
-    project_key: Optional[str] = None  # required when auto_commit=True
+    project_key: Optional[str] = None  # required when auto_commit=True or variation_key is set
     output_key: Optional[str] = None   # variation key/name; auto-generated if omitted
     base_url: Optional[str] = None  # override to target a non-default LD instance
     token_limit: Optional[int] = None  # stop the run when total token usage reaches this value
