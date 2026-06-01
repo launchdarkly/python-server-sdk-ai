@@ -6,7 +6,7 @@ from typing import Any, Dict
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from ldai import AIAgentConfig, AIJudgeConfig, LDAIClient
+from ldai import AIAgentConfig, LDAIClient
 from ldai.client import Evaluator
 from ldai.models import LDMessage, ModelConfig
 from ldai.tracker import TokenUsage
@@ -717,20 +717,19 @@ class TestEvaluateConfigJudge:
         self.handle_judge_call = AsyncMock(return_value=OptimizationResponse(output=JUDGE_PASS_RESPONSE))
         self.client._options = _make_options(handle_judge_call=self.handle_judge_call)
 
-    def _make_judge_config(self, enabled: bool = True) -> AIJudgeConfig:
-        return AIJudgeConfig(
-            key="ld-judge-key",
-            enabled=enabled,
-            create_tracker=MagicMock,
-            model=ModelConfig(name="gpt-4o", parameters={}),
-            messages=[
-                LDMessage(role="system", content="You are an evaluator."),
-                LDMessage(role="user", content="Evaluate this response."),
+    def _make_raw_variation(self, enabled: bool = True) -> Dict[str, Any]:
+        """Raw variation dict as returned by _client.variation for a judge flag."""
+        return {
+            "_ldMeta": {"enabled": enabled},
+            "messages": [
+                {"role": "system", "content": "You are an evaluator."},
+                {"role": "user", "content": "Evaluate this response."},
             ],
-        )
+            "model": {"name": "gpt-4o", "parameters": {}},
+        }
 
     async def test_calls_handle_judge_call_with_correct_config_type(self):
-        self.mock_ldai.judge_config.return_value = self._make_judge_config()
+        self.mock_ldai._client.variation.return_value = self._make_raw_variation()
         judge = OptimizationJudge(threshold=0.8, judge_key="ld-judge-key")
         await self.client._evaluate_config_judge(
             judge_key="quality",
@@ -748,7 +747,7 @@ class TestEvaluateConfigJudge:
         assert isinstance(ctx, OptimizationJudgeContext)
 
     async def test_messages_has_system_and_user_turns(self):
-        self.mock_ldai.judge_config.return_value = self._make_judge_config()
+        self.mock_ldai._client.variation.return_value = self._make_raw_variation()
         judge = OptimizationJudge(threshold=0.8, judge_key="ld-judge-key")
         await self.client._evaluate_config_judge(
             judge_key="quality",
@@ -763,7 +762,7 @@ class TestEvaluateConfigJudge:
         assert roles == ["system", "user"]
 
     async def test_messages_system_content_matches_instructions(self):
-        self.mock_ldai.judge_config.return_value = self._make_judge_config()
+        self.mock_ldai._client.variation.return_value = self._make_raw_variation()
         judge = OptimizationJudge(threshold=0.8, judge_key="ld-judge-key")
         await self.client._evaluate_config_judge(
             judge_key="quality",
@@ -778,7 +777,7 @@ class TestEvaluateConfigJudge:
         assert system_msg.content == config.instructions
 
     async def test_messages_user_content_matches_context_user_input(self):
-        self.mock_ldai.judge_config.return_value = self._make_judge_config()
+        self.mock_ldai._client.variation.return_value = self._make_raw_variation()
         judge = OptimizationJudge(threshold=0.8, judge_key="ld-judge-key")
         await self.client._evaluate_config_judge(
             judge_key="quality",
@@ -793,7 +792,7 @@ class TestEvaluateConfigJudge:
         assert user_msg.content == ctx.user_input
 
     async def test_messages_user_content_contains_ld_user_message(self):
-        self.mock_ldai.judge_config.return_value = self._make_judge_config()
+        self.mock_ldai._client.variation.return_value = self._make_raw_variation()
         judge = OptimizationJudge(threshold=0.8, judge_key="ld-judge-key")
         await self.client._evaluate_config_judge(
             judge_key="quality",
@@ -808,7 +807,7 @@ class TestEvaluateConfigJudge:
         assert "Evaluate this response." in user_msg.content
 
     async def test_returns_zero_score_when_judge_disabled(self):
-        self.mock_ldai.judge_config.return_value = self._make_judge_config(enabled=False)
+        self.mock_ldai._client.variation.return_value = self._make_raw_variation(enabled=False)
         judge = OptimizationJudge(threshold=0.8, judge_key="ld-judge-key")
         result = await self.client._evaluate_config_judge(
             judge_key="quality",
@@ -821,31 +820,37 @@ class TestEvaluateConfigJudge:
         assert result.score == 0.0
         self.handle_judge_call.assert_not_called()
 
-    async def test_returns_zero_score_when_judge_has_no_messages(self):
-        judge_config = AIJudgeConfig(
-            key="ld-judge-key",
-            enabled=True,
-            create_tracker=MagicMock,
-            model=ModelConfig(name="gpt-4o", parameters={}),
-            messages=None,
-        )
-        self.mock_ldai.judge_config.return_value = judge_config
+    async def test_system_only_template_auto_generates_user_message(self):
+        """When the flag template has only a system message, a user turn is synthesised."""
+        self.mock_ldai._client.variation.return_value = {
+            "_ldMeta": {"enabled": True},
+            "messages": [{"role": "system", "content": "You are an evaluator."}],
+            "model": {"name": "gpt-4o", "parameters": {}},
+        }
         judge = OptimizationJudge(threshold=0.8, judge_key="ld-judge-key")
-        result = await self.client._evaluate_config_judge(
+        await self.client._evaluate_config_judge(
             judge_key="quality",
             optimization_judge=judge,
-            completion_response="Any.",
+            completion_response="The answer is 42.",
             iteration=1,
             reasoning_history="",
-            user_input="Anything?",
+            user_input="What is the answer?",
         )
-        assert result.score == 0.0
-        self.handle_judge_call.assert_not_called()
+        _, config, _, _ = self.handle_judge_call.call_args.args
+        user_msg = next(m for m in config.messages if m.role == "user")
+        assert "The answer is 42." in user_msg.content
 
-    async def test_template_variables_merged_into_judge_config_call(self):
-        self.mock_ldai.judge_config.return_value = self._make_judge_config()
+    async def test_template_variables_interpolated_into_messages(self):
+        """Custom agent variables are interpolated into judge template messages."""
+        self.mock_ldai._client.variation.return_value = {
+            "_ldMeta": {"enabled": True},
+            "messages": [
+                {"role": "system", "content": "Evaluate in {{language}}."},
+                {"role": "user", "content": "Evaluate this response."},
+            ],
+            "model": {"name": "gpt-4o", "parameters": {}},
+        }
         judge = OptimizationJudge(threshold=0.8, judge_key="ld-judge-key")
-        variables = {"language": "Spanish"}
         await self.client._evaluate_config_judge(
             judge_key="quality",
             optimization_judge=judge,
@@ -853,16 +858,38 @@ class TestEvaluateConfigJudge:
             iteration=1,
             reasoning_history="",
             user_input="Q?",
-            variables=variables,
+            variables={"language": "Spanish"},
         )
-        call_kwargs = self.mock_ldai.judge_config.call_args
-        passed_vars = call_kwargs.args[3] if call_kwargs.args else call_kwargs.kwargs.get("variables", {})
-        assert passed_vars.get("language") == "Spanish"
-        assert "message_history" in passed_vars
-        assert "response_to_evaluate" in passed_vars
+        _, config, _, _ = self.handle_judge_call.call_args.args
+        assert "Spanish" in config.instructions
+
+    async def test_reserved_variables_interpolated_into_template_messages(self):
+        """message_history and response_to_evaluate are interpolated when present in the template."""
+        self.mock_ldai._client.variation.return_value = {
+            "_ldMeta": {"enabled": True},
+            "messages": [
+                {"role": "system", "content": "History: {{message_history}}"},
+                {"role": "user", "content": "Response: {{response_to_evaluate}}"},
+            ],
+            "model": {"name": "gpt-4o", "parameters": {}},
+        }
+        judge = OptimizationJudge(threshold=0.8, judge_key="ld-judge-key")
+        await self.client._evaluate_config_judge(
+            judge_key="quality",
+            optimization_judge=judge,
+            completion_response="My answer.",
+            iteration=1,
+            reasoning_history="",
+            user_input="Q?",
+        )
+        _, config, _, _ = self.handle_judge_call.call_args.args
+        system_msg = next(m for m in config.messages if m.role == "system")
+        assert "History:" in system_msg.content
+        user_msg = next(m for m in config.messages if m.role == "user")
+        assert "My answer." in user_msg.content
 
     async def test_agent_tools_included_without_evaluation_tool(self):
-        self.mock_ldai.judge_config.return_value = self._make_judge_config()
+        self.mock_ldai._client.variation.return_value = self._make_raw_variation()
         agent_tool = ToolDefinition(name="search", description="Search", input_schema={})
         judge = OptimizationJudge(threshold=0.8, judge_key="ld-judge-key")
         await self.client._evaluate_config_judge(

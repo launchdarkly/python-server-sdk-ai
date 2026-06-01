@@ -20,6 +20,7 @@ import json
 import logging
 import os
 import random
+import re
 import time
 import uuid
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
@@ -67,6 +68,15 @@ from ldai_optimizer.util import (
 
 logger = logging.getLogger(__name__)
 logger.addFilter(RedactionFilter())
+
+
+def _interpolate(template: str, variables: Dict[str, Any]) -> str:
+    """Replace {{key}} tokens with values from variables; unresolved tokens become empty string."""
+    return re.sub(
+        r"\{\{(\w+)\}\}",
+        lambda m: str(variables.get(m.group(1), "")),
+        template,
+    )
 
 
 def _find_model_config(
@@ -402,18 +412,65 @@ class OptimizationClient:
         variables: Dict[str, Any],
     ) -> AIJudgeConfig:
         """
-        Fetch a judge configuration from the LaunchDarkly client.
+        Fetch a judge configuration by evaluating the flag variation directly.
 
-        Thin wrapper around LDAIClient.judge_config so callers do not need a
-        direct reference to the client.
+        Bypasses LDAIClient.judge_config to avoid the reserved-variable warnings
+        for 'message_history' and 'response_to_evaluate'. Those variables are
+        interpolated here with their actual values instead of being neutralised
+        by the SDK. If the template contains only a system message, a user turn
+        is synthesised from the provided message_history and response_to_evaluate
+        so that _evaluate_config_judge always receives a complete conversation.
 
         :param judge_key: The key for the judge configuration in LaunchDarkly
         :param context: The evaluation context
-        :param default: Fallback config when the flag is disabled or unreachable
-        :param variables: Template variables for instruction interpolation
+        :param default: Unused; kept for signature compatibility
+        :param variables: Template variables including message_history and response_to_evaluate
         :return: The resolved AIJudgeConfig
         """
-        return self._ldClient.judge_config(judge_key, context, default, variables)
+        variation: Dict[str, Any] = self._ldClient._client.variation(judge_key, context, {})
+        enabled: bool = bool(variation.get("_ldMeta", {}).get("enabled", False))
+
+        all_variables: Dict[str, Any] = {"ldctx": context.to_dict(), **variables}
+
+        messages: List[LDMessage] = []
+        raw_messages = variation.get("messages")
+        if isinstance(raw_messages, list) and all(isinstance(m, dict) for m in raw_messages):
+            messages = [
+                LDMessage(
+                    role=m["role"],
+                    content=_interpolate(m.get("content", ""), all_variables),
+                )
+                for m in raw_messages
+            ]
+
+        # New-style templates only have a system message. Auto-generate a user
+        # turn so _evaluate_config_judge always has a complete conversation to split.
+        if not any(m.role == "user" for m in messages):
+            message_history = variables.get("message_history", "")
+            response_to_evaluate = variables.get("response_to_evaluate", "")
+            parts: List[str] = []
+            if message_history:
+                parts.append(str(message_history))
+            parts.append(f"Here is the response to evaluate: {response_to_evaluate}")
+            messages.append(LDMessage(role="user", content="\n\n".join(parts)))
+
+        model: Optional[ModelConfig] = None
+        raw_model = variation.get("model")
+        if isinstance(raw_model, dict):
+            model = ModelConfig(
+                name=raw_model.get("name", ""),
+                parameters=raw_model.get("parameters"),
+                custom=raw_model.get("custom"),
+            )
+
+        return AIJudgeConfig(
+            key=judge_key,
+            enabled=enabled,
+            create_tracker=lambda: None,
+            model=model,
+            messages=messages,
+            evaluation_metric_key=variation.get("evaluationMetricKey"),
+        )
 
     def _serialize_scores(
         self, judge_results: Dict[str, JudgeResult]
