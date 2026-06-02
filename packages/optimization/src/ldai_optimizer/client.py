@@ -1815,7 +1815,7 @@ class OptimizationClient:
         else:
             result = await self._run_optimization(agent_config, optimization_options)
 
-        if options.auto_commit and self._last_run_succeeded and self._last_succeeded_context:
+        if optimization_options.auto_commit and options.auto_commit and self._last_run_succeeded and self._last_succeeded_context:
             created_key = self._commit_variation(
                 self._last_succeeded_context,
                 project_key=options.project_key,

@@ -4813,6 +4813,21 @@ class TestAutoCommitInOptimizeFromConfig:
 
         mock_commit.assert_not_called()
 
+    async def test_commit_not_called_when_api_config_auto_commit_false(self):
+        """autoCommit: false in the API config suppresses the commit even when
+        OptimizationFromConfigOptions.auto_commit is True (the default)."""
+        client = self._make_client_with_key()
+        mock_api = _make_mock_api_client()
+        api_config_no_commit = {**_API_CONFIG, "autoCommit": False}
+        mock_api.get_agent_optimization = MagicMock(return_value=api_config_no_commit)
+
+        with patch("ldai_optimizer.client.LDApiClient", return_value=mock_api):
+            with patch.object(client, "_commit_variation") as mock_commit:
+                # options.auto_commit is True (default); commit must still be skipped
+                await client.optimize_from_config("my-opt", _make_from_config_options())
+
+        mock_commit.assert_not_called()
+
     async def test_commit_receives_pre_built_api_client(self):
         """The api_client created for fetching config is reused for _commit_variation."""
         client = self._make_client_with_key()
