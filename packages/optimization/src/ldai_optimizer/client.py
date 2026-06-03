@@ -1466,8 +1466,14 @@ class OptimizationClient:
                         last_ctx.iteration,
                     )
                     if self._last_succeeded_context is None:
+                        # No Phase 2 candidate won; restore the Phase 1 winner.
                         self._last_run_succeeded = True
                         self._last_succeeded_context = phase1_winner
+                    elif self._last_succeeded_context is not phase1_winner:
+                        # Phase 2 selected a better model; return that context so
+                        # callers (including auto_commit) see the actual final winner
+                        # rather than the stale Phase 1 GT batch results.
+                        return [self._last_succeeded_context]
                 return attempt_results
 
             # We've hit max attempts for the batches, bail at this point
@@ -2690,10 +2696,13 @@ class OptimizationClient:
             if i < max_iters - 1:
                 self._safe_status_update("turn completed", ctx, iteration)
 
-        # Report results: fail non-winners first (preserving _last_succeeded_context
-        # as the Phase 1 winner until the very end), then succeed the best candidate.
+        # Send terminal FAILED status for each non-winning model attempt.
+        # We use _safe_status_update directly rather than _handle_failure so that
+        # exploratory Phase 2 misses don't corrupt _last_run_succeeded,
+        # _last_succeeded_context, or trigger on_failing_result — those are
+        # run-level signals that should only fire if the whole optimization fails.
         for failed_ctx in non_candidates:
-            self._handle_failure(failed_ctx, failed_ctx.iteration)
+            self._safe_status_update("failure", failed_ctx, failed_ctx.iteration)
 
         if candidates:
             best = self._pick_best_candidate(candidates)
