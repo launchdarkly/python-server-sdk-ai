@@ -316,6 +316,7 @@ _StatusLiteral = Literal[
     "turn completed",
     "success",
     "failure",
+    "optimizing cost/latency",
 ]
 
 

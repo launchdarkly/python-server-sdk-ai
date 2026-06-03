@@ -36,6 +36,7 @@ from ldai_optimizer.dataclasses import (
 )
 from ldai_optimizer.prompts import (
     build_new_variation_prompt,
+    build_token_latency_variation_prompt,
     variation_prompt_acceptance_criteria,
     variation_prompt_cost_optimization,
     variation_prompt_feedback,
@@ -560,11 +561,12 @@ class TestEvaluateAcceptanceJudge:
         assert ctx.current_variables == variables
 
     async def test_duration_context_added_when_latency_optimization_true_and_duration_provided(self):
-        """When latency_optimization=True and agent_duration_ms is provided,
-        the judge instructions mention the duration."""
+        """In Phase 2 (cost/latency), when latency_optimization=True and agent_duration_ms is
+        provided, the judge instructions mention the duration."""
         self.client._options = _make_options(
             handle_judge_call=self.handle_judge_call, latency_optimization=True
         )
+        self.client._in_cost_latency_phase = True
         judge = OptimizationJudge(threshold=0.8, acceptance_statement="Be accurate.")
         await self.client._evaluate_acceptance_judge(
             judge_key="speed",
@@ -580,10 +582,11 @@ class TestEvaluateAcceptanceJudge:
         assert "state the duration" in config.instructions
 
     async def test_duration_context_includes_baseline_comparison_when_history_present(self):
-        """When a baseline duration is captured, the judge instructions include a baseline comparison."""
+        """In Phase 2, when a baseline duration is captured, instructions include a baseline comparison."""
         self.client._options = _make_options(
             handle_judge_call=self.handle_judge_call, latency_optimization=True
         )
+        self.client._in_cost_latency_phase = True
         self.client._history = [
             OptimizationContext(
                 scores={},
@@ -612,10 +615,11 @@ class TestEvaluateAcceptanceJudge:
         assert "faster" in config.instructions
 
     async def test_duration_context_says_slower_when_candidate_is_slower(self):
-        """When the candidate is slower than baseline, the instructions say 'slower'."""
+        """In Phase 2, when the candidate is slower than baseline, instructions say 'slower'."""
         self.client._options = _make_options(
             handle_judge_call=self.handle_judge_call, latency_optimization=True
         )
+        self.client._in_cost_latency_phase = True
         self.client._history = [
             OptimizationContext(
                 scores={},
@@ -3975,18 +3979,17 @@ class TestDurationOptimizationChaosMode:
             duration_ms=duration_ms,
         )
 
-    async def test_duration_gate_triggers_variation_when_not_fast_enough(self):
-        """Judge passes but duration fails threshold → variation generated → second attempt succeeds."""
+    async def test_phase1_succeeds_regardless_of_duration_when_quality_passes(self):
+        """Phase 1 quality loop ignores duration — slow iterations still pass if quality judges pass."""
         client = _make_client(self.mock_ldai)
 
-        # Iter 1: judge fails → history[0].duration_ms = 2000
-        # Iter 2: judge passes, duration 1800ms ≥ 2000 * 0.80 = 1600ms → duration fails → variation
-        # Iter 3: judge passes, duration 1500ms < 1600ms → passes → validation → success
+        # Iter 1: judge fails → variation generated
+        # Iter 2: judge passes even with slow duration → validation → Phase 1 success
+        # (duration gate runs only in Phase 2, not Phase 1)
         execute_side_effects = [
-            self._ctx_with(duration_ms=2000, score=0.2, iteration=1),   # iter 1: judge fails
-            self._ctx_with(duration_ms=1800, score=1.0, iteration=2),   # iter 2: judge passes, duration fails
-            self._ctx_with(duration_ms=1500, score=1.0, iteration=3),   # iter 3: both pass
-            self._ctx_with(duration_ms=1500, score=1.0, iteration=4),   # validation
+            self._ctx_with(duration_ms=9000, score=0.2, iteration=1),   # iter 1: judge fails
+            self._ctx_with(duration_ms=9000, score=1.0, iteration=2),   # iter 2: quality passes despite slow
+            self._ctx_with(duration_ms=9000, score=1.0, iteration=3),   # validation passes
         ]
 
         handle_agent_call = AsyncMock(return_value=OptimizationResponse(output=VARIATION_RESPONSE))
@@ -3998,21 +4001,23 @@ class TestDurationOptimizationChaosMode:
 
         with patch.object(client, "_execute_agent_turn", new_callable=AsyncMock) as mock_execute:
             mock_execute.side_effect = execute_side_effects
-            result = await client.optimize_from_options("test-agent", opts)
+            # Phase 2 tries to run after Phase 1 success; mock additional calls for it
+            # (Phase 2 uses variation-generation + agent-turn pairs, so we need more mocks)
+            # To keep this test focused on Phase 1 gate removal, mock _run_cost_latency_phase
+            with patch.object(client, "_run_cost_latency_phase", new_callable=AsyncMock):
+                result = await client.optimize_from_options("test-agent", opts)
 
-        assert result.duration_ms == 1500
-        # 2 variations generated (after iter 1 judge fail, after iter 2 duration fail)
-        assert handle_agent_call.call_count == 2
-        assert mock_execute.call_count == 4
+        # Phase 1 succeeded despite high duration — 1 variation generated (after iter 1 judge fail)
+        assert result is not None
+        assert handle_agent_call.call_count == 1
 
     async def test_duration_check_skipped_on_first_iteration_no_baseline(self):
-        """First iteration has no history → duration check always skipped → succeeds even if slow."""
+        """Phase 1 never applies duration gate — first quality pass succeeds regardless of duration."""
         client = _make_client(self.mock_ldai)
 
-        # Iter 1 (no history): judge passes, duration check skipped → validation
-        # Validation: judge passes, duration check still uses history[0] = None since nothing appended yet
+        # Iter 1: judge passes with high duration → validation → Phase 1 success (no gate in Phase 1)
         execute_side_effects = [
-            self._ctx_with(duration_ms=9999, score=1.0, iteration=1),   # iter 1: would fail if checked
+            self._ctx_with(duration_ms=9999, score=1.0, iteration=1),
             self._ctx_with(duration_ms=9999, score=1.0, iteration=2),   # validation
         ]
 
@@ -4024,10 +4029,11 @@ class TestDurationOptimizationChaosMode:
 
         with patch.object(client, "_execute_agent_turn", new_callable=AsyncMock) as mock_execute:
             mock_execute.side_effect = execute_side_effects
-            result = await client.optimize_from_options("test-agent", opts)
+            with patch.object(client, "_run_cost_latency_phase", new_callable=AsyncMock):
+                result = await client.optimize_from_options("test-agent", opts)
 
-        # Succeeds because history is empty and duration check is skipped
-        assert result.duration_ms == 9999
+        # Phase 1 succeeds despite 9999ms — no duration gate in Phase 1
+        assert result is not None
 
     async def test_no_duration_gate_when_latency_optimization_is_none(self):
         """latency_optimization=None → duration gate never applied."""
@@ -4054,21 +4060,16 @@ class TestDurationOptimizationChaosMode:
 
         assert result is not None
 
-    async def test_evaluate_duration_called_in_validation_phase(self):
-        """Duration gate also runs on validation samples, not just the primary turn."""
+    async def test_phase1_validation_succeeds_regardless_of_duration(self):
+        """Phase 1 validation phase also does not apply the duration gate — quality only."""
         client = _make_client(self.mock_ldai)
 
-        # Iter 1: judge fails → history[0].duration_ms = 2000
-        # Iter 2: judge passes, duration 1500ms → primary passes
-        # Validation sample: judge passes, duration 1800ms ≥ 1600ms → validation fails → variation
-        # Iter 3: judge passes, duration 1500ms → primary passes
-        # Validation: judge passes, duration 1500ms → validation passes → success
+        # Iter 1: judge fails → variation
+        # Iter 2: judge passes → validation: judge passes (high duration, but no gate in Phase 1) → success
         execute_side_effects = [
             self._ctx_with(duration_ms=2000, score=0.2, iteration=1),   # iter 1: judge fails
-            self._ctx_with(duration_ms=1500, score=1.0, iteration=2),   # iter 2: passes
-            self._ctx_with(duration_ms=1800, score=1.0, iteration=3),   # validation: duration fails
-            self._ctx_with(duration_ms=1500, score=1.0, iteration=4),   # iter 3: passes
-            self._ctx_with(duration_ms=1500, score=1.0, iteration=5),   # validation: passes
+            self._ctx_with(duration_ms=1500, score=1.0, iteration=2),   # iter 2: quality passes
+            self._ctx_with(duration_ms=9999, score=1.0, iteration=3),   # validation: passes despite slow
         ]
 
         handle_agent_call = AsyncMock(return_value=OptimizationResponse(output=VARIATION_RESPONSE))
@@ -4080,10 +4081,12 @@ class TestDurationOptimizationChaosMode:
 
         with patch.object(client, "_execute_agent_turn", new_callable=AsyncMock) as mock_execute:
             mock_execute.side_effect = execute_side_effects
-            result = await client.optimize_from_options("test-agent", opts)
+            with patch.object(client, "_run_cost_latency_phase", new_callable=AsyncMock):
+                result = await client.optimize_from_options("test-agent", opts)
 
-        assert result.duration_ms == 1500
-        assert mock_execute.call_count == 5
+        # Validation passes even though duration is 9999ms — no gate in Phase 1
+        assert result is not None
+        assert mock_execute.call_count == 3
 
 
 # ---------------------------------------------------------------------------
@@ -4107,35 +4110,19 @@ class TestDurationOptimizationGroundTruthMode:
             user_input=user_input,
         )
 
-    async def test_duration_gate_applied_per_sample_in_ground_truth_mode(self):
-        """In GT mode, the duration check fires per sample, not just once per attempt."""
+    async def test_phase1_gt_succeeds_regardless_of_duration_when_quality_passes(self):
+        """In GT Phase 1, duration gate does not apply — all-quality-passing attempts succeed."""
         client = _make_client(self.mock_ldai)
 
-        # Attempt 1:
-        #   Sample 1: judge fails (score 0.2) → all_passed = False
-        #   Sample 2: judge passes → duration skipped (history empty for sample 2)
-        #   → history extended with attempt 1 results → variation generated
-        # Attempt 2:
-        #   Sample 1: judge passes, duration 1800ms vs baseline history[0].duration_ms = 2000ms
-        #             → 1800 >= 1600 → duration fails → sample_passed = False → all_passed = False
-        #   (attempt 2 fails due to duration on sample 1)
-        #   → variation generated
-        # Attempt 3:
-        #   Sample 1: judge passes, duration 1500ms < 1600ms → passes
-        #   Sample 2: judge passes, duration 1500ms (history[0] still 2000ms) → passes
-        #   → all_passed = True → success
+        # Attempt 1: judge fails on sample 1 → all_passed = False → variation
+        # Attempt 2: both samples pass quality despite high duration → success (no gate in Phase 1)
         execute_side_effects = [
             # Attempt 1
             self._gt_ctx(duration_ms=2000, score=0.2, iteration=1, user_input="q1"),
             self._gt_ctx(duration_ms=2000, score=1.0, iteration=2, user_input="q2"),
-            # Variation (not from _execute_agent_turn, from handle_agent_call)
-            # Attempt 2
-            self._gt_ctx(duration_ms=1800, score=1.0, iteration=3, user_input="q1"),
-            self._gt_ctx(duration_ms=1800, score=1.0, iteration=4, user_input="q2"),
-            # Variation
-            # Attempt 3
-            self._gt_ctx(duration_ms=1500, score=1.0, iteration=5, user_input="q1"),
-            self._gt_ctx(duration_ms=1500, score=1.0, iteration=6, user_input="q2"),
+            # Attempt 2 — passes even with slow duration because no gate in Phase 1
+            self._gt_ctx(duration_ms=9000, score=1.0, iteration=3, user_input="q1"),
+            self._gt_ctx(duration_ms=9000, score=1.0, iteration=4, user_input="q2"),
         ]
 
         handle_agent_call = AsyncMock(return_value=OptimizationResponse(output=VARIATION_RESPONSE))
@@ -4147,14 +4134,13 @@ class TestDurationOptimizationGroundTruthMode:
 
         with patch.object(client, "_execute_agent_turn", new_callable=AsyncMock) as mock_execute:
             mock_execute.side_effect = execute_side_effects
-            results = await client.optimize_from_ground_truth_options("test-agent", opts)
+            with patch.object(client, "_run_cost_latency_phase", new_callable=AsyncMock):
+                results = await client.optimize_from_ground_truth_options("test-agent", opts)
 
         assert isinstance(results, list)
-        for ctx in results:
-            assert ctx.duration_ms == 1500
-        # 2 variations generated
-        assert handle_agent_call.call_count == 2
-        assert mock_execute.call_count == 6
+        # 1 variation generated (after attempt 1 failed on quality)
+        assert handle_agent_call.call_count == 1
+        assert mock_execute.call_count == 4
 
     async def test_no_duration_gate_in_gt_mode_when_latency_optimization_not_set(self):
         """In GT mode, duration gate is not applied when latency_optimization is None."""
@@ -5770,16 +5756,18 @@ class TestBuildNewVariationPromptCost:
         assert "Cost Optimization" not in result
 
     def test_cost_section_included_when_flag_set(self):
-        result = build_new_variation_prompt(
-            self._make_history(), None, "gpt-4o", "inst", {}, ["gpt-4o"], [{}], "inst",
+        """Phase 2 prompt includes Cost Optimization section when optimize_for_cost=True."""
+        result = build_token_latency_variation_prompt(
+            self._make_history(), ["gpt-4o"],
             optimize_for_cost=True,
         )
         assert "Cost Optimization" in result
 
     def test_duration_and_cost_sections_both_present(self):
-        result = build_new_variation_prompt(
-            self._make_history(), None, "gpt-4o", "inst", {}, ["gpt-4o"], [{}], "inst",
-            optimize_for_duration=True,
+        """Phase 2 prompt includes both Duration and Cost Optimization sections when both flags set."""
+        result = build_token_latency_variation_prompt(
+            self._make_history(), ["gpt-4o"],
+            optimize_for_latency=True,
             optimize_for_cost=True,
         )
         assert "Duration Optimization" in result
@@ -5856,6 +5844,7 @@ class TestEvaluateAcceptanceJudgeCostAugmentation:
         ]
 
     async def test_cost_context_injected_when_token_optimization_true(self):
+        """In Phase 2 (cost/latency), token usage is injected into judge instructions."""
         self._set_pricing()
         usage = TokenUsage(total=100, input=60, output=40)
         captured: list = []
@@ -5867,6 +5856,7 @@ class TestEvaluateAcceptanceJudgeCostAugmentation:
         self.client._options = _make_options(
             handle_judge_call=_capture_judge_call, token_optimization=True
         )
+        self.client._in_cost_latency_phase = True
         await self.client._evaluate_acceptance_judge(
             judge_key="cost-judge",
             optimization_judge=self._cost_judge(),
@@ -5907,6 +5897,7 @@ class TestEvaluateAcceptanceJudgeCostAugmentation:
         assert "cost/token-usage goal" not in instructions
 
     async def test_baseline_cost_shown_when_history_present(self):
+        """In Phase 2, when a baseline cost is set, judge instructions include baseline comparison."""
         self._set_pricing()
         usage = TokenUsage(total=100, input=60, output=40)
         captured: list = []
@@ -5929,6 +5920,7 @@ class TestEvaluateAcceptanceJudgeCostAugmentation:
         self.client._options = _make_options(
             handle_judge_call=_capture_judge_call, token_optimization=True
         )
+        self.client._in_cost_latency_phase = True
         await self.client._evaluate_acceptance_judge(
             judge_key="cost-judge",
             optimization_judge=self._cost_judge(),
