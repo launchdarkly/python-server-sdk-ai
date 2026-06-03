@@ -2229,10 +2229,17 @@ class OptimizationClient:
             agent_response.usage,
             _find_model_config(self._current_model or "", self._model_configs),
         )
+        # Build a _meta entry capturing raw cost and latency telemetry for every
+        # iteration, regardless of which optimization goals are enabled. This
+        # surfaces the measurements in the API/UI even when the gates are inactive.
         result_ctx = dataclasses.replace(
             optimize_context,
             completion_response=completion_response,
-            scores=scores,
+            scores={**scores, "_meta": JudgeResult(
+                score=0.0,
+                duration_ms=agent_duration_ms,
+                estimated_cost_usd=agent_cost,
+            )},
             duration_ms=agent_duration_ms,
             usage=agent_response.usage,
             estimated_cost_usd=agent_cost,
