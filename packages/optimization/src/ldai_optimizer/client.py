@@ -1445,21 +1445,16 @@ class OptimizationClient:
                     attempt,
                     n,
                 )
-                self._last_run_succeeded = True
-                self._last_succeeded_context = last_ctx
-                self._safe_status_update("success", last_ctx, last_ctx.iteration)
-                if self._options.on_passing_result:
-                    try:
-                        self._options.on_passing_result(last_ctx)
-                    except Exception:
-                        logger.exception(
-                            "[GT Attempt %d] -> on_passing_result callback failed", attempt
-                        )
                 # Phase 2: optimize model/params on the frozen winning variation.
                 if (
                     self._options.latency_optimization
                     or self._options.token_optimization
                 ) and not self._is_token_limit_exceeded():
+                    # Record Phase 1 success without firing on_passing_result yet;
+                    # we fire it once below with the true final winner.
+                    self._last_run_succeeded = True
+                    self._last_succeeded_context = last_ctx
+                    self._safe_status_update("success", last_ctx, last_ctx.iteration)
                     phase1_winner = self._last_succeeded_context
                     await self._run_cost_latency_phase(
                         last_ctx,
@@ -1469,11 +1464,28 @@ class OptimizationClient:
                         # No Phase 2 candidate won; restore the Phase 1 winner.
                         self._last_run_succeeded = True
                         self._last_succeeded_context = phase1_winner
-                    elif self._last_succeeded_context is not phase1_winner:
-                        # Phase 2 selected a better model; return that context so
-                        # callers (including auto_commit) see the actual final winner
-                        # rather than the stale Phase 1 GT batch results.
-                        return [self._last_succeeded_context]
+                else:
+                    self._last_run_succeeded = True
+                    self._last_succeeded_context = last_ctx
+                    self._safe_status_update("success", last_ctx, last_ctx.iteration)
+
+                # Fire on_passing_result exactly once with the true final winner.
+                final_winner = self._last_succeeded_context
+                if final_winner and self._options.on_passing_result:
+                    try:
+                        self._options.on_passing_result(final_winner)
+                    except Exception:
+                        logger.exception(
+                            "[GT Attempt %d] -> on_passing_result callback failed", attempt
+                        )
+
+                if (
+                    self._last_succeeded_context is not None
+                    and self._last_succeeded_context is not last_ctx
+                ):
+                    # Phase 2 selected a better model; return that context so
+                    # callers (including auto_commit) see the actual final winner.
+                    return [self._last_succeeded_context]
                 return attempt_results
 
             # We've hit max attempts for the batches, bail at this point
@@ -2193,8 +2205,6 @@ class OptimizationClient:
             )
         except Exception:
             logger.exception("[Iteration %d] -> Agent call failed", iteration)
-            if self._options.on_failing_result:
-                self._options.on_failing_result(optimize_context)
             raise
 
         scores: Dict[str, JudgeResult] = {}
@@ -2495,23 +2505,29 @@ class OptimizationClient:
         return passed_so_far and passed, ctx
 
     def _handle_success(
-        self, optimize_context: OptimizationContext, iteration: int
+        self,
+        optimize_context: OptimizationContext,
+        iteration: int,
+        suppress_user_callbacks: bool = False,
     ) -> Any:
         """
         Handle a successful optimization result.
 
-        Fires the "success" status update, invokes on_passing_result if set,
-        and returns the winning OptimizationContext.
+        Fires the "success" status update and (unless suppressed) invokes
+        on_passing_result. Pass suppress_user_callbacks=True from Phase 2 so
+        the API record is updated without firing on_passing_result a second time
+        — the caller is responsible for firing it once with the true final winner.
 
         :param optimize_context: The context from the passing iteration
         :param iteration: Current iteration number for logging
+        :param suppress_user_callbacks: When True, skip on_passing_result.
         :return: The passing OptimizationContext
         """
         logger.info("[Iteration %d] -> Optimization succeeded", iteration)
         self._last_run_succeeded = True
         self._last_succeeded_context = optimize_context
         self._safe_status_update("success", optimize_context, iteration)
-        if self._options.on_passing_result:
+        if not suppress_user_callbacks and self._options.on_passing_result:
             try:
                 self._options.on_passing_result(optimize_context)
             except Exception:
@@ -2566,13 +2582,15 @@ class OptimizationClient:
         def _score(ctx: OptimizationContext) -> float:
             total = 0.0
             if (
-                ctx.duration_ms is not None
+                self._options.latency_optimization
+                and ctx.duration_ms is not None
                 and self._baseline_duration_ms is not None
                 and self._baseline_duration_ms > 0
             ):
                 total += ctx.duration_ms / self._baseline_duration_ms
             if (
-                ctx.estimated_cost_usd is not None
+                self._options.token_optimization
+                and ctx.estimated_cost_usd is not None
                 and self._baseline_cost_usd is not None
                 and self._baseline_cost_usd > 0
             ):
@@ -2706,7 +2724,9 @@ class OptimizationClient:
 
         if candidates:
             best = self._pick_best_candidate(candidates)
-            self._handle_success(best, best.iteration)
+            # Suppress on_passing_result here — the caller fires it once with the
+            # true final winner after Phase 2 returns, so it is never double-fired.
+            self._handle_success(best, best.iteration, suppress_user_callbacks=True)
             logger.info(
                 "[Phase 2] -> Best candidate selected: model=%s, duration_ms=%s, cost=%s",
                 best.current_model,
@@ -3080,17 +3100,34 @@ class OptimizationClient:
                     optimize_context, iteration
                 )
                 if all_valid:
-                    self._handle_success(optimize_context, iteration)
-                    phase1_winner = self._last_succeeded_context
+                    # Suppress on_passing_result in _handle_success; we fire it
+                    # exactly once below with the true final winner so that Phase 2
+                    # (if it runs) cannot cause a double callback.
+                    self._handle_success(
+                        optimize_context, iteration, suppress_user_callbacks=True
+                    )
                     if (
                         self._options.latency_optimization
                         or self._options.token_optimization
                     ) and not self._is_token_limit_exceeded():
+                        phase1_winner = self._last_succeeded_context
                         await self._run_cost_latency_phase(optimize_context, iteration)
                         if self._last_succeeded_context is None:
                             self._last_run_succeeded = True
                             self._last_succeeded_context = phase1_winner
-                    return self._last_succeeded_context
+                    # Fire on_passing_result exactly once with the true final winner
+                    # (Phase 1 winner if Phase 2 was skipped/found nothing better,
+                    # or the Phase 2 best candidate otherwise).
+                    final_winner = self._last_succeeded_context
+                    if final_winner and self._options.on_passing_result:
+                        try:
+                            self._options.on_passing_result(final_winner)
+                        except Exception:
+                            logger.exception(
+                                "[Iteration %d] -> on_passing_result callback failed",
+                                iteration,
+                            )
+                    return final_winner
                 if self._is_token_limit_exceeded():
                     return self._handle_failure(last_ctx, iteration)
                 # Validation failed — treat as a normal failed attempt.
