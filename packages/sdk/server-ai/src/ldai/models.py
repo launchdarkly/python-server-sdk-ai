@@ -52,7 +52,13 @@ class ModelConfig:
     Configuration related to the model.
     """
 
-    def __init__(self, name: str, parameters: Optional[Dict[str, Any]] = None, custom: Optional[Dict[str, Any]] = None, region: Optional[str] = None):
+    def __init__(
+        self,
+        name: str,
+        parameters: Optional[Dict[str, Any]] = None,
+        custom: Optional[Dict[str, Any]] = None,
+        region: Optional[str] = None,
+    ):
         """
         :param name: The name of the model.
         :param parameters: Additional model-specific parameters.
