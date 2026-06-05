@@ -2,6 +2,15 @@
 
 All notable changes to the LaunchDarkly Python AI package will be documented in this file. This project adheres to [Semantic Versioning](http://semver.org).
 
+## [1.1.0](https://github.com/launchdarkly/python-server-sdk-ai/compare/launchdarkly-server-sdk-ai-1.0.1...launchdarkly-server-sdk-ai-1.1.0) (2026-06-05)
+
+
+### Features
+
+* Add region property to ModelConfig ([45707b6](https://github.com/launchdarkly/python-server-sdk-ai/commit/45707b691afc1031992add2d75b1b2fa0313c10a))
+* Add region property to ModelConfig ([219f71b](https://github.com/launchdarkly/python-server-sdk-ai/commit/219f71b80d981ccefe88ba75ad14713713f06d88))
+* Add region property to ModelConfig ([3427d26](https://github.com/launchdarkly/python-server-sdk-ai/commit/3427d2648e9f47226df2772c5a950ce440a5fe2e))
+
 ## [1.0.1](https://github.com/launchdarkly/python-server-sdk-ai/compare/launchdarkly-server-sdk-ai-1.0.0...launchdarkly-server-sdk-ai-1.0.1) (2026-05-19)
 
 
