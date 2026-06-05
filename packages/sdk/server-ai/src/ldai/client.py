@@ -832,10 +832,12 @@ class LDAIClient:
         if 'model' in variation and isinstance(variation['model'], dict):
             parameters = variation['model'].get('parameters', None)
             custom = variation['model'].get('custom', None)
+            region = variation['model'].get('region', None)
             model = ModelConfig(
                 name=variation['model']['name'],
                 parameters=parameters,
-                custom=custom
+                custom=custom,
+                region=region,
             )
 
         variation_key = variation.get('_ldMeta', {}).get('variationKey', '')

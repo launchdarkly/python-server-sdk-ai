@@ -32,6 +32,23 @@ def td() -> TestData:
     )
 
     td.update(
+        td.flag('model-config-with-region')
+        .variations(
+            {
+                'model': {
+                    'name': 'anthropic.claude-opus-4-7',
+                    'parameters': {},
+                    'region': 'us',
+                },
+                'provider': {'name': 'Bedrock'},
+                'messages': [{'role': 'system', 'content': 'Hello!'}],
+                '_ldMeta': {'enabled': True, 'variationKey': 'us-variation', 'version': 1},
+            },
+        )
+        .variation_for_all(0)
+    )
+
+    td.update(
         td.flag('multiple-messages')
         .variations(
             {
@@ -480,6 +497,36 @@ def test_create_tracker_preserves_config_metadata():
     assert track_data['modelName'] == 'gpt-4'
     assert track_data['providerName'] == 'openai'
     assert 'runId' in track_data
+
+
+def test_model_config_region():
+    model = ModelConfig('fakeModel', region='us')
+    assert model.region == 'us'
+
+
+def test_model_config_region_defaults_to_none():
+    model = ModelConfig('fakeModel')
+    assert model.region is None
+
+
+def test_model_config_region_from_flag(ldai_client: LDAIClient):
+    context = Context.create('user-key')
+    default = AICompletionConfigDefault(enabled=True, model=ModelConfig('fake-model'), messages=[])
+
+    config = ldai_client.completion_config('model-config-with-region', context, default)
+
+    assert config.model is not None
+    assert config.model.region == 'us'
+
+
+def test_model_config_no_region_is_none(ldai_client: LDAIClient):
+    context = Context.create('user-key')
+    default = AICompletionConfigDefault(enabled=True, model=ModelConfig('fake-model'), messages=[])
+
+    config = ldai_client.completion_config('model-config', context, default)
+
+    assert config.model is not None
+    assert config.model.region is None
 
 
 def test_create_tracker_each_call_has_different_run_id():
