@@ -52,15 +52,17 @@ class ModelConfig:
     Configuration related to the model.
     """
 
-    def __init__(self, name: str, parameters: Optional[Dict[str, Any]] = None, custom: Optional[Dict[str, Any]] = None):
+    def __init__(self, name: str, parameters: Optional[Dict[str, Any]] = None, custom: Optional[Dict[str, Any]] = None, region: Optional[str] = None):
         """
         :param name: The name of the model.
         :param parameters: Additional model-specific parameters.
         :param custom: Additional customer provided data.
+        :param region: The region the model is deployed in.
         """
         self._name = name
         self._parameters = parameters
         self._custom = custom
+        self._region = region
 
     @property
     def name(self) -> str:
@@ -93,6 +95,13 @@ class ModelConfig:
 
         return self._custom.get(key)
 
+    @property
+    def region(self) -> Optional[str]:
+        """
+        The region the model is deployed in.
+        """
+        return self._region
+
     def to_dict(self) -> dict:
         """
         Render the given model config as a dictionary object.
@@ -101,6 +110,7 @@ class ModelConfig:
             'name': self._name,
             'parameters': self._parameters,
             'custom': self._custom,
+            'region': self._region,
         }
 
 
