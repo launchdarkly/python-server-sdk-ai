@@ -83,9 +83,6 @@ def build_new_variation_prompt(
     model_choices: List[str],
     variable_choices: List[Dict[str, Any]],
     initial_instructions: str,
-    optimize_for_duration: bool = False,
-    optimize_for_cost: bool = False,
-    quality_already_passing: bool = False,
 ) -> str:
     """
     Build the LLM prompt for generating an improved agent configuration.
@@ -103,13 +100,6 @@ def build_new_variation_prompt(
     :param model_choices: List of model IDs the LLM may select from
     :param variable_choices: List of variable dicts (used to derive placeholder names)
     :param initial_instructions: The original unmodified instructions template
-    :param optimize_for_duration: When True, appends a duration optimization section
-        instructing the LLM to prefer faster models and simpler instructions.
-    :param optimize_for_cost: When True, appends a cost optimization section
-        instructing the LLM to prefer cheaper models and reduce token usage.
-    :param quality_already_passing: When True, signals that all judge criteria are
-        currently passing and the cost optimization section should instruct the LLM
-        to preserve existing behavior while only reducing cost.
     :return: The assembled prompt string
     """
     sections = [
@@ -123,13 +113,118 @@ def build_new_variation_prompt(
         variation_prompt_improvement_instructions(
             history, model_choices, variable_choices, initial_instructions
         ),
-        variation_prompt_duration_optimization(model_choices) if optimize_for_duration else "",
-        variation_prompt_cost_optimization(
-            model_choices, quality_already_passing=quality_already_passing
-        ) if optimize_for_cost else "",
     ]
 
     return "\n\n".join(s for s in sections if s)
+
+
+def build_token_latency_variation_prompt(
+    history: List[OptimizationContext],
+    model_choices: List[str],
+    optimize_for_latency: bool = False,
+    optimize_for_cost: bool = False,
+) -> str:
+    """
+    Build the Phase 2 LLM prompt for generating a cost/latency-optimized configuration.
+
+    The agent's content (instructions, tools) is frozen after Phase 1 quality
+    iterations. Only the model and parameters may be adjusted in this phase.
+    The LLM is strongly directed to try different models from model_choices across
+    iterations to ensure each model is evaluated at least once.
+
+    :param history: Phase 2 OptimizationContexts, oldest first (starts with Phase 1 winner).
+    :param model_choices: List of model IDs the LLM may select from.
+    :param optimize_for_latency: When True, includes a latency reduction section.
+    :param optimize_for_cost: When True, includes a cost reduction section.
+    :return: The assembled Phase 2 prompt string.
+    """
+    # Collect models already tried in Phase 2 history (skip index 0 = Phase 1 winner)
+    tried_models = [ctx.current_model for ctx in history[1:] if ctx.current_model]
+    untried_models = [m for m in model_choices if m not in tried_models]
+
+    preamble = "\n".join([
+        "You are an assistant that helps optimize an agent's model and parameters for cost and latency.",
+        "",
+        "## *** CONTENT LOCK — CRITICAL ***",
+        "The agent's winning configuration has been selected and its content is now FROZEN.",
+        "You MUST return the instructions exactly as provided below — character for character.",
+        "You MUST NOT modify, paraphrase, shorten, or expand the instructions in any way.",
+        "The ONLY things you may change are:",
+        "  1. The model (choose from the available model list below)",
+        "  2. The parameters (e.g. temperature, max_tokens — but NOT tools or instructions)",
+        "",
+        "Any change to instructions will be silently reverted. Only model and parameter changes matter here.",
+    ])
+
+    model_section = "\n".join([
+        "## Model Selection:",
+        f"Available models: {model_choices}",
+        "IMPORTANT: You MUST try a DIFFERENT model from the one used in the most recent iteration.",
+        "The goal is to evaluate each available model at least once to find the fastest and/or cheapest option.",
+    ])
+    if untried_models:
+        model_section += f"\nModels not yet tried: {untried_models} — strongly prefer one of these."
+    if tried_models:
+        model_section += f"\nModels already tried: {tried_models} — avoid repeating these unless all options are exhausted."
+
+    config_section = variation_prompt_configuration(
+        history,
+        history[-1].current_model if history else None,
+        history[-1].current_instructions if history else "",
+        history[-1].current_parameters if history else {},
+    )
+
+    feedback_section = _build_cost_latency_feedback(history)
+
+    output_format = "\n".join([
+        "## Output Format:",
+        "Return a JSON object with exactly these keys: current_instructions, current_parameters, model.",
+        "The current_instructions value MUST be identical to the instructions shown above.",
+        "Example:",
+        "{",
+        '  "current_instructions": "<exact frozen instructions — copy verbatim>",',
+        '  "current_parameters": { "temperature": 0.5, "max_tokens": 256 },',
+        '  "model": "gpt-4o-mini"',
+        "}",
+    ])
+
+    sections = [preamble, model_section, config_section, feedback_section]
+
+    if optimize_for_latency:
+        sections.append(variation_prompt_duration_optimization(model_choices))
+    if optimize_for_cost:
+        sections.append(variation_prompt_cost_optimization(model_choices))
+
+    sections.append(output_format)
+
+    return "\n\n".join(s for s in sections if s)
+
+
+def _build_cost_latency_feedback(history: List[OptimizationContext]) -> str:
+    """
+    Build a feedback section showing cost/latency metrics from Phase 2 history.
+
+    :param history: Phase 2 history (index 0 = Phase 1 winner baseline).
+    :return: Formatted feedback string, or empty string if no history.
+    """
+    if not history:
+        return ""
+
+    lines = ["## Iteration History (Cost/Latency):"]
+    for i, ctx in enumerate(history):
+        label = "Phase 1 winner (baseline)" if i == 0 else f"Phase 2 iteration {i}"
+        lines.append(f"\n### {label}:")
+        lines.append(f"Model: {ctx.current_model}")
+        if ctx.duration_ms is not None:
+            lines.append(f"Duration: {ctx.duration_ms:.0f}ms")
+        if ctx.estimated_cost_usd is not None:
+            lines.append(f"Estimated cost: ${ctx.estimated_cost_usd:.6f}")
+        if ctx.scores:
+            for judge_key, result in ctx.scores.items():
+                if not judge_key.startswith("_"):
+                    lines.append(f"Judge [{judge_key}]: score={result.score:.3f}")
+
+    return "\n".join(lines)
 
 
 def variation_prompt_preamble() -> str:

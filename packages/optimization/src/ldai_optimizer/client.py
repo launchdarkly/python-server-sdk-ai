@@ -53,6 +53,7 @@ from ldai_optimizer.prompts import (
     build_message_history_text,
     build_new_variation_prompt,
     build_reasoning_history,
+    build_token_latency_variation_prompt,
 )
 from ldai_optimizer.util import (
     RedactionFilter,
@@ -222,6 +223,7 @@ class OptimizationClient:
         self._total_token_usage: int = 0
         self._model_configs: List[Dict[str, Any]] = []
         self._last_batch_size: int = 1
+        self._in_cost_latency_phase: bool = False
 
         if os.environ.get("LAUNCHDARKLY_API_KEY"):
             self._has_api_key = True
@@ -904,7 +906,8 @@ class OptimizationClient:
         )
 
         if (
-            agent_duration_ms is not None
+            self._in_cost_latency_phase
+            and agent_duration_ms is not None
             and bool(self._options.latency_optimization)
         ):
             baseline_ms = self._baseline_duration_ms
@@ -922,13 +925,12 @@ class OptimizationClient:
             instructions += (
                 "In your rationale, state the duration and any change from baseline. "
                 "If the latency goal is not yet met, include specific, actionable suggestions "
-                "for how the agent's instructions or model choice could be changed to reduce "
-                "response time — for example: switching to a faster model, shortening the "
-                "system prompt, or removing instructions that cause multi-step reasoning. "
+                "for how the model choice or parameters could be changed to reduce "
+                "response time — for example: switching to a faster model or reducing max_tokens. "
                 "These suggestions will be used directly to generate the next variation."
             )
 
-        if bool(self._options.token_optimization):
+        if self._in_cost_latency_phase and bool(self._options.token_optimization):
             current_cost = estimate_cost(
                 agent_usage,
                 _find_model_config(self._current_model or "", self._model_configs),
@@ -954,10 +956,8 @@ class OptimizationClient:
                 instructions += (
                     "In your rationale, state the token usage and cost, and any change from baseline. "
                     "If the cost goal is not yet met, include specific, actionable suggestions "
-                    "for how the agent's instructions or model choice could be changed to reduce "
-                    "cost — for example: switching to a cheaper model, shortening the system prompt "
-                    "to reduce input tokens, removing unnecessary output instructions, or tightening "
-                    "response length constraints. "
+                    "for how the model choice or parameters could be changed to reduce "
+                    "cost — for example: switching to a cheaper model or reducing max_tokens. "
                     "These suggestions will be used directly to generate the next variation."
                 )
 
@@ -1366,13 +1366,6 @@ class OptimizationClient:
                 else:
                     sample_passed = self._evaluate_response(optimize_context)
 
-                sample_passed, optimize_context = self._apply_duration_gate(sample_passed, optimize_context)
-                sample_passed, optimize_context = self._apply_cost_gate(sample_passed, optimize_context)
-
-                # Flush gate scores to the API for this sample. Without this,
-                # the next sample's "generating" event closes out this record
-                # with a status-only PATCH before gate scores are sent, so only
-                # the last sample would ever show latency/cost gate entries.
                 self._safe_status_update("evaluating", optimize_context, linear_iter)
 
                 if not sample_passed:
@@ -1452,16 +1445,47 @@ class OptimizationClient:
                     attempt,
                     n,
                 )
-                self._last_run_succeeded = True
-                self._last_succeeded_context = last_ctx
-                self._safe_status_update("success", last_ctx, last_ctx.iteration)
-                if self._options.on_passing_result:
+                # Phase 2: optimize model/params on the frozen winning variation.
+                if (
+                    self._options.latency_optimization
+                    or self._options.token_optimization
+                ) and not self._is_token_limit_exceeded():
+                    # Record Phase 1 success without firing on_passing_result yet;
+                    # we fire it once below with the true final winner.
+                    self._last_run_succeeded = True
+                    self._last_succeeded_context = last_ctx
+                    self._safe_status_update("success", last_ctx, last_ctx.iteration)
+                    phase1_winner = self._last_succeeded_context
+                    await self._run_cost_latency_phase(
+                        last_ctx,
+                        last_ctx.iteration,
+                    )
+                    if self._last_succeeded_context is None:
+                        # No Phase 2 candidate won; restore the Phase 1 winner.
+                        self._last_run_succeeded = True
+                        self._last_succeeded_context = phase1_winner
+                else:
+                    self._last_run_succeeded = True
+                    self._last_succeeded_context = last_ctx
+                    self._safe_status_update("success", last_ctx, last_ctx.iteration)
+
+                # Fire on_passing_result exactly once with the true final winner.
+                final_winner = self._last_succeeded_context
+                if final_winner and self._options.on_passing_result:
                     try:
-                        self._options.on_passing_result(last_ctx)
+                        self._options.on_passing_result(final_winner)
                     except Exception:
                         logger.exception(
                             "[GT Attempt %d] -> on_passing_result callback failed", attempt
                         )
+
+                if (
+                    self._last_succeeded_context is not None
+                    and self._last_succeeded_context is not last_ctx
+                ):
+                    # Phase 2 selected a better model; return that context so
+                    # callers (including auto_commit) see the actual final winner.
+                    return [self._last_succeeded_context]
                 return attempt_results
 
             # We've hit max attempts for the batches, bail at this point
@@ -1561,7 +1585,18 @@ class OptimizationClient:
                 f"Received fields: {list(response_data.keys())}"
             )
 
-        self._current_instructions = response_data["current_instructions"]
+        new_instructions = response_data["current_instructions"]
+
+        if self._in_cost_latency_phase:
+            if new_instructions != self._current_instructions:
+                logger.warning(
+                    "[Iteration %d] -> Phase 2 (cost/latency): LLM attempted to change instructions; "
+                    "restoring frozen winning variation instructions to enforce content lock.",
+                    iteration,
+                )
+                new_instructions = self._current_instructions
+
+        self._current_instructions = new_instructions
 
         # Post-process: replace any leaked variable values back to {{key}} form.
         # This is a deterministic safety net for when the LLM ignores the prompt
@@ -1690,22 +1725,24 @@ class OptimizationClient:
         )
         self._safe_status_update("generating variation", status_ctx, iteration)
 
-        optimize_for_duration = bool(self._options.latency_optimization)
-        optimize_for_cost = bool(self._options.token_optimization)
-        quality_already_passing = self._all_judges_passing()
-        instructions = build_new_variation_prompt(
-            self._history,
-            self._options.judges,
-            self._current_model,
-            self._current_instructions,
-            self._current_parameters,
-            self._options.model_choices,
-            self._options.variable_choices,
-            self._initial_instructions,
-            optimize_for_duration=optimize_for_duration,
-            optimize_for_cost=optimize_for_cost,
-            quality_already_passing=quality_already_passing,
-        )
+        if self._in_cost_latency_phase:
+            instructions = build_token_latency_variation_prompt(
+                self._history,
+                self._options.model_choices,
+                optimize_for_latency=bool(self._options.latency_optimization),
+                optimize_for_cost=bool(self._options.token_optimization),
+            )
+        else:
+            instructions = build_new_variation_prompt(
+                self._history,
+                self._options.judges,
+                self._current_model,
+                self._current_instructions,
+                self._current_parameters,
+                self._options.model_choices,
+                self._options.variable_choices,
+                self._initial_instructions,
+            )
 
         # Create a flat history list (without nested history) to avoid exponential growth
         flat_history = [prev_ctx.copy_without_history() for prev_ctx in self._history]
@@ -2168,8 +2205,6 @@ class OptimizationClient:
             )
         except Exception:
             logger.exception("[Iteration %d] -> Agent call failed", iteration)
-            if self._options.on_failing_result:
-                self._options.on_failing_result(optimize_context)
             raise
 
         scores: Dict[str, JudgeResult] = {}
@@ -2194,10 +2229,17 @@ class OptimizationClient:
             agent_response.usage,
             _find_model_config(self._current_model or "", self._model_configs),
         )
+        # Build a _meta entry capturing raw cost and latency telemetry for every
+        # iteration, regardless of which optimization goals are enabled. This
+        # surfaces the measurements in the API/UI even when the gates are inactive.
         result_ctx = dataclasses.replace(
             optimize_context,
             completion_response=completion_response,
-            scores=scores,
+            scores={**scores, "_meta": JudgeResult(
+                score=0.0,
+                duration_ms=agent_duration_ms,
+                estimated_cost_usd=agent_cost,
+            )},
             duration_ms=agent_duration_ms,
             usage=agent_response.usage,
             estimated_cost_usd=agent_cost,
@@ -2470,23 +2512,29 @@ class OptimizationClient:
         return passed_so_far and passed, ctx
 
     def _handle_success(
-        self, optimize_context: OptimizationContext, iteration: int
+        self,
+        optimize_context: OptimizationContext,
+        iteration: int,
+        suppress_user_callbacks: bool = False,
     ) -> Any:
         """
         Handle a successful optimization result.
 
-        Fires the "success" status update, invokes on_passing_result if set,
-        and returns the winning OptimizationContext.
+        Fires the "success" status update and (unless suppressed) invokes
+        on_passing_result. Pass suppress_user_callbacks=True from Phase 2 so
+        the API record is updated without firing on_passing_result a second time
+        — the caller is responsible for firing it once with the true final winner.
 
         :param optimize_context: The context from the passing iteration
         :param iteration: Current iteration number for logging
+        :param suppress_user_callbacks: When True, skip on_passing_result.
         :return: The passing OptimizationContext
         """
         logger.info("[Iteration %d] -> Optimization succeeded", iteration)
         self._last_run_succeeded = True
         self._last_succeeded_context = optimize_context
         self._safe_status_update("success", optimize_context, iteration)
-        if self._options.on_passing_result:
+        if not suppress_user_callbacks and self._options.on_passing_result:
             try:
                 self._options.on_passing_result(optimize_context)
             except Exception:
@@ -2522,6 +2570,182 @@ class OptimizationClient:
                     "[Iteration %d] -> on_failing_result callback failed", iteration
                 )
         return optimize_context
+
+    def _pick_best_candidate(
+        self, candidates: List[OptimizationContext]
+    ) -> OptimizationContext:
+        """Select the best Phase 2 candidate by normalized combined cost/latency score.
+
+        Ranks all candidates using the sum of their normalized metrics:
+            score = (duration_ms / baseline_duration_ms) + (estimated_cost_usd / baseline_cost_usd)
+
+        Terms whose baseline or measurement is unavailable are omitted from the sum.
+        The candidate with the lowest score wins. If scores are equal, the first
+        candidate (earliest iteration) is returned.
+
+        :param candidates: Non-empty list of passing Phase 2 OptimizationContexts.
+        :return: The best-scoring candidate.
+        """
+        def _score(ctx: OptimizationContext) -> float:
+            total = 0.0
+            if (
+                self._options.latency_optimization
+                and ctx.duration_ms is not None
+                and self._baseline_duration_ms is not None
+                and self._baseline_duration_ms > 0
+            ):
+                total += ctx.duration_ms / self._baseline_duration_ms
+            if (
+                self._options.token_optimization
+                and ctx.estimated_cost_usd is not None
+                and self._baseline_cost_usd is not None
+                and self._baseline_cost_usd > 0
+            ):
+                total += ctx.estimated_cost_usd / self._baseline_cost_usd
+            return total
+
+        return min(candidates, key=_score)
+
+    async def _run_cost_latency_phase(
+        self,
+        winning_ctx: OptimizationContext,
+        last_iteration: int,
+    ) -> None:
+        """Run Phase 2: optimize model and parameters for cost/latency on the frozen winning variation.
+
+        The agent's content (instructions, tools) is frozen from the Phase 1 winner.
+        Only model and parameters may be adjusted. One turn is executed per model
+        choice (or at least two turns total), collecting passing candidates, then
+        the best is selected by combined normalized cost/latency score.
+
+        Phase 2 always uses a single turn per iteration regardless of whether the
+        Phase 1 run was in GT mode — the winning user_input and variables from the
+        Phase 1 winner are reused for every Phase 2 turn.
+
+        :param winning_ctx: The Phase 1 winning OptimizationContext.
+        :param last_iteration: The last iteration number from Phase 1; Phase 2
+            continues from last_iteration + 1.
+        """
+        self._in_cost_latency_phase = True
+        self._history = [winning_ctx]
+        self._current_instructions = winning_ctx.current_instructions
+        self._current_parameters = winning_ctx.current_parameters.copy()
+        self._current_model = winning_ctx.current_model
+
+        frozen_variables = winning_ctx.current_variables
+        frozen_user_input = winning_ctx.user_input
+
+        # Build a deterministic, deduplicated list of models to evaluate:
+        # start with the Phase 1 winner's model, then add each model_choice
+        # that hasn't been seen yet. This guarantees every user-selected model
+        # is tried exactly once, in a predictable order.
+        phase1_model = winning_ctx.current_model or ""
+        seen_models: set = {phase1_model}
+        ordered_models: List[str] = [phase1_model]
+        for m in self._options.model_choices or []:
+            if m not in seen_models:
+                seen_models.add(m)
+                ordered_models.append(m)
+        # Ensure at least 2 iterations
+        while len(ordered_models) < 2:
+            ordered_models.append(ordered_models[-1])
+
+        candidates: List[OptimizationContext] = []
+        non_candidates: List[OptimizationContext] = []
+        max_iters = len(ordered_models)
+        iteration = last_iteration
+
+        for i in range(max_iters):
+            iteration += 1
+
+            # Cycle to the next scheduled model. Instructions and parameters
+            # are always reset to the Phase 1 winner's frozen values so only
+            # the model varies — Phase 2 verifies the winning content still
+            # passes under each candidate model.
+            self._current_model = ordered_models[i]
+            self._current_parameters = winning_ctx.current_parameters.copy()
+            logger.info(
+                "[Phase 2 Iter %d] -> Evaluating model '%s' (%d/%d)",
+                iteration,
+                self._current_model,
+                i + 1,
+                max_iters,
+            )
+
+            ctx = self._create_optimization_context(
+                iteration=iteration,
+                variables=frozen_variables,
+                user_input=frozen_user_input,
+            )
+            self._safe_status_update("generating", ctx, iteration)
+            try:
+                ctx = await self._execute_agent_turn(ctx, iteration)
+            except Exception:
+                logger.warning(
+                    "[Phase 2 Iter %d] -> Agent call failed (model=%s); "
+                    "skipping this model and trying the next",
+                    iteration,
+                    self._current_model,
+                )
+                non_candidates.append(ctx)
+                continue
+            self._accumulate_tokens(ctx)
+            ctx = dataclasses.replace(
+                ctx, accumulated_token_usage=self._total_token_usage
+            )
+
+            quality_passed = self._evaluate_response(ctx)
+            quality_passed, ctx = self._apply_duration_gate(quality_passed, ctx)
+            quality_passed, ctx = self._apply_cost_gate(quality_passed, ctx)
+
+            if self._is_token_limit_exceeded():
+                logger.warning(
+                    "[Phase 2 Iter %d] -> Token limit exceeded; stopping Phase 2 early",
+                    iteration,
+                )
+                non_candidates.append(ctx)
+                break
+
+            if quality_passed:
+                logger.info(
+                    "[Phase 2 Iter %d] -> Passed quality + gates — added to candidates",
+                    iteration,
+                )
+                candidates.append(ctx)
+            else:
+                logger.info(
+                    "[Phase 2 Iter %d] -> Failed quality or gates", iteration
+                )
+                non_candidates.append(ctx)
+
+            if i < max_iters - 1:
+                self._safe_status_update("turn completed", ctx, iteration)
+
+        # Send terminal FAILED status for each non-winning model attempt.
+        # We use _safe_status_update directly rather than _handle_failure so that
+        # exploratory Phase 2 misses don't corrupt _last_run_succeeded,
+        # _last_succeeded_context, or trigger on_failing_result — those are
+        # run-level signals that should only fire if the whole optimization fails.
+        for failed_ctx in non_candidates:
+            self._safe_status_update("failure", failed_ctx, failed_ctx.iteration)
+
+        if candidates:
+            best = self._pick_best_candidate(candidates)
+            # Suppress on_passing_result here — the caller fires it once with the
+            # true final winner after Phase 2 returns, so it is never double-fired.
+            self._handle_success(best, best.iteration, suppress_user_callbacks=True)
+            logger.info(
+                "[Phase 2] -> Best candidate selected: model=%s, duration_ms=%s, cost=%s",
+                best.current_model,
+                f"{best.duration_ms:.0f}ms" if best.duration_ms is not None else "N/A",
+                f"${best.estimated_cost_usd:.6f}" if best.estimated_cost_usd is not None else "N/A",
+            )
+        else:
+            logger.info(
+                "[Phase 2] -> No candidates passed; keeping Phase 1 winner as final result"
+            )
+
+        self._in_cost_latency_phase = False
 
     def _commit_variation(
         self,
@@ -2595,6 +2819,8 @@ class OptimizationClient:
             "instructions": optimize_context.current_instructions,
             "modelConfigKey": model_config_key,
         }
+        if optimize_context.current_parameters:
+            payload["parameters"] = optimize_context.current_parameters
         if self._initial_tool_keys:
             payload["toolKeys"] = list(self._initial_tool_keys)
         if self._initial_model_custom:
@@ -2741,9 +2967,6 @@ class OptimizationClient:
             else:
                 sample_passed = self._evaluate_response(val_ctx)
 
-            sample_passed, val_ctx = self._apply_duration_gate(sample_passed, val_ctx)
-            sample_passed, val_ctx = self._apply_cost_gate(sample_passed, val_ctx)
-
             if self._is_token_limit_exceeded():
                 logger.error(
                     "[Validation %d/%d] -> Token limit exceeded (total=%d)",
@@ -2869,9 +3092,6 @@ class OptimizationClient:
                         iteration,
                     )
 
-            initial_passed, optimize_context = self._apply_duration_gate(initial_passed, optimize_context)
-            initial_passed, optimize_context = self._apply_cost_gate(initial_passed, optimize_context)
-
             # Token limit check after pass/fail evaluation so the persisted record
             # correctly reflects whether the iteration passed before stopping the run.
             if self._is_token_limit_exceeded():
@@ -2887,7 +3107,34 @@ class OptimizationClient:
                     optimize_context, iteration
                 )
                 if all_valid:
-                    return self._handle_success(optimize_context, iteration)
+                    # Suppress on_passing_result in _handle_success; we fire it
+                    # exactly once below with the true final winner so that Phase 2
+                    # (if it runs) cannot cause a double callback.
+                    self._handle_success(
+                        optimize_context, iteration, suppress_user_callbacks=True
+                    )
+                    if (
+                        self._options.latency_optimization
+                        or self._options.token_optimization
+                    ) and not self._is_token_limit_exceeded():
+                        phase1_winner = self._last_succeeded_context
+                        await self._run_cost_latency_phase(optimize_context, iteration)
+                        if self._last_succeeded_context is None:
+                            self._last_run_succeeded = True
+                            self._last_succeeded_context = phase1_winner
+                    # Fire on_passing_result exactly once with the true final winner
+                    # (Phase 1 winner if Phase 2 was skipped/found nothing better,
+                    # or the Phase 2 best candidate otherwise).
+                    final_winner = self._last_succeeded_context
+                    if final_winner and self._options.on_passing_result:
+                        try:
+                            self._options.on_passing_result(final_winner)
+                        except Exception:
+                            logger.exception(
+                                "[Iteration %d] -> on_passing_result callback failed",
+                                iteration,
+                            )
+                    return final_winner
                 if self._is_token_limit_exceeded():
                     return self._handle_failure(last_ctx, iteration)
                 # Validation failed — treat as a normal failed attempt.
