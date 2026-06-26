@@ -8,7 +8,7 @@ from ldclient.client import LDClient
 from ldai import log
 from ldai.agent_graph import AgentGraphDefinition
 from ldai.evaluator import Evaluator
-from ldai.judge import Judge, _strip_legacy_judge_messages
+from ldai.judge import Judge
 from ldai.managed_agent import ManagedAgent
 from ldai.managed_agent_graph import ManagedAgentGraph
 from ldai.managed_model import ManagedModel
@@ -203,17 +203,9 @@ class LDAIClient:
                     "The variable 'response_to_evaluate' is reserved by the judge and will be ignored."
                 )
 
-        # Re-inject the reserved variables as their literal placeholders so they
-        # survive Mustache interpolation in ``__evaluate``.  Without this, legacy
-        # templates like ``{{message_history}}`` get rendered to empty strings and
-        # ``_strip_legacy_judge_messages`` below cannot detect them.
-        extended_variables = dict(variables) if variables else {}
-        extended_variables['message_history'] = '{{message_history}}'
-        extended_variables['response_to_evaluate'] = '{{response_to_evaluate}}'
-
         (model, provider, messages, instructions,
          tracker_factory, enabled, judge_configuration, variation) = self.__evaluate(
-            key, context, default.to_dict(), extended_variables
+            key, context, default.to_dict(), variables
         )
 
         def _extract_evaluation_metric_key(variation: Dict[str, Any]) -> Optional[str]:
@@ -232,10 +224,6 @@ class LDAIClient:
             return None
 
         evaluation_metric_key = _extract_evaluation_metric_key(variation)
-
-        # strip legacy judge template messages before creating config
-        if messages:
-            messages = _strip_legacy_judge_messages(messages)
 
         config = AIJudgeConfig(
             key=key,

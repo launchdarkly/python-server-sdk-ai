@@ -16,13 +16,14 @@ class Runner(Protocol):
 
     async def run(
         self,
-        input: str,
+        input: Any,
         output_type: Optional[Dict[str, Any]] = None,
     ) -> RunnerResult:
         """
-        Execute the runner with the given input string.
+        Execute the runner with the given input.
 
-        :param input: The string input to the runner.
+        :param input: The input to the runner. May be a string prompt or a
+            list of :class:`~ldai.models.LDMessage` objects.
         :param output_type: Optional JSON schema for structured output.
         :return: RunnerResult containing content, metrics, raw, and parsed fields.
         """

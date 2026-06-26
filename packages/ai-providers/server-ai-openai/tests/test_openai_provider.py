@@ -294,6 +294,38 @@ class TestRunCompletion:
         assert len(provider._history) == baseline_len + 4
 
     @pytest.mark.asyncio
+    async def test_passes_list_input_directly_without_prepending_history(self, mock_client):
+        """When a list[LDMessage] is passed, it is used as-is without history prepend."""
+        from ldai import LDMessage as _LDMsg
+
+        def make_response(text: str):
+            r = MagicMock()
+            r.context_wrapper = None
+            r.choices = [MagicMock()]
+            r.choices[0].message = MagicMock()
+            r.choices[0].message.content = text
+            r.usage = None
+            return r
+
+        mock_client.chat = MagicMock()
+        mock_client.chat.completions = MagicMock()
+        mock_client.chat.completions.create = AsyncMock(return_value=make_response('Answer'))
+
+        provider = OpenAIModelRunner(mock_client, 'gpt-4o', {})
+        messages = [
+            _LDMsg(role='system', content='You are helpful.'),
+            _LDMsg(role='user', content='Q1'),
+        ]
+        await provider.run(messages)
+
+        call_messages = mock_client.chat.completions.create.call_args.kwargs['messages']
+        assert call_messages == [
+            {'role': 'system', 'content': 'You are helpful.'},
+            {'role': 'user', 'content': 'Q1'},
+        ]
+        assert provider._history == []
+
+    @pytest.mark.asyncio
     async def test_does_not_accumulate_history_on_failed_call(self, mock_client):
         """Should not add to history when the call fails."""
         mock_client.chat = MagicMock()
