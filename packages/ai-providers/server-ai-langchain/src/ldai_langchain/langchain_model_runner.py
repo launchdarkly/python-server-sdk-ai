@@ -2,7 +2,7 @@ from typing import Any, Dict, List, Optional, cast
 
 from langchain_core.chat_history import InMemoryChatMessageHistory
 from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_core.messages import BaseMessage, HumanMessage
+from langchain_core.messages import BaseMessage
 from ldai import LDMessage, log
 from ldai.providers.runner import Runner
 from ldai.providers.types import LDAIMetrics, RunnerResult
@@ -28,13 +28,10 @@ class LangChainModelRunner(Runner):
     def __init__(
         self,
         llm: BaseChatModel,
-        config_messages: Optional[List[LDMessage]] = None,
         multi_turn: bool = True,
     ):
         self._llm = llm
-        self._chat_history = InMemoryChatMessageHistory(
-            messages=cast(List[BaseMessage], convert_messages_to_langchain(config_messages or []))
-        )
+        self._chat_history = InMemoryChatMessageHistory()
         self._multi_turn = multi_turn
 
     def get_llm(self) -> BaseChatModel:
@@ -47,31 +44,52 @@ class LangChainModelRunner(Runner):
 
     async def run(
         self,
-        input: str,
+        input: Any,
         output_type: Optional[Dict[str, Any]] = None,
     ) -> RunnerResult:
         """
         Run the LangChain model with the given input.
 
-        :param input: A string prompt
+        :param input: A string prompt or a list of :class:`LDMessage` objects.
+            When a list is provided it is used as the complete message set.
+            When a string is provided it is appended to the conversation history.
         :param output_type: Optional JSON schema dict requesting structured output.
             When provided, ``parsed`` on the returned :class:`RunnerResult` is
             populated with the parsed JSON document.
         :return: :class:`RunnerResult` containing ``content``, ``metrics``,
             ``raw`` and (when ``output_type`` is set) ``parsed``.
         """
-        langchain_messages = self._chat_history.messages + [HumanMessage(content=input)]
+        coerced = self._coerce_input(input)
+
+        if isinstance(input, list):
+            langchain_messages = cast(List[BaseMessage], convert_messages_to_langchain(coerced))
+        else:
+            langchain_messages = self._chat_history.messages + cast(
+                List[BaseMessage], convert_messages_to_langchain(coerced)
+            )
 
         if output_type is not None:
             result = await self._run_structured(langchain_messages, output_type)
         else:
             result = await self._run_completion(langchain_messages)
 
-        if result.metrics.success and result.content and self._multi_turn:
+        if result.metrics.success and result.content and self._multi_turn and isinstance(input, str):
             self._chat_history.add_user_message(input)
             self._chat_history.add_ai_message(result.content)
 
         return result
+
+    # convert_messages_to_langchain only accepts List[LDMessage]; _coerce_input
+    # normalizes a bare string to [LDMessage(role='user', ...)] before that step.
+    @staticmethod
+    def _coerce_input(input: Any) -> List[LDMessage]:
+        if isinstance(input, str):
+            return [LDMessage(role='user', content=input)]
+        if isinstance(input, list):
+            return input
+        raise TypeError(
+            f"Unsupported input type for LangChainModelRunner.run: {type(input).__name__}"
+        )
 
     async def _run_completion(self, messages: List[BaseMessage]) -> RunnerResult:
         try:

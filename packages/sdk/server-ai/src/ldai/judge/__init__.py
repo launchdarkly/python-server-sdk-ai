@@ -3,35 +3,13 @@
 import random
 from typing import Any, Dict, List, Optional, Tuple
 
+import chevron
+
 from ldai import log
 from ldai.judge.evaluation_schema_builder import EvaluationSchemaBuilder
 from ldai.models import AIJudgeConfig, LDMessage
 from ldai.providers.runner import Runner
 from ldai.providers.types import JudgeResult, RunnerResult
-
-
-def _strip_legacy_judge_messages(messages: List[LDMessage]) -> List[LDMessage]:
-    """
-    Remove legacy judge template messages from a message list.
-
-    Strips any non-system message whose content contains ``{{message_history}}``
-    or ``{{response_to_evaluate}}``.  These were used by older judge configs to
-    indicate where the SDK should interpolate the evaluated conversation; new
-    configs omit them entirely and rely on the string input built by
-    :meth:`Judge._build_evaluation_input`.
-
-    :param messages: The raw message list from the judge AI config.
-    :return: A new list with legacy template messages removed.
-    """
-    result = []
-    for msg in messages:
-        if msg.role != 'system' and (
-            '{{message_history}}' in msg.content
-            or '{{response_to_evaluate}}' in msg.content
-        ):
-            continue
-        result.append(msg)
-    return result
 
 
 class Judge:
@@ -87,6 +65,11 @@ class Judge:
                 judge_result.error_message = 'Judge configuration is missing required evaluationMetricKey'
                 return judge_result
 
+            if not self._ai_config.messages:
+                log.warning('Judge configuration must include messages')
+                judge_result.error_message = 'Judge configuration must include messages'
+                return judge_result
+
             if random.random() > effective_rate:
                 log.debug(f'Judge evaluation skipped due to sampling rate: {effective_rate}')
                 return judge_result
@@ -94,12 +77,12 @@ class Judge:
             judge_result.sampled = True
 
             tracker = self._ai_config.create_tracker()
-            evaluation_input = self._build_evaluation_input(input_text, output_text)
+            messages = self._construct_evaluation_messages(input_text, output_text)
             assert self._evaluation_response_structure is not None
 
             response = await tracker.track_metrics_of_async(
                 lambda result: result.metrics,
-                lambda: self._model_runner.run(evaluation_input, output_type=self._evaluation_response_structure),
+                lambda: self._model_runner.run(messages, output_type=self._evaluation_response_structure),
             )
 
             if response.parsed is None:
@@ -132,19 +115,13 @@ class Judge:
         """
         Evaluates an AI response from chat messages and response.
 
-        The conversation is rendered for the judge by joining each message as
-        ``"{role}: {content}"`` on newlines, preserving who said what so the
-        judge can distinguish user turns from assistant turns.
-
         :param messages: Array of messages representing the conversation history
         :param response: The runner result to be evaluated
         :param sampling_ratio: Sampling ratio (0-1) to determine if evaluation should be processed.
             When ``None`` (the default), falls back to ``self.sample_rate``.
         :return: The result of the judge evaluation.
         """
-        input_text = (
-            '\n'.join(f'{msg.role}: {msg.content}' for msg in messages) if messages else ''
-        )
+        input_text = '\r\n'.join([msg.content for msg in messages]) if messages else ''
         output_text = response.content
 
         return await self.evaluate(input_text, output_text, sampling_ratio)
@@ -165,8 +142,40 @@ class Judge:
         """
         return self._model_runner
 
-    def _build_evaluation_input(self, input_text: str, output_text: str) -> str:
-        return f"MESSAGE HISTORY:\n{input_text}\n\nRESPONSE TO EVALUATE:\n{output_text}"
+    def _construct_evaluation_messages(self, input_text: str, output_text: str) -> List[LDMessage]:
+        """
+        Constructs evaluation messages by combining judge's config messages with input/output.
+
+        Iterates all messages from the judge's AI config and interpolates
+        ``{{message_history}}`` with ``input_text`` and ``{{response_to_evaluate}}``
+        with ``output_text`` using Mustache templating.
+
+        :param input_text: The input text (conversation history)
+        :param output_text: The output text to evaluate
+        :return: List of messages for evaluation
+        """
+        if not self._ai_config.messages:
+            return []
+
+        messages: List[LDMessage] = []
+        for msg in self._ai_config.messages:
+            content = self._interpolate_message(msg.content, {
+                'message_history': input_text,
+                'response_to_evaluate': output_text,
+            })
+            messages.append(LDMessage(role=msg.role, content=content))
+
+        return messages
+
+    def _interpolate_message(self, content: str, variables: Dict[str, str]) -> str:
+        """
+        Interpolates message content with variables using Mustache templating.
+
+        :param content: The message content template
+        :param variables: Variables to interpolate
+        :return: Interpolated message content
+        """
+        return chevron.render(content, variables)
 
     def _parse_evaluation_response(self, data: Dict[str, Any]) -> Optional[Tuple[float, str]]:
         """

@@ -28,43 +28,62 @@ class OpenAIModelRunner(Runner):
         client: AsyncOpenAI,
         model_name: str,
         parameters: Dict[str, Any],
-        config_messages: Optional[List[LDMessage]] = None,
         multi_turn: bool = True,
     ):
         self._client = client
         self._model_name = model_name
         self._parameters = parameters
-        self._history: List[LDMessage] = list(config_messages or [])
+        self._history: List[LDMessage] = []
         self._multi_turn = multi_turn
 
     async def run(
         self,
-        input: str,
+        input: Any,
         output_type: Optional[Dict[str, Any]] = None,
     ) -> RunnerResult:
         """
         Run the OpenAI model with the given input.
 
-        :param input: A string prompt
+        :param input: A string prompt or a list of :class:`LDMessage` objects.
+            When a list is provided it is used as the complete message set.
+            When a string is provided it is appended to the conversation history.
         :param output_type: Optional JSON schema dict requesting structured output.
             When provided, ``parsed`` on the returned :class:`RunnerResult` is
             populated with the parsed JSON document.
         :return: :class:`RunnerResult` containing ``content``, ``metrics``,
             ``raw`` and (when ``output_type`` is set) ``parsed``.
         """
-        user_message = LDMessage(role='user', content=input)
-        messages = self._history + [user_message]
+        try:
+            coerced = self._coerce_input(input)
+        except TypeError as error:
+            log.warning(f'OpenAI model runner received unsupported input type: {error}')
+            return RunnerResult(content='', metrics=LDAIMetrics(success=False, usage=None))
+
+        if isinstance(input, list):
+            messages = coerced
+        else:
+            messages = self._history + coerced
 
         if output_type is not None:
             result = await self._run_structured(messages, output_type)
         else:
             result = await self._run_completion(messages)
 
-        if result.metrics.success and result.content and self._multi_turn:
-            self._history.append(user_message)
+        if result.metrics.success and result.content and self._multi_turn and isinstance(input, str):
+            self._history.append(LDMessage(role='user', content=input))
             self._history.append(LDMessage(role='assistant', content=result.content))
 
         return result
+
+    @staticmethod
+    def _coerce_input(input: Any) -> List[LDMessage]:
+        if isinstance(input, str):
+            return [LDMessage(role='user', content=input)]
+        if isinstance(input, list):
+            return input
+        raise TypeError(
+            f"Unsupported input type for OpenAIModelRunner.run: {type(input).__name__}"
+        )
 
     async def _run_completion(self, messages: List[LDMessage]) -> RunnerResult:
         try:

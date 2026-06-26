@@ -72,5 +72,4 @@ class LangChainRunnerFactory(AIProvider):
         :return: LangChainModelRunner ready to invoke the model
         """
         llm = create_langchain_model(config)
-        config_messages = list(getattr(config, 'messages', None) or [])
-        return LangChainModelRunner(llm, config_messages, multi_turn=multi_turn)
+        return LangChainModelRunner(llm, multi_turn=multi_turn)

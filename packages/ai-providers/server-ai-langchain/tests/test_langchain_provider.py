@@ -332,23 +332,22 @@ class TestRunCompletion:
         assert second_call_messages[0].content == 'Try again'
 
     @pytest.mark.asyncio
-    async def test_prepends_config_messages_before_history(self, mock_llm):
-        """Should send config messages before history on every call."""
-        mock_llm.ainvoke = AsyncMock(side_effect=[
-            AIMessage(content='Answer 1'),
-            AIMessage(content='Answer 2'),
-        ])
-        config_messages = [LDMessage(role='system', content='You are helpful.')]
-        provider = LangChainModelRunner(mock_llm, config_messages=config_messages)
+    async def test_passes_list_input_directly_without_prepending_history(self, mock_llm):
+        """When a list[LDMessage] is passed, it is used as-is without prepending chat history."""
+        mock_llm.ainvoke = AsyncMock(return_value=AIMessage(content='Answer'))
+        provider = LangChainModelRunner(mock_llm)
 
-        await provider.run('Q1')
-        await provider.run('Q2')
+        messages = [
+            LDMessage(role='system', content='You are helpful.'),
+            LDMessage(role='user', content='Q1'),
+        ]
+        await provider.run(messages)
 
-        second_call_messages = mock_llm.ainvoke.call_args_list[1][0][0]
-        assert second_call_messages[0].content == 'You are helpful.'
-        assert second_call_messages[1].content == 'Q1'
-        assert second_call_messages[2].content == 'Answer 1'
-        assert second_call_messages[3].content == 'Q2'
+        first_call_messages = mock_llm.ainvoke.call_args_list[0][0][0]
+        assert len(first_call_messages) == 2
+        assert first_call_messages[0].content == 'You are helpful.'
+        assert first_call_messages[1].content == 'Q1'
+        assert len(provider._chat_history.messages) == 0
 
 
 class TestRunStructured:
