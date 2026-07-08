@@ -132,6 +132,23 @@ def td() -> TestData:
         .variation_for_all(1)
     )
 
+    td.update(
+        td.flag('model-config-with-key-version')
+        .variations(
+            {
+                'model': {
+                    'name': 'gpt-4',
+                    'modelKey': 'my-model',
+                    'modelVersion': 2,
+                },
+                'provider': {'name': 'openai'},
+                'messages': [],
+                '_ldMeta': {'enabled': True, 'variationKey': 'v1', 'version': 1},
+            },
+        )
+        .variation_for_all(0)
+    )
+
     return td
 
 
@@ -161,6 +178,32 @@ def test_model_config_handles_custom():
     assert model.get_parameter('extra-attribute') is None
     assert model.get_custom('non-existent') is None
     assert model.get_custom('name') is None
+
+
+def test_model_config_to_dict_omits_model_key_and_version_when_unset():
+    model = ModelConfig('fakeModel', parameters={'temperature': 0.5})
+    assert model.model_key is None
+    assert model.model_version is None
+    result = model.to_dict()
+    assert 'modelKey' not in result
+    assert 'modelVersion' not in result
+
+
+def test_model_config_to_dict_includes_model_key_and_version_when_set():
+    model = ModelConfig(
+        'fakeModel',
+        model_key='my-model',
+        model_version=2,
+    )
+    result = model.to_dict()
+    assert result['modelKey'] == 'my-model'
+    assert result['modelVersion'] == 2
+
+
+def test_model_config_to_dict_omits_empty_model_key():
+    model = ModelConfig('fakeModel', model_key='')
+    result = model.to_dict()
+    assert 'modelKey' not in result
 
 
 def test_uses_default_on_invalid_flag(ldai_client: LDAIClient):
@@ -560,3 +603,84 @@ def test_create_tracker_each_call_has_different_run_id():
     run_id_1 = success_calls[0].args[2]['runId']
     run_id_2 = success_calls[1].args[2]['runId']
     assert run_id_1 != run_id_2
+
+
+def test_model_config_reads_model_key_and_version_from_flag(ldai_client: LDAIClient):
+    context = Context.create('user-key')
+    result = ldai_client.completion_config('model-config-with-key-version', context)
+
+    assert result.model is not None
+    assert result.model.model_key == 'my-model'
+    assert result.model.model_version == 2
+
+
+def test_create_tracker_stamps_model_key_and_version_on_track_data():
+    from unittest.mock import Mock
+
+    mock_client = Mock()
+    mock_client.variation.return_value = {
+        '_ldMeta': {'enabled': True, 'variationKey': 'var-abc', 'version': 7},
+        'model': {
+            'name': 'gpt-4',
+            'modelKey': 'my-model',
+            'modelVersion': 2,
+        },
+        'provider': {'name': 'openai'},
+        'messages': []
+    }
+
+    client = LDAIClient(mock_client)
+    context = Context.create('user-key')
+
+    config = client.completion_config('my-config-key', context)
+    tracker = config.create_tracker()
+    tracker.track_success()
+
+    success_calls = [
+        c for c in mock_client.track.call_args_list
+        if c.args[0] == '$ld:ai:generation:success'
+    ]
+    assert len(success_calls) == 1
+    track_data = success_calls[0].args[2]
+    assert track_data['modelKey'] == 'my-model'
+    assert track_data['modelVersion'] == 2
+
+
+@pytest.mark.parametrize(
+    'model_payload,expected_model_key,expected_model_version',
+    [
+        pytest.param({'name': 'gpt-4'}, None, 1, id='no_model_key_defaults_version_to_one'),
+        pytest.param({'name': 'gpt-4', 'modelVersion': 3}, None, 3, id='omits_model_key_when_absent'),
+    ],
+)
+def test_create_tracker_model_key_and_version_defaults(
+    model_payload, expected_model_key, expected_model_version,
+):
+    from unittest.mock import Mock
+
+    mock_client = Mock()
+    mock_client.variation.return_value = {
+        '_ldMeta': {'enabled': True, 'variationKey': 'var-abc', 'version': 7},
+        'model': model_payload,
+        'provider': {'name': 'openai'},
+        'messages': []
+    }
+
+    client = LDAIClient(mock_client)
+    context = Context.create('user-key')
+
+    config = client.completion_config('my-config-key', context)
+    tracker = config.create_tracker()
+    tracker.track_success()
+
+    success_calls = [
+        c for c in mock_client.track.call_args_list
+        if c.args[0] == '$ld:ai:generation:success'
+    ]
+    assert len(success_calls) == 1
+    track_data = success_calls[0].args[2]
+    if expected_model_key is None:
+        assert 'modelKey' not in track_data
+    else:
+        assert track_data['modelKey'] == expected_model_key
+    assert track_data['modelVersion'] == expected_model_version

@@ -110,6 +110,8 @@ class LDAIConfigTracker:
         context: Context,
         model_name: str,
         provider_name: str,
+        model_key: Optional[str] = None,
+        model_version: int = 1,
         graph_key: Optional[str] = None,
     ):
         """
@@ -123,6 +125,8 @@ class LDAIConfigTracker:
         :param context: Context for evaluation.
         :param model_name: Name of the model used.
         :param provider_name: Name of the provider used.
+        :param model_key: Stable, unique key of the model used.
+        :param model_version: Pinned version of the model used.
         :param graph_key: When set, include ``graphKey`` in all event payloads
             (e.g. config-level metrics inside a graph).
         """
@@ -132,6 +136,8 @@ class LDAIConfigTracker:
         self._version = version
         self._model_name = model_name
         self._provider_name = provider_name
+        self._model_key = model_key
+        self._model_version = model_version
         self._context = context
         self._graph_key = graph_key
         self._run_id = run_id
@@ -147,7 +153,8 @@ class LDAIConfigTracker:
 
         The token contains ``runId``, ``configKey``, ``version``, and
         optionally ``variationKey`` and ``graphKey`` (omitted when empty).
-        ``modelName`` and ``providerName`` are **not** included.
+        ``modelName``, ``providerName``, ``modelKey``, and ``modelVersion`` are
+        **not** included.
         """
         data: dict = {
             "runId": self._run_id,
@@ -216,9 +223,12 @@ class LDAIConfigTracker:
             "version": self._version,
             "modelName": self._model_name,
             "providerName": self._provider_name,
+            "modelVersion": self._model_version,
         }
         if self._variation_key:
             data["variationKey"] = self._variation_key
+        if self._model_key:
+            data["modelKey"] = self._model_key
         if self._graph_key:
             data['graphKey'] = self._graph_key
         return data
