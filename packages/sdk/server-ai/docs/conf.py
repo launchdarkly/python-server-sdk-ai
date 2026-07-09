@@ -20,7 +20,7 @@ import os
 import sys
 
 # Add the server-ai package source to the path
-sys.path.insert(0, os.path.abspath('../packages/sdk/server-ai/src'))
+sys.path.insert(0, os.path.abspath('../src'))
 
 import ldai
 
@@ -49,7 +49,13 @@ extensions = [
     'sphinx.ext.autodoc',
     'sphinx.ext.coverage',
     'sphinx.ext.viewcode',
+    'sphinx.ext.intersphinx',
 ]
+
+intersphinx_mapping = {
+    'python': ('https://docs.python.org/3', None),
+    'ldai_openai': ('https://launchdarkly-python-sdk-ai.readthedocs.io/projects/openai/en/latest/', None),
+}
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
