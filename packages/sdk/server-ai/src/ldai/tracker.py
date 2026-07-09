@@ -111,7 +111,7 @@ class LDAIConfigTracker:
         model_name: str,
         provider_name: str,
         model_key: Optional[str] = None,
-        model_version: int = 1,
+        model_version: Optional[int] = None,
         graph_key: Optional[str] = None,
     ):
         """
@@ -126,7 +126,7 @@ class LDAIConfigTracker:
         :param model_name: Name of the model used.
         :param provider_name: Name of the provider used.
         :param model_key: Stable, unique key of the model used.
-        :param model_version: Pinned version of the model used.
+        :param model_version: Pinned version of the model used, when present in the payload.
         :param graph_key: When set, include ``graphKey`` in all event payloads
             (e.g. config-level metrics inside a graph).
         """
@@ -223,12 +223,13 @@ class LDAIConfigTracker:
             "version": self._version,
             "modelName": self._model_name,
             "providerName": self._provider_name,
-            "modelVersion": self._model_version,
         }
         if self._variation_key:
             data["variationKey"] = self._variation_key
         if self._model_key:
             data["modelKey"] = self._model_key
+        if self._model_version is not None:
+            data["modelVersion"] = self._model_version
         if self._graph_key:
             data['graphKey'] = self._graph_key
         return data

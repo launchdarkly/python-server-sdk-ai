@@ -930,12 +930,14 @@ class LDAIClient:
             provider_config = ProviderConfig(provider.get('name', ''))
 
         model = None
-        tracked_model_version = 1
+        tracked_model_version = None
         if 'model' in variation and isinstance(variation['model'], dict):
             parameters = variation['model'].get('parameters', None)
             custom = variation['model'].get('custom', None)
             region = variation['model'].get('region', None)
-            tracked_model_version = int(variation['model'].get('modelVersion', 1))
+            raw_model_version = variation['model'].get('modelVersion')
+            if raw_model_version is not None:
+                tracked_model_version = int(raw_model_version)
             model = ModelConfig(
                 name=variation['model']['name'],
                 parameters=parameters,

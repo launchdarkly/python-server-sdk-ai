@@ -649,7 +649,7 @@ def test_create_tracker_stamps_model_key_and_version_on_track_data():
 @pytest.mark.parametrize(
     'model_payload,expected_model_key,expected_model_version',
     [
-        pytest.param({'name': 'gpt-4'}, None, 1, id='no_model_key_defaults_version_to_one'),
+        pytest.param({'name': 'gpt-4'}, None, None, id='omits_model_version_when_absent'),
         pytest.param({'name': 'gpt-4', 'modelVersion': 3}, None, 3, id='omits_model_key_when_absent'),
     ],
 )
@@ -683,4 +683,7 @@ def test_create_tracker_model_key_and_version_defaults(
         assert 'modelKey' not in track_data
     else:
         assert track_data['modelKey'] == expected_model_key
-    assert track_data['modelVersion'] == expected_model_version
+    if expected_model_version is None:
+        assert 'modelVersion' not in track_data
+    else:
+        assert track_data['modelVersion'] == expected_model_version

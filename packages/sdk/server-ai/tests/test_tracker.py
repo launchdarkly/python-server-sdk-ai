@@ -68,8 +68,7 @@ def test_tracks_duration(client: LDClient):
         "$ld:ai:duration:total",
         context,
         {"runId": ANY, "variationKey": "variation-key", "configKey": "config-key",
-         "version": 3, "modelName": "fakeModel", "providerName": "fakeProvider",
-         "modelVersion": 1},
+         "version": 3, "modelName": "fakeModel", "providerName": "fakeProvider"},
         100,
     )
 
@@ -112,8 +111,7 @@ def test_tracks_time_to_first_token(client: LDClient):
         "$ld:ai:tokens:ttf",
         context,
         {"runId": ANY, "variationKey": "variation-key", "configKey": "config-key",
-         "version": 3, "modelName": "fakeModel", "providerName": "fakeProvider",
-         "modelVersion": 1},
+         "version": 3, "modelName": "fakeModel", "providerName": "fakeProvider"},
         100,
     )
 
@@ -164,8 +162,7 @@ def test_tracks_token_usage(client: LDClient):
     tracker.track_tokens(tokens)
 
     _td = {"runId": ANY, "variationKey": "variation-key", "configKey": "config-key",
-           "version": 3, "modelName": "fakeModel", "providerName": "fakeProvider",
-           "modelVersion": 1}
+           "version": 3, "modelName": "fakeModel", "providerName": "fakeProvider"}
     calls = [
         call("$ld:ai:tokens:total", context, _td, 300),
         call("$ld:ai:tokens:input", context, _td, 200),
@@ -198,8 +195,7 @@ def test_tracks_feedback(client: LDClient, kind: FeedbackKind, label: str):
         f"$ld:ai:feedback:user:{label}",
         context,
         {"runId": ANY, "variationKey": "variation-key", "configKey": "config-key",
-         "version": 3, "modelName": "fakeModel", "providerName": "fakeProvider",
-         "modelVersion": 1},
+         "version": 3, "modelName": "fakeModel", "providerName": "fakeProvider"},
         1,
     )
     assert tracker.get_summary().feedback == {"kind": kind}
@@ -215,8 +211,7 @@ def test_tracks_success(client: LDClient):
     tracker.track_success()
 
     _std = {"runId": ANY, "variationKey": "variation-key", "configKey": "config-key",
-            "version": 3, "modelName": "fakeModel", "providerName": "fakeProvider",
-            "modelVersion": 1}
+            "version": 3, "modelName": "fakeModel", "providerName": "fakeProvider"}
     calls = [call("$ld:ai:generation:success", context, _std, 1)]
 
     client.track.assert_has_calls(calls)  # type: ignore
@@ -234,8 +229,7 @@ def test_tracks_error(client: LDClient):
     tracker.track_error()
 
     _etd2 = {"runId": ANY, "variationKey": "variation-key", "configKey": "config-key",
-             "version": 3, "modelName": "fakeModel", "providerName": "fakeProvider",
-             "modelVersion": 1}
+             "version": 3, "modelName": "fakeModel", "providerName": "fakeProvider"}
     calls = [call("$ld:ai:generation:error", context, _etd2, 1)]
 
     client.track.assert_has_calls(calls)  # type: ignore
@@ -258,8 +252,7 @@ def test_error_after_success_is_blocked(client: LDClient):
         "$ld:ai:generation:success",
         context,
         {"runId": ANY, "variationKey": "variation-key", "configKey": "config-key",
-         "version": 3, "modelName": "fakeModel", "providerName": "fakeProvider",
-         "modelVersion": 1},
+         "version": 3, "modelName": "fakeModel", "providerName": "fakeProvider"},
         1,
     )
 
@@ -274,7 +267,6 @@ def _base_td() -> dict:
         "version": 3,
         "modelName": "fakeModel",
         "providerName": "fakeProvider",
-        "modelVersion": 1,
     }
 
 
@@ -994,7 +986,7 @@ def test_client_create_tracker_from_resumption_token():
     # modelName and providerName are empty when reconstructed from token
     assert track_data["modelName"] == ""
     assert track_data["providerName"] == ""
-    assert track_data["modelVersion"] == 1
+    assert "modelVersion" not in track_data
     assert "modelKey" not in track_data
     # Context should be the new one, not the original
     assert feedback_calls[0].args[1] == context
