@@ -43,6 +43,7 @@ class JudgeResult:
     rationale: Optional[str] = None
     duration_ms: Optional[float] = None
     usage: Optional[TokenUsage] = None
+    estimated_cost_usd: Optional[float] = None
 
     def to_json(self) -> Dict[str, Any]:
         """
@@ -61,6 +62,8 @@ class JudgeResult:
                 "input": self.usage.input,
                 "output": self.usage.output,
             }
+        if self.estimated_cost_usd is not None:
+            result["estimated_cost_usd"] = self.estimated_cost_usd
         return result
 
 
@@ -196,6 +199,7 @@ class OptimizationJudge:
     threshold: float
     judge_key: Optional[str] = None
     acceptance_statement: Optional[str] = None
+    is_inverted: bool = False
 
 
 @dataclass
@@ -216,6 +220,9 @@ class OptimizationContext:
     iteration: int = 0  # current iteration number
     duration_ms: Optional[float] = None  # wall-clock time for the agent call in milliseconds
     usage: Optional[TokenUsage] = None  # token usage reported by the agent for this iteration
+    estimated_cost_usd: Optional[float] = None  # estimated cost; USD when pricing available, else total tokens
+    # single running total across ALL calls in this run (generation + judges + variation)
+    accumulated_token_usage: Optional[int] = None
 
     def copy_without_history(self) -> OptimizationContext:
         """
@@ -235,6 +242,8 @@ class OptimizationContext:
             iteration=self.iteration,
             duration_ms=self.duration_ms,
             usage=self.usage,
+            estimated_cost_usd=self.estimated_cost_usd,
+            accumulated_token_usage=self.accumulated_token_usage,
         )
 
     def to_json(self) -> Dict[str, Any]:
@@ -260,6 +269,8 @@ class OptimizationContext:
             "history": history_list,
             "iteration": self.iteration,
             "duration_ms": self.duration_ms,
+            "estimated_cost_usd": self.estimated_cost_usd,
+            "accumulated_token_usage": self.accumulated_token_usage,
         }
         if self.usage is not None:
             result["usage"] = {
@@ -305,6 +316,7 @@ _StatusLiteral = Literal[
     "turn completed",
     "success",
     "failure",
+    "optimizing cost/latency",
 ]
 
 
@@ -337,9 +349,14 @@ class OptimizationOptions:
     context_choices: List[Context] = field(
         default_factory=lambda: [Context.builder("anonymous").anonymous(True).build()]
     )
+    # Base variation - Optional
+    variation_key: Optional[str] = None  # use this specific variation as the base; defaults to the flag's default variation; requires API key + project_key
+    # Optimization controls - Optional; when None the corresponding gate/prompt is disabled
+    latency_optimization: Optional[bool] = None
+    token_optimization: Optional[bool] = None
     # Auto-commit - Optional
     auto_commit: bool = False
-    project_key: Optional[str] = None  # required when auto_commit=True
+    project_key: Optional[str] = None  # required when auto_commit=True or variation_key is set
     output_key: Optional[str] = None   # variation key/name; auto-generated if omitted
     base_url: Optional[str] = None  # override to target a non-default LD instance
     # When set, uses this specific variation as the base instead of the SDK-evaluated default.
@@ -432,9 +449,14 @@ class GroundTruthOptimizationOptions:
     context_choices: List[Context] = field(
         default_factory=lambda: [Context.builder("anonymous").anonymous(True).build()]
     )
+    # Base variation - Optional
+    variation_key: Optional[str] = None  # use this specific variation as the base; defaults to the flag's default variation; requires API key + project_key
+    # Optimization controls - Optional; when None the corresponding gate/prompt is disabled
+    latency_optimization: Optional[bool] = None
+    token_optimization: Optional[bool] = None
     # Auto-commit - Optional
     auto_commit: bool = False
-    project_key: Optional[str] = None  # required when auto_commit=True
+    project_key: Optional[str] = None  # required when auto_commit=True or variation_key is set
     output_key: Optional[str] = None   # variation key/name; auto-generated if omitted
     base_url: Optional[str] = None  # override to target a non-default LD instance
     # When set, uses this specific variation as the base instead of the SDK-evaluated default.

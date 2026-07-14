@@ -4,15 +4,20 @@ from typing import Any, Callable, List, Optional, TypeVar
 from ldai import log
 from ldai.models import AIConfigKind
 from ldai.providers.agent_graph_runner import AgentGraphRunner
-from ldai.providers.agent_runner import AgentRunner
 from ldai.providers.ai_provider import AIProvider
-from ldai.providers.model_runner import ModelRunner
+from ldai.providers.runner import Runner
 
 T = TypeVar('T')
 
 # Supported AI providers.
 # Multi-provider packages should be last in the list.
 SUPPORTED_AI_PROVIDERS = ('openai', 'langchain')
+
+# Mapping from internal Python module name to the pip-installable PyPI package name.
+_PYPI_PACKAGE_NAMES = {
+    'ldai_openai': 'launchdarkly-server-sdk-ai-openai',
+    'ldai_langchain': 'launchdarkly-server-sdk-ai-langchain',
+}
 
 
 class RunnerFactory:
@@ -52,10 +57,7 @@ class RunnerFactory:
             )
             return None
         except ImportError as error:
-            log.warning(
-                f"Could not load provider '{provider_type}': {error}. "
-                f"Make sure the corresponding package is installed."
-            )
+            log.warning(f"Could not load provider '{provider_type}': {error}")
             return None
 
     @staticmethod
@@ -118,24 +120,32 @@ class RunnerFactory:
     def create_model(
         config: AIConfigKind,
         default_ai_provider: Optional[str] = None,
-    ) -> Optional[ModelRunner]:
+        multi_turn: bool = True,
+    ) -> Optional[Runner]:
         """
         Create a model executor for the given AI completion config.
 
         :param config: LaunchDarkly AI config (completion or judge)
         :param default_ai_provider: Optional provider override ('openai', 'langchain', …)
-        :return: Configured ModelRunner ready to invoke the model, or None
+        :param multi_turn: When ``True`` (the default) the returned runner appends
+            each successful exchange to its history so subsequent ``run()`` calls
+            include the prior conversation. Set ``False`` for callers that share a
+            single runner across independent invocations (for example, judges) so
+            each call starts from the same baseline history.
+        :return: Configured Runner ready to invoke the model, or None
         """
         provider_name = config.provider.name.lower() if config.provider else None
         providers = RunnerFactory._get_providers_to_try(default_ai_provider, provider_name)
-        return RunnerFactory._with_fallback(providers, lambda p: p.create_model(config))
+        return RunnerFactory._with_fallback(
+            providers, lambda p: p.create_model(config, multi_turn=multi_turn)
+        )
 
     @staticmethod
     def create_agent(
         config: Any,
         tools: Any,
         default_ai_provider: Optional[str] = None,
-    ) -> Optional[AgentRunner]:
+    ) -> Optional[Runner]:
         """
         CAUTION:
         This feature is experimental and should NOT be considered ready for production use.
@@ -147,7 +157,7 @@ class RunnerFactory:
         :param config: LaunchDarkly AI agent config
         :param tools: Tool registry mapping tool names to callables
         :param default_ai_provider: Optional provider override
-        :return: AgentRunner instance, or None
+        :return: Runner instance, or None
         """
         provider_name = config.provider.name.lower() if config.provider else None
         providers = RunnerFactory._get_providers_to_try(default_ai_provider, provider_name)
@@ -176,7 +186,10 @@ class RunnerFactory:
         if graph_def.root() and graph_def.root().get_config() and graph_def.root().get_config().provider:
             provider_name = graph_def.root().get_config().provider.name.lower()
         providers = RunnerFactory._get_providers_to_try(default_ai_provider, provider_name)
-        return RunnerFactory._with_fallback(providers, lambda p: p.create_agent_graph(graph_def, tools))
+        return RunnerFactory._with_fallback(
+            providers,
+            lambda p: p.create_agent_graph(graph_def, tools),
+        )
 
     @staticmethod
     def _pkg_exists(package_name: str) -> None:
@@ -186,4 +199,5 @@ class RunnerFactory:
         :param package_name: Name of the package to check
         """
         if util.find_spec(package_name) is None:
-            raise ImportError(f"Package '{package_name}' not found")
+            pypi_name = _PYPI_PACKAGE_NAMES.get(package_name, package_name)
+            raise ImportError(f"Package '{pypi_name}' not found. Make sure it is installed.")

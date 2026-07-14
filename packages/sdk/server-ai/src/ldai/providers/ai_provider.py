@@ -1,9 +1,8 @@
 from abc import ABC
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 
 from ldai import log
-from ldai.models import LDMessage
-from ldai.providers.types import ModelResponse, StructuredResponse, ToolRegistry
+from ldai.providers.types import ToolRegistry
 
 
 class AIProvider(ABC):
@@ -16,58 +15,18 @@ class AIProvider(ABC):
     create_model(), create_agent(), and create_agent_graph().
     """
 
-    async def invoke_model(self, messages: List[LDMessage]) -> ModelResponse:
-        """
-        Invoke the chat model with an array of messages.
-
-        Default implementation takes no action and returns a placeholder response.
-        Provider implementations should override this method.
-
-        :param messages: Array of LDMessage objects representing the conversation
-        :return: ModelResponse containing the model's response
-        """
-        log.warning('invoke_model not implemented by this provider')
-
-        from ldai.models import LDMessage
-        from ldai.providers.types import LDAIMetrics
-
-        return ModelResponse(
-            message=LDMessage(role='assistant', content=''),
-            metrics=LDAIMetrics(success=False, usage=None),
-        )
-
-    async def invoke_structured_model(
-        self,
-        messages: List[LDMessage],
-        response_structure: Dict[str, Any],
-    ) -> StructuredResponse:
-        """
-        Invoke the chat model with structured output support.
-
-        Default implementation takes no action and returns a placeholder response.
-        Provider implementations should override this method.
-
-        :param messages: Array of LDMessage objects representing the conversation
-        :param response_structure: Dictionary of output configurations keyed by output name
-        :return: StructuredResponse containing the structured data
-        """
-        log.warning('invoke_structured_model not implemented by this provider')
-
-        from ldai.providers.types import LDAIMetrics
-
-        return StructuredResponse(
-            data={},
-            raw_response='',
-            metrics=LDAIMetrics(success=False, usage=None),
-        )
-
-    def create_model(self, config: Any) -> Optional[Any]:
+    def create_model(self, config: Any, multi_turn: bool = True) -> Optional[Any]:
         """
         Create a configured model executor for the given AI config.
 
         Default implementation warns. Provider implementations should override this method.
 
         :param config: The LaunchDarkly AI configuration
+        :param multi_turn: When ``True`` (the default) the returned runner should
+            accumulate conversation history across successful ``run()`` calls.
+            When ``False`` each invocation starts from the same baseline history,
+            which is required for callers that share one runner across
+            independent invocations (e.g. judges).
         :return: Configured model runner instance, or None if unsupported
         """
         log.warning('create_model not implemented by this provider')
@@ -91,7 +50,11 @@ class AIProvider(ABC):
         log.warning('create_agent not implemented by this provider')
         return None
 
-    def create_agent_graph(self, graph_def: Any, tools: Any) -> Optional[Any]:
+    def create_agent_graph(
+        self,
+        graph_def: Any,
+        tools: Any,
+    ) -> Optional[Any]:
         """
         CAUTION:
         This feature is experimental and should NOT be considered ready for production use.

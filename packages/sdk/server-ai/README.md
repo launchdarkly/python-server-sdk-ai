@@ -8,12 +8,6 @@
 
 This package contains the LaunchDarkly Server-Side AI SDK for Python (`launchdarkly-server-sdk-ai`).
 
-> [!CAUTION]
-> This SDK is in pre-release and not subject to backwards compatibility
-> guarantees. The API may change based on feedback.
->
-> Pin to a specific minor version and review the [changelog](CHANGELOG.md) before upgrading.
-
 ## LaunchDarkly overview
 
 [LaunchDarkly](https://www.launchdarkly.com) is a feature management platform that serves over 100 billion feature flags daily to help teams build better software, faster. [Get started](https://docs.launchdarkly.com/home/getting-started) using LaunchDarkly today!
@@ -92,7 +86,7 @@ ai_config = ai_client.completion_config(
 if ai_config.enabled:
     messages = ai_config.messages
     model = ai_config.model
-    tracker = ai_config.tracker
+    tracker = ai_config.create_tracker()
     # Use with your AI provider
 ```
 
@@ -115,7 +109,7 @@ from ldai import LDAIClient, AICompletionConfigDefault, ModelConfig, LDMessage
 # Use the same default_config from the retrieval section above
 async def main():
     context = Context.create("user-123")
-    model = await ai_client.create_model(
+    model = ai_client.create_model(
         'customer-support-chat',
         context,
         default_config,
@@ -123,16 +117,12 @@ async def main():
     )
     
     if model:
-        # Simple conversation flow - metrics are automatically tracked by invoke()
-        response1 = await model.invoke('I need help with my order')
-        print(response1.message.content)
+        # Simple conversation flow - metrics are automatically tracked by run()
+        response1 = await model.run('I need help with my order')
+        print(response1.content)
         
-        response2 = await model.invoke("What's the status?")
-        print(response2.message.content)
-        
-        # Access conversation history
-        messages = model.get_messages()
-        print(f'Conversation has {len(messages)} messages')
+        response2 = await model.run("What's the status?")
+        print(response2.content)
 
 asyncio.run(main())
 ```
@@ -146,20 +136,20 @@ For more control, you can use the configuration directly with AI providers. We r
 ```python
 import asyncio
 from ldai import LDAIClient, AICompletionConfigDefault, ModelConfig
-from ldai.providers.types import LDAIMetrics, TokenUsage
 
-from ldai_langchain import LangChainProvider
+from ldai_langchain import create_langchain_model, get_ai_metrics_from_response
 
 async def main():
     ai_config = ai_client.completion_config(ai_config_key, context, default)
     
     # Create LangChain model from configuration
-    llm = await LangChainProvider.create_langchain_model(ai_config)
+    llm = create_langchain_model(ai_config)
     
-    # Use with tracking (sync invoke)
-    response = ai_config.tracker.track_metrics_of(
+    # Use with tracking (sync invoke). Mint a tracker once per AI run.
+    tracker = ai_config.create_tracker()
+    response = tracker.track_metrics_of(
+        get_ai_metrics_from_response,
         lambda: llm.invoke(messages),
-        lambda result: LangChainProvider.get_ai_metrics_from_response(result)
     )
     
     print('AI Response:', response.content)
@@ -172,7 +162,8 @@ asyncio.run(main())
 ```python
 import asyncio
 from ldai import LDAIClient, AICompletionConfigDefault, ModelConfig
-from ldai.providers.types import LDAIMetrics, TokenUsage
+from ldai.providers import LDAIMetrics
+from ldai.tracker import TokenUsage
 
 async def main():
     ai_config = ai_client.completion_config(ai_config_key, context, default)
@@ -181,7 +172,7 @@ async def main():
     def map_custom_provider_metrics(response):
         return LDAIMetrics(
             success=True,
-            usage=TokenUsage(
+            tokens=TokenUsage(
                 total=response.usage.get('total_tokens', 0) if response.usage else 0,
                 input=response.usage.get('prompt_tokens', 0) if response.usage else 0,
                 output=response.usage.get('completion_tokens', 0) if response.usage else 0,
@@ -196,9 +187,11 @@ async def main():
             temperature=ai_config.model.get_parameter('temperature') if ai_config.model else 0.5,
         )
     
-    result = await ai_config.tracker.track_metrics_of_async(
+    # Mint a tracker once per AI run.
+    tracker = ai_config.create_tracker()
+    result = await tracker.track_metrics_of_async(
+        map_custom_provider_metrics,
         call_custom_provider,
-        map_custom_provider_metrics
     )
     
     print('AI Response:', result.content)

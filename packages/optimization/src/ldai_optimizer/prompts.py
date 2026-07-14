@@ -1,41 +1,12 @@
 """Prompt-building functions for LaunchDarkly AI optimization."""
 
-import re
 from typing import Any, Dict, List, Optional
 
 from ldai_optimizer.dataclasses import (
     OptimizationContext,
     OptimizationJudge,
 )
-
-_DURATION_KEYWORDS = re.compile(
-    r"\b(fast|faster|quickly|quick|latency|low-latency|duration|response\s+time|"
-    r"time\s+to\s+respond|milliseconds|performant|snappy|efficient|seconds)\b|"
-    r"(?<![a-zA-Z])ms\b",
-    re.IGNORECASE,
-)
-
-
-def _acceptance_criteria_implies_duration_optimization(
-    judges: Optional[Dict[str, OptimizationJudge]],
-) -> bool:
-    """Return True if any judge acceptance statement implies a latency optimization goal.
-
-    Scans each judge's acceptance_statement for latency-related keywords. The
-    check is case-insensitive. Returns False when judges is None or no judge
-    carries an acceptance statement.
-
-    :param judges: Judge configuration dict from OptimizationOptions, or None.
-    :return: True if duration optimization should be applied.
-    """
-    if not judges:
-        return False
-    for judge in judges.values():
-        if judge.acceptance_statement and _DURATION_KEYWORDS.search(
-            judge.acceptance_statement
-        ):
-            return True
-    return False
+from ldai_optimizer.util import judge_passed
 
 
 def build_message_history_text(
@@ -112,7 +83,6 @@ def build_new_variation_prompt(
     model_choices: List[str],
     variable_choices: List[Dict[str, Any]],
     initial_instructions: str,
-    optimize_for_duration: bool = False,
 ) -> str:
     """
     Build the LLM prompt for generating an improved agent configuration.
@@ -130,8 +100,6 @@ def build_new_variation_prompt(
     :param model_choices: List of model IDs the LLM may select from
     :param variable_choices: List of variable dicts (used to derive placeholder names)
     :param initial_instructions: The original unmodified instructions template
-    :param optimize_for_duration: When True, appends a duration optimization section
-        instructing the LLM to prefer faster models and simpler instructions.
     :return: The assembled prompt string
     """
     sections = [
@@ -145,10 +113,118 @@ def build_new_variation_prompt(
         variation_prompt_improvement_instructions(
             history, model_choices, variable_choices, initial_instructions
         ),
-        variation_prompt_duration_optimization(model_choices) if optimize_for_duration else "",
     ]
 
     return "\n\n".join(s for s in sections if s)
+
+
+def build_token_latency_variation_prompt(
+    history: List[OptimizationContext],
+    model_choices: List[str],
+    optimize_for_latency: bool = False,
+    optimize_for_cost: bool = False,
+) -> str:
+    """
+    Build the Phase 2 LLM prompt for generating a cost/latency-optimized configuration.
+
+    The agent's content (instructions, tools) is frozen after Phase 1 quality
+    iterations. Only the model and parameters may be adjusted in this phase.
+    The LLM is strongly directed to try different models from model_choices across
+    iterations to ensure each model is evaluated at least once.
+
+    :param history: Phase 2 OptimizationContexts, oldest first (starts with Phase 1 winner).
+    :param model_choices: List of model IDs the LLM may select from.
+    :param optimize_for_latency: When True, includes a latency reduction section.
+    :param optimize_for_cost: When True, includes a cost reduction section.
+    :return: The assembled Phase 2 prompt string.
+    """
+    # Collect models already tried in Phase 2 history (skip index 0 = Phase 1 winner)
+    tried_models = [ctx.current_model for ctx in history[1:] if ctx.current_model]
+    untried_models = [m for m in model_choices if m not in tried_models]
+
+    preamble = "\n".join([
+        "You are an assistant that helps optimize an agent's model and parameters for cost and latency.",
+        "",
+        "## *** CONTENT LOCK — CRITICAL ***",
+        "The agent's winning configuration has been selected and its content is now FROZEN.",
+        "You MUST return the instructions exactly as provided below — character for character.",
+        "You MUST NOT modify, paraphrase, shorten, or expand the instructions in any way.",
+        "The ONLY things you may change are:",
+        "  1. The model (choose from the available model list below)",
+        "  2. The parameters (e.g. temperature, max_tokens — but NOT tools or instructions)",
+        "",
+        "Any change to instructions will be silently reverted. Only model and parameter changes matter here.",
+    ])
+
+    model_section = "\n".join([
+        "## Model Selection:",
+        f"Available models: {model_choices}",
+        "IMPORTANT: You MUST try a DIFFERENT model from the one used in the most recent iteration.",
+        "The goal is to evaluate each available model at least once to find the fastest and/or cheapest option.",
+    ])
+    if untried_models:
+        model_section += f"\nModels not yet tried: {untried_models} — strongly prefer one of these."
+    if tried_models:
+        model_section += f"\nModels already tried: {tried_models} — avoid repeating these unless all options are exhausted."
+
+    config_section = variation_prompt_configuration(
+        history,
+        history[-1].current_model if history else None,
+        history[-1].current_instructions if history else "",
+        history[-1].current_parameters if history else {},
+    )
+
+    feedback_section = _build_cost_latency_feedback(history)
+
+    output_format = "\n".join([
+        "## Output Format:",
+        "Return a JSON object with exactly these keys: current_instructions, current_parameters, model.",
+        "The current_instructions value MUST be identical to the instructions shown above.",
+        "Example:",
+        "{",
+        '  "current_instructions": "<exact frozen instructions — copy verbatim>",',
+        '  "current_parameters": { "temperature": 0.5, "max_tokens": 256 },',
+        '  "model": "gpt-4o-mini"',
+        "}",
+    ])
+
+    sections = [preamble, model_section, config_section, feedback_section]
+
+    if optimize_for_latency:
+        sections.append(variation_prompt_duration_optimization(model_choices))
+    if optimize_for_cost:
+        sections.append(variation_prompt_cost_optimization(model_choices))
+
+    sections.append(output_format)
+
+    return "\n\n".join(s for s in sections if s)
+
+
+def _build_cost_latency_feedback(history: List[OptimizationContext]) -> str:
+    """
+    Build a feedback section showing cost/latency metrics from Phase 2 history.
+
+    :param history: Phase 2 history (index 0 = Phase 1 winner baseline).
+    :return: Formatted feedback string, or empty string if no history.
+    """
+    if not history:
+        return ""
+
+    lines = ["## Iteration History (Cost/Latency):"]
+    for i, ctx in enumerate(history):
+        label = "Phase 1 winner (baseline)" if i == 0 else f"Phase 2 iteration {i}"
+        lines.append(f"\n### {label}:")
+        lines.append(f"Model: {ctx.current_model}")
+        if ctx.duration_ms is not None:
+            lines.append(f"Duration: {ctx.duration_ms:.0f}ms")
+        if ctx.estimated_cost_usd is not None:
+            lines.append(f"Estimated cost: ${ctx.estimated_cost_usd:.6f}")
+        if ctx.scores:
+            for judge_key, result in ctx.scores.items():
+                if not judge_key.startswith("_"):
+                    lines.append(f"Judge [{judge_key}]: score={result.score:.3f}")
+
+    return "\n".join(lines)
 
 
 def variation_prompt_preamble() -> str:
@@ -247,6 +323,8 @@ def variation_prompt_configuration(
         lines.append(f"Agent response: <untrusted>{previous_ctx.completion_response}</untrusted>")
         if previous_ctx.duration_ms is not None:
             lines.append(f"Agent duration: {previous_ctx.duration_ms:.0f}ms")
+        if previous_ctx.estimated_cost_usd is not None:
+            lines.append(f"Estimated agent cost: ${previous_ctx.estimated_cost_usd:.6f}")
         return "\n".join(lines)
     else:
         return "\n".join(
@@ -285,7 +363,7 @@ def variation_prompt_feedback(
             if optimization_judge:
                 score = result.score
                 if optimization_judge.threshold is not None:
-                    passed = score >= optimization_judge.threshold
+                    passed = judge_passed(score, optimization_judge.threshold, optimization_judge.is_inverted)
                     status = "PASSED" if passed else "FAILED"
                     feedback_line = (
                         f"- {judge_key}: Score {score:.3f}"
@@ -300,6 +378,8 @@ def variation_prompt_feedback(
                 lines.append(feedback_line)
         if ctx.duration_ms is not None:
             lines.append(f"Agent duration: {ctx.duration_ms:.0f}ms")
+        if ctx.estimated_cost_usd is not None:
+            lines.append(f"Estimated agent cost: ${ctx.estimated_cost_usd:.6f}")
     return "\n".join(lines)
 
 
@@ -555,3 +635,81 @@ def variation_prompt_duration_optimization(model_choices: List[str]) -> str:
             "Quality criteria remain the primary objective — do not sacrifice passing scores to achieve lower latency.",
         ]
     )
+
+
+def variation_prompt_cost_optimization(
+    model_choices: List[str],
+    quality_already_passing: bool = False,
+) -> str:
+    """
+    Cost optimization section of the variation prompt.
+
+    Included when acceptance criteria imply a cost reduction goal. Instructs
+    the LLM to treat token usage as a secondary objective — quality criteria
+    must still be met first — and provides concrete guidance on how to reduce
+    cost through model selection and instruction simplification.
+
+    When ``quality_already_passing`` is True, the framing shifts: since all
+    judge criteria are already satisfied, the LLM is instructed to preserve
+    the existing behavior exactly and only apply changes that reduce cost
+    without affecting output quality.
+
+    :param model_choices: List of model IDs the LLM may select from, so it can
+        apply its own knowledge of which models tend to be cheaper.
+    :param quality_already_passing: When True, signals that all judge criteria
+        are currently passing. The section will direct the LLM to preserve
+        output quality and focus exclusively on cost reduction strategies.
+    :return: The cost optimization prompt block.
+    """
+    if quality_already_passing:
+        intent_lines = [
+            "## Cost Optimization:",
+            "The acceptance criteria for this optimization implies that token usage / cost should be reduced.",
+            "*** IMPORTANT: All quality acceptance criteria are currently passing. ***",
+            "The goal of this variation is to reduce cost WITHOUT changing the behavior or quality"
+            " of the agent's responses.",
+            "Do NOT alter the instructions in ways that would change what the agent says or how it reasons.",
+            "Only apply changes that reduce token usage or switch to a cheaper model while preserving"
+            " the same output quality.",
+            "If you cannot reduce cost without risking quality, keep the instructions unchanged and"
+            " only consider a cheaper model.",
+            "",
+        ]
+    else:
+        intent_lines = [
+            "## Cost Optimization:",
+            "The acceptance criteria for this optimization implies that token usage / cost should be reduced.",
+            "In addition to improving quality, generate a variation that aims to reduce the agent's cost.",
+            "",
+        ]
+
+    shared_lines = [
+        "Cost is driven by two factors: (1) the number of tokens processed, and (2) the per-token price of the model.",
+        "Target both factors with the strategies below.",
+        "",
+        "### Reducing token usage (input tokens):",
+        "- Remove redundant, verbose, or repeated phrasing from the instructions.",
+        "- Collapse multi-sentence explanations into a single concise directive.",
+        "- Remove examples or few-shot demonstrations unless they are essential for accuracy.",
+        "- Eliminate instructional scaffolding that the model does not need"
+        " (e.g. 'You are a helpful assistant that...').",
+        "- Use bullet points instead of prose where possible — they are more token-efficient.",
+        "",
+        "### Reducing token usage (output tokens):",
+        "- Instruct the agent to be concise and avoid unnecessary elaboration.",
+        "- Specify the exact format and length of the expected response (e.g. 'Respond in one sentence.').",
+        "- Set or reduce max_tokens if the current value allows longer responses than needed.",
+        "- Avoid instructions that encourage the agent to 'explain its reasoning' unless required"
+        " by the acceptance criteria.",
+        "",
+        "### Reducing per-token cost via model selection:",
+        "- Consider switching to a cheaper model from the available choices if quality requirements can still be met.",
+        f"  Available models: {model_choices}",
+        "  Use your knowledge of relative model pricing to prefer lower-cost options.",
+        "  Only switch models if the cheaper model is capable of satisfying the acceptance criteria.",
+        "",
+        "Quality criteria remain the primary objective — do not sacrifice passing scores to achieve lower cost.",
+        "Apply cost-reduction changes incrementally: prefer the smallest change that measurably reduces cost.",
+    ]
+
+    return "\n".join(intent_lines + shared_lines)

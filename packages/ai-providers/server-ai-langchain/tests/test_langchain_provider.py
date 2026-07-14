@@ -1,11 +1,11 @@
 """Tests for LangChain Provider."""
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock
 
+import pytest
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
-
 from ldai import LDMessage
+from ldai.evaluator import Evaluator
 
 from ldai_langchain import (
     LangChainModelRunner,
@@ -95,10 +95,10 @@ class TestGetAIMetricsFromResponse:
         result = get_ai_metrics_from_response(mock_response)
 
         assert result.success is True
-        assert result.usage is not None
-        assert result.usage.total == 100
-        assert result.usage.input == 50
-        assert result.usage.output == 50
+        assert result.tokens is not None
+        assert result.tokens.total == 100
+        assert result.tokens.input == 50
+        assert result.tokens.output == 50
 
     def test_creates_metrics_with_snake_case_token_usage(self):
         """Should create metrics with snake_case token usage keys."""
@@ -114,10 +114,10 @@ class TestGetAIMetricsFromResponse:
         result = get_ai_metrics_from_response(mock_response)
 
         assert result.success is True
-        assert result.usage is not None
-        assert result.usage.total == 150
-        assert result.usage.input == 75
-        assert result.usage.output == 75
+        assert result.tokens is not None
+        assert result.tokens.total == 150
+        assert result.tokens.input == 75
+        assert result.tokens.output == 75
 
     def test_creates_metrics_with_success_true_and_no_usage_when_metadata_missing(self):
         """Should create metrics with success=True and no usage when metadata is missing."""
@@ -126,7 +126,7 @@ class TestGetAIMetricsFromResponse:
         result = get_ai_metrics_from_response(mock_response)
 
         assert result.success is True
-        assert result.usage is None
+        assert result.tokens is None
 
     def test_usage_metadata_preferred_over_response_metadata(self):
         """usage_metadata should be used when it has non-zero counts."""
@@ -218,8 +218,8 @@ class TestMapProvider:
         assert map_provider('unknown') == 'unknown'
 
 
-class TestInvokeModel:
-    """Tests for invoke_model instance method."""
+class TestRunCompletion:
+    """Tests for run() without structured output."""
 
     @pytest.fixture
     def mock_llm(self):
@@ -233,11 +233,10 @@ class TestInvokeModel:
         mock_llm.ainvoke = AsyncMock(return_value=mock_response)
         provider = LangChainModelRunner(mock_llm)
 
-        messages = [LDMessage(role='user', content='Hello')]
-        result = await provider.invoke_model(messages)
+        result = await provider.run('Hello')
 
         assert result.metrics.success is True
-        assert result.message.content == 'Test response'
+        assert result.content == 'Test response'
 
     @pytest.mark.asyncio
     async def test_returns_success_false_for_non_string_content_and_logs_warning(self, mock_llm):
@@ -246,11 +245,10 @@ class TestInvokeModel:
         mock_llm.ainvoke = AsyncMock(return_value=mock_response)
         provider = LangChainModelRunner(mock_llm)
 
-        messages = [LDMessage(role='user', content='Hello')]
-        result = await provider.invoke_model(messages)
+        result = await provider.run('Hello')
 
         assert result.metrics.success is False
-        assert result.message.content == ''
+        assert result.content == ''
 
     @pytest.mark.asyncio
     async def test_returns_success_false_when_model_invocation_throws_error(self, mock_llm):
@@ -259,16 +257,102 @@ class TestInvokeModel:
         mock_llm.ainvoke = AsyncMock(side_effect=error)
         provider = LangChainModelRunner(mock_llm)
 
-        messages = [LDMessage(role='user', content='Hello')]
-        result = await provider.invoke_model(messages)
+        result = await provider.run('Hello')
 
         assert result.metrics.success is False
-        assert result.message.content == ''
-        assert result.message.role == 'assistant'
+        assert result.content == ''
+
+    @pytest.mark.asyncio
+    async def test_accumulates_history_across_successful_calls(self, mock_llm):
+        """Should include prior exchange in messages on subsequent calls."""
+        mock_llm.ainvoke = AsyncMock(side_effect=[
+            AIMessage(content='First response'),
+            AIMessage(content='Second response'),
+        ])
+        provider = LangChainModelRunner(mock_llm)
+
+        await provider.run('First question')
+        await provider.run('Second question')
+
+        second_call_messages = mock_llm.ainvoke.call_args_list[1][0][0]
+        roles = [type(m).__name__ for m in second_call_messages]
+        assert roles == ['HumanMessage', 'AIMessage', 'HumanMessage']
+        assert second_call_messages[0].content == 'First question'
+        assert second_call_messages[1].content == 'First response'
+        assert second_call_messages[2].content == 'Second question'
+
+    @pytest.mark.asyncio
+    async def test_multi_turn_false_does_not_accumulate_history(self, mock_llm):
+        """When multi_turn=False the runner must not append to history on success."""
+        mock_llm.ainvoke = AsyncMock(side_effect=[
+            AIMessage(content='First response'),
+            AIMessage(content='Second response'),
+        ])
+        provider = LangChainModelRunner(mock_llm, multi_turn=False)
+        baseline_len = len(provider._chat_history.messages)
+
+        await provider.run('First question')
+        assert len(provider._chat_history.messages) == baseline_len
+
+        await provider.run('Second question')
+        assert len(provider._chat_history.messages) == baseline_len
+
+        second_call_messages = mock_llm.ainvoke.call_args_list[1][0][0]
+        assert len(second_call_messages) == 1
+        assert second_call_messages[0].content == 'Second question'
+
+    @pytest.mark.asyncio
+    async def test_multi_turn_default_accumulates_history(self, mock_llm):
+        """Default behavior (multi_turn omitted) still accumulates history (preserves PR #166)."""
+        mock_llm.ainvoke = AsyncMock(side_effect=[
+            AIMessage(content='First response'),
+            AIMessage(content='Second response'),
+        ])
+        provider = LangChainModelRunner(mock_llm)
+        baseline_len = len(provider._chat_history.messages)
+
+        await provider.run('First question')
+        await provider.run('Second question')
+
+        assert len(provider._chat_history.messages) == baseline_len + 4
+
+    @pytest.mark.asyncio
+    async def test_does_not_accumulate_history_on_failed_call(self, mock_llm):
+        """Should not add to history when the call fails."""
+        mock_llm.ainvoke = AsyncMock(side_effect=Exception('Model error'))
+        provider = LangChainModelRunner(mock_llm)
+
+        await provider.run('Hello')
+
+        mock_llm.ainvoke = AsyncMock(return_value=AIMessage(content='Recovery'))
+        await provider.run('Try again')
+
+        second_call_messages = mock_llm.ainvoke.call_args_list[0][0][0]
+        assert len(second_call_messages) == 1
+        assert second_call_messages[0].content == 'Try again'
+
+    @pytest.mark.asyncio
+    async def test_prepends_config_messages_before_history(self, mock_llm):
+        """Should send config messages before history on every call."""
+        mock_llm.ainvoke = AsyncMock(side_effect=[
+            AIMessage(content='Answer 1'),
+            AIMessage(content='Answer 2'),
+        ])
+        config_messages = [LDMessage(role='system', content='You are helpful.')]
+        provider = LangChainModelRunner(mock_llm, config_messages=config_messages)
+
+        await provider.run('Q1')
+        await provider.run('Q2')
+
+        second_call_messages = mock_llm.ainvoke.call_args_list[1][0][0]
+        assert second_call_messages[0].content == 'You are helpful.'
+        assert second_call_messages[1].content == 'Q1'
+        assert second_call_messages[2].content == 'Answer 1'
+        assert second_call_messages[3].content == 'Q2'
 
 
-class TestInvokeStructuredModel:
-    """Tests for invoke_structured_model instance method."""
+class TestRunStructured:
+    """Tests for run() with structured output."""
 
     @pytest.fixture
     def mock_llm(self):
@@ -285,12 +369,11 @@ class TestInvokeStructuredModel:
         mock_llm.with_structured_output = MagicMock(return_value=mock_structured_llm)
         provider = LangChainModelRunner(mock_llm)
 
-        messages = [LDMessage(role='user', content='Hello')]
         response_structure = {'type': 'object', 'properties': {}}
-        result = await provider.invoke_structured_model(messages, response_structure)
+        result = await provider.run('Hello', output_type=response_structure)
 
         assert result.metrics.success is True
-        assert result.data == parsed_data
+        assert result.parsed == parsed_data
 
     @pytest.mark.asyncio
     async def test_returns_success_false_when_structured_model_invocation_throws_error(self, mock_llm):
@@ -301,14 +384,13 @@ class TestInvokeStructuredModel:
         mock_llm.with_structured_output = MagicMock(return_value=mock_structured_llm)
         provider = LangChainModelRunner(mock_llm)
 
-        messages = [LDMessage(role='user', content='Hello')]
         response_structure = {'type': 'object', 'properties': {}}
-        result = await provider.invoke_structured_model(messages, response_structure)
+        result = await provider.run('Hello', output_type=response_structure)
 
         assert result.metrics.success is False
-        assert result.data == {}
-        assert result.raw_response == ''
-        assert result.metrics.usage is None
+        assert result.parsed is None
+        assert result.raw is None
+        assert result.metrics.tokens is None
 
 
 class TestGetToolCallsFromResponse:
@@ -404,6 +486,7 @@ class TestCreateAgent:
     def test_creates_agent_runner_with_instructions_and_tool_definitions(self):
         """Should create LangChainAgentRunner wrapping a compiled graph."""
         from unittest.mock import patch
+
         from ldai_langchain import LangChainAgentRunner
 
         mock_ai_config = MagicMock()
@@ -436,6 +519,7 @@ class TestCreateAgent:
     def test_creates_agent_runner_with_no_tools(self):
         """Should create LangChainAgentRunner with no tool definitions."""
         from unittest.mock import patch
+
         from ldai_langchain import LangChainAgentRunner
 
         mock_ai_config = MagicMock()
@@ -463,7 +547,7 @@ class TestLangChainAgentRunner:
 
     @pytest.mark.asyncio
     async def test_runs_agent_and_returns_result(self):
-        """Should return AgentResult with the last message content from the graph."""
+        """Should return RunnerResult with the last message content from the graph."""
         from ldai_langchain import LangChainAgentRunner
 
         final_msg = AIMessage(content="The answer is 42.")
@@ -473,7 +557,7 @@ class TestLangChainAgentRunner:
         runner = LangChainAgentRunner(mock_agent)
         result = await runner.run("What is the answer?")
 
-        assert result.output == "The answer is 42."
+        assert result.content == "The answer is 42."
         assert result.metrics.success is True
         mock_agent.ainvoke.assert_called_once_with(
             {"messages": [{"role": "user", "content": "What is the answer?"}]}
@@ -495,16 +579,16 @@ class TestLangChainAgentRunner:
         runner = LangChainAgentRunner(mock_agent)
         result = await runner.run("Hello")
 
-        assert result.output == "final answer"
+        assert result.content == "final answer"
         assert result.metrics.success is True
-        assert result.metrics.usage is not None
-        assert result.metrics.usage.total == 30
-        assert result.metrics.usage.input == 18
-        assert result.metrics.usage.output == 12
+        assert result.metrics.tokens is not None
+        assert result.metrics.tokens.total == 30
+        assert result.metrics.tokens.input == 18
+        assert result.metrics.tokens.output == 12
 
     @pytest.mark.asyncio
     async def test_returns_failure_when_exception_thrown(self):
-        """Should return unsuccessful AgentResult when exception is thrown."""
+        """Should return unsuccessful RunnerResult when exception is thrown."""
         from ldai_langchain import LangChainAgentRunner
 
         mock_agent = MagicMock()
@@ -513,7 +597,7 @@ class TestLangChainAgentRunner:
         runner = LangChainAgentRunner(mock_agent)
         result = await runner.run("Hello")
 
-        assert result.output == ""
+        assert result.content == ""
         assert result.metrics.success is False
 
 
@@ -522,6 +606,7 @@ class TestBuildTools:
 
     def test_registers_sync_callable_as_structured_tool_func(self):
         from ldai.models import AIAgentConfig, ModelConfig, ProviderConfig
+
         from ldai_langchain.langchain_helper import build_structured_tools
 
         def sync_tool(x: str = '') -> str:
@@ -530,6 +615,7 @@ class TestBuildTools:
         cfg = AIAgentConfig(
             key='n',
             enabled=True,
+            evaluator=Evaluator.noop(),
             create_tracker=MagicMock(),
             model=ModelConfig(
                 name='gpt-4',
@@ -545,6 +631,7 @@ class TestBuildTools:
 
     def test_registers_async_callable_as_structured_tool_coroutine(self):
         from ldai.models import AIAgentConfig, ModelConfig, ProviderConfig
+
         from ldai_langchain.langchain_helper import build_structured_tools
 
         async def async_tool(x: str = '') -> str:
@@ -553,6 +640,7 @@ class TestBuildTools:
         cfg = AIAgentConfig(
             key='n',
             enabled=True,
+            evaluator=Evaluator.noop(),
             create_tracker=MagicMock(),
             model=ModelConfig(
                 name='gpt-4',

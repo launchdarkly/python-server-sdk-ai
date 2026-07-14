@@ -9,22 +9,22 @@ To verify build provenance attestations, we recommend using the [GitHub CLI `att
 <!-- x-release-please-start-version -->
 ```
 # Set the version of the library to verify
-VERSION=1.0.1
+VERSION=0.1.0
 ```
 <!-- x-release-please-end -->
 
 ```
 # Download package from PyPI
-$ pip download --only-binary=:all: launchdarkly-server-sdk-ai==${VERSION}
+$ pip download --only-binary=:all: launchdarkly-ai-optimizer==${VERSION}
 
 # Verify provenance using the GitHub CLI
-$ gh attestation verify launchdarkly_server_sdk_ai-${VERSION}-py3-none-any.whl --owner launchdarkly
+$ gh attestation verify launchdarkly_ai_optimizer-${VERSION}-py3-none-any.whl --owner launchdarkly
 ```
 
 Below is a sample of expected output.
 
 ```
-Loaded digest sha256:... for file://launchdarkly_server_sdk_ai-0.16.1-py3-none-any.whl
+Loaded digest sha256:... for file://launchdarkly_ai_optimizer-0.1.0-py3-none-any.whl
 Loaded 1 attestation from GitHub API
 
 The following policy criteria will be enforced:

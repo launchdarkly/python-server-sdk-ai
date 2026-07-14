@@ -1,15 +1,23 @@
 """Tests for Judge functionality."""
 
-from unittest.mock import AsyncMock, MagicMock
+from typing import List
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 from ldclient import Config, Context, LDClient
 from ldclient.integrations.test_data import TestData
 
-from ldai.judge import Judge
+from ldai import LDAIClient
+from ldai.judge import Judge, _strip_legacy_judge_messages
 from ldai.judge.evaluation_schema_builder import EvaluationSchemaBuilder
-from ldai.models import AIJudgeConfig, AIJudgeConfigDefault, LDMessage, ModelConfig, ProviderConfig
-from ldai.providers.types import JudgeResult, LDAIMetrics, StructuredResponse
+from ldai.models import (
+    AIJudgeConfig,
+    AIJudgeConfigDefault,
+    LDMessage,
+    ModelConfig,
+    ProviderConfig,
+)
+from ldai.providers.types import JudgeResult, LDAIMetrics, RunnerResult
 from ldai.tracker import LDAIConfigTracker
 
 
@@ -40,9 +48,9 @@ def client(td: TestData) -> LDClient:
 
 @pytest.fixture
 def mock_runner():
-    """Create a mock AI provider."""
+    """Create a mock AI runner."""
     provider = MagicMock()
-    provider.invoke_structured_model = AsyncMock()
+    provider.run = AsyncMock()
     return provider
 
 
@@ -101,8 +109,71 @@ def judge_config_without_key(tracker) -> AIJudgeConfig:
 
 @pytest.fixture
 def judge_config_without_messages(tracker) -> AIJudgeConfig:
-    """Create a judge config without messages."""
+    """Create a judge config without messages (None)."""
     return _make_judge_config(messages=None, tracker=tracker)
+
+
+class TestStripLegacyJudgeMessages:
+    """Tests for the _strip_legacy_judge_messages helper."""
+
+    def test_strips_assistant_message_with_message_history(self):
+        """Non-system messages containing {{message_history}} should be removed."""
+        messages = [
+            LDMessage(role='system', content='You are a judge.'),
+            LDMessage(role='assistant', content='Here is the history: {{message_history}}'),
+        ]
+        result = _strip_legacy_judge_messages(messages)
+        assert len(result) == 1
+        assert result[0].role == 'system'
+
+    def test_strips_user_message_with_response_to_evaluate(self):
+        """Non-system messages containing {{response_to_evaluate}} should be removed."""
+        messages = [
+            LDMessage(role='system', content='You are a judge.'),
+            LDMessage(role='user', content='Evaluate: {{response_to_evaluate}}'),
+        ]
+        result = _strip_legacy_judge_messages(messages)
+        assert len(result) == 1
+        assert result[0].role == 'system'
+
+    def test_strips_all_legacy_messages(self):
+        """All non-system template messages should be stripped from a typical legacy config."""
+        messages = [
+            LDMessage(role='system', content='You are a judge.'),
+            LDMessage(role='assistant', content='{{message_history}}'),
+            LDMessage(role='user', content='{{response_to_evaluate}}'),
+        ]
+        result = _strip_legacy_judge_messages(messages)
+        assert len(result) == 1
+        assert result[0].role == 'system'
+
+    def test_does_not_strip_system_message_containing_template_vars(self):
+        """System messages are never stripped, even if they contain template variable names."""
+        messages = [
+            LDMessage(role='system', content='Judge using {{message_history}} and {{response_to_evaluate}}.'),
+        ]
+        result = _strip_legacy_judge_messages(messages)
+        assert len(result) == 1
+        assert result[0].role == 'system'
+
+    def test_does_not_strip_non_template_messages(self):
+        """Non-system messages without template variables are left untouched."""
+        messages = [
+            LDMessage(role='system', content='You are a judge.'),
+            LDMessage(role='user', content='This is a regular message.'),
+        ]
+        result = _strip_legacy_judge_messages(messages)
+        assert len(result) == 2
+
+    def test_returns_empty_list_for_empty_input(self):
+        """An empty input list should return an empty list."""
+        assert _strip_legacy_judge_messages([]) == []
+
+    def test_new_style_config_system_only_unchanged(self):
+        """A new-style config with only a system message passes through unchanged."""
+        messages = [LDMessage(role='system', content='You are a judge.')]
+        result = _strip_legacy_judge_messages(messages)
+        assert result == messages
 
 
 class TestJudgeInitialization:
@@ -121,6 +192,20 @@ class TestJudgeInitialization:
         assert 'score' in judge._evaluation_response_structure['properties']
         assert 'reasoning' in judge._evaluation_response_structure['properties']
 
+    def test_judge_sample_rate_defaults_to_one(
+        self, judge_config_with_key: AIJudgeConfig, mock_runner
+    ):
+        """sample_rate should default to 1.0 when not provided."""
+        judge = Judge(judge_config_with_key, mock_runner)
+        assert judge.sample_rate == 1.0
+
+    def test_judge_sample_rate_can_be_set(
+        self, judge_config_with_key: AIJudgeConfig, mock_runner
+    ):
+        """sample_rate should be settable via the constructor."""
+        judge = Judge(judge_config_with_key, mock_runner, sample_rate=0.25)
+        assert judge.sample_rate == 0.25
+
 
 class TestJudgeEvaluate:
     """Tests for Judge.evaluate() method."""
@@ -137,37 +222,127 @@ class TestJudgeEvaluate:
         assert isinstance(result, JudgeResult)
         assert result.success is False
         assert result.sampled is False
-        mock_runner.invoke_structured_model.assert_not_called()
+        mock_runner.run.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_evaluate_returns_failure_when_messages_missing(
-        self, judge_config_without_messages: AIJudgeConfig, mock_runner
+    async def test_evaluate_succeeds_when_messages_is_none(
+        self, judge_config_without_messages: AIJudgeConfig, tracker: LDAIConfigTracker, mock_runner
     ):
-        """Evaluate should return a failed JudgeResult when messages are missing."""
-        judge = Judge(judge_config_without_messages, mock_runner)
+        """Evaluate should proceed (not error early) when messages is None."""
+        mock_response = RunnerResult(
+            content='',
+            metrics=LDAIMetrics(success=True),
+            parsed={'score': 0.7, 'reasoning': 'Acceptable response.'},
+        )
+        mock_runner.run.return_value = mock_response
+        tracker.track_metrics_of_async = AsyncMock(return_value=mock_response)
+
+        config = _make_judge_config(messages=None, tracker=tracker)
+        judge = Judge(config, mock_runner)
 
         result = await judge.evaluate("input text", "output text")
 
         assert isinstance(result, JudgeResult)
-        assert result.success is False
-        assert result.sampled is False
-        mock_runner.invoke_structured_model.assert_not_called()
+        assert result.sampled is True
+
+    @pytest.mark.asyncio
+    async def test_evaluate_passes_string_input_to_runner(
+        self, judge_config_with_key: AIJudgeConfig, tracker: LDAIConfigTracker, mock_runner
+    ):
+        """runner.run() should receive the formatted string, NOT a message list."""
+        mock_response = RunnerResult(
+            content='',
+            metrics=LDAIMetrics(success=True),
+            parsed={'score': 0.85, 'reasoning': 'Good answer.'},
+        )
+        mock_runner.run.return_value = mock_response
+        tracker.track_metrics_of_async = AsyncMock(
+            side_effect=lambda _metric_fn, fn: fn()
+        )
+
+        judge = Judge(judge_config_with_key, mock_runner)
+        await judge.evaluate("What is AI?", "AI is artificial intelligence.")
+
+        mock_runner.run.assert_called_once()
+        call_args = mock_runner.run.call_args
+        input_arg = call_args[0][0] if call_args[0] else call_args[1].get('input')
+        assert isinstance(input_arg, str)
+        assert "MESSAGE HISTORY:\nWhat is AI?" in input_arg
+        assert "RESPONSE TO EVALUATE:\nAI is artificial intelligence." in input_arg
+
+    @pytest.mark.asyncio
+    async def test_evaluate_string_input_format(
+        self, judge_config_with_key: AIJudgeConfig, tracker: LDAIConfigTracker, mock_runner
+    ):
+        """runner.run() should receive the exact expected string format."""
+        mock_response = RunnerResult(
+            content='',
+            metrics=LDAIMetrics(success=True),
+            parsed={'score': 0.9, 'reasoning': 'Correct.'},
+        )
+        mock_runner.run.return_value = mock_response
+        tracker.track_metrics_of_async = AsyncMock(
+            side_effect=lambda _metric_fn, fn: fn()
+        )
+
+        judge = Judge(judge_config_with_key, mock_runner)
+        await judge.evaluate("hello", "world")
+
+        call_args = mock_runner.run.call_args
+        input_arg = call_args[0][0] if call_args[0] else call_args[1].get('input')
+        expected = "MESSAGE HISTORY:\nhello\n\nRESPONSE TO EVALUATE:\nworld"
+        assert input_arg == expected
+
+    @pytest.mark.asyncio
+    async def test_evaluate_legacy_config_passes_string_input_to_runner(
+        self, tracker: LDAIConfigTracker, mock_runner
+    ):
+        """
+        Judge built directly with legacy messages (bypassing the client) still passes
+        a formatted string to the runner.  Legacy message stripping is the client's
+        responsibility; the Judge itself does not strip.
+        """
+        legacy_messages = [
+            LDMessage(role='system', content='You are a strict judge.'),
+            LDMessage(role='assistant', content='{{message_history}}'),
+            LDMessage(role='user', content='Evaluate: {{response_to_evaluate}}'),
+        ]
+        config = _make_judge_config(messages=legacy_messages, tracker=tracker)
+
+        mock_response = RunnerResult(
+            content='',
+            metrics=LDAIMetrics(success=True),
+            parsed={'score': 0.75, 'reasoning': 'Mostly relevant.'},
+        )
+        mock_runner.run.return_value = mock_response
+        tracker.track_metrics_of_async = AsyncMock(
+            side_effect=lambda _metric_fn, fn: fn()
+        )
+
+        judge = Judge(config, mock_runner)
+        await judge.evaluate("input", "output")
+
+        call_args = mock_runner.run.call_args
+        input_arg = call_args[0][0] if call_args[0] else call_args[1].get('input')
+        assert isinstance(input_arg, str)
+        assert "MESSAGE HISTORY:\ninput" in input_arg
+        assert "RESPONSE TO EVALUATE:\noutput" in input_arg
 
     @pytest.mark.asyncio
     async def test_evaluate_success_with_valid_response(
         self, judge_config_with_key: AIJudgeConfig, tracker: LDAIConfigTracker, mock_runner
     ):
         """Evaluate should return JudgeResponse with valid evaluation."""
-        mock_response = StructuredResponse(
-            data={
+        mock_response = RunnerResult(
+            content='',
+            metrics=LDAIMetrics(success=True),
+            parsed={
                 'score': 0.85,
                 'reasoning': 'The response is highly relevant to the input.'
             },
-            raw_response='{"score": 0.85, "reasoning": "..."}',
-            metrics=LDAIMetrics(success=True)
         )
 
-        mock_runner.invoke_structured_model.return_value = mock_response
+        mock_runner.run.return_value = mock_response
         tracker.track_metrics_of_async = AsyncMock(return_value=mock_response)
 
         judge = Judge(judge_config_with_key, mock_runner)
@@ -187,15 +362,15 @@ class TestJudgeEvaluate:
         self, judge_config_with_key: AIJudgeConfig, tracker: LDAIConfigTracker, mock_runner
     ):
         """Evaluate should accept shape { score, reasoning } and key by metric."""
-        mock_response = StructuredResponse(
-            data={
+        mock_response = RunnerResult(
+            content='',
+            metrics=LDAIMetrics(success=True),
+            parsed={
                 'score': 0.9,
                 'reasoning': 'The response is accurate and complete.',
             },
-            raw_response='{"score": 0.9, "reasoning": "..."}',
-            metrics=LDAIMetrics(success=True),
         )
-        mock_runner.invoke_structured_model.return_value = mock_response
+        mock_runner.run.return_value = mock_response
         tracker.track_metrics_of_async = AsyncMock(return_value=mock_response)
 
         judge = Judge(judge_config_with_key, mock_runner)
@@ -214,13 +389,13 @@ class TestJudgeEvaluate:
         self, judge_config_with_key: AIJudgeConfig, tracker: LDAIConfigTracker, mock_runner
     ):
         """Evaluate should handle missing score/reasoning in response."""
-        mock_response = StructuredResponse(
-            data={},
-            raw_response='{}',
-            metrics=LDAIMetrics(success=True)
+        mock_response = RunnerResult(
+            content='',
+            metrics=LDAIMetrics(success=True),
+            parsed={},
         )
 
-        mock_runner.invoke_structured_model.return_value = mock_response
+        mock_runner.run.return_value = mock_response
         tracker.track_metrics_of_async = AsyncMock(return_value=mock_response)
 
         judge = Judge(judge_config_with_key, mock_runner)
@@ -236,16 +411,16 @@ class TestJudgeEvaluate:
         self, judge_config_with_key: AIJudgeConfig, tracker: LDAIConfigTracker, mock_runner
     ):
         """Evaluate should handle invalid score values."""
-        mock_response = StructuredResponse(
-            data={
+        mock_response = RunnerResult(
+            content='',
+            metrics=LDAIMetrics(success=True),
+            parsed={
                 'score': 1.5,
-                'reasoning': 'Some reasoning'
+                'reasoning': 'Some reasoning',
             },
-            raw_response='{"score": 1.5, "reasoning": "..."}',
-            metrics=LDAIMetrics(success=True)
         )
 
-        mock_runner.invoke_structured_model.return_value = mock_response
+        mock_runner.run.return_value = mock_response
         tracker.track_metrics_of_async = AsyncMock(return_value=mock_response)
 
         judge = Judge(judge_config_with_key, mock_runner)
@@ -261,13 +436,13 @@ class TestJudgeEvaluate:
         self, judge_config_with_key: AIJudgeConfig, tracker: LDAIConfigTracker, mock_runner
     ):
         """Evaluate should handle missing reasoning."""
-        mock_response = StructuredResponse(
-            data={'score': 0.8},
-            raw_response='{"score": 0.8}',
-            metrics=LDAIMetrics(success=True)
+        mock_response = RunnerResult(
+            content='',
+            metrics=LDAIMetrics(success=True),
+            parsed={'score': 0.8},
         )
 
-        mock_runner.invoke_structured_model.return_value = mock_response
+        mock_runner.run.return_value = mock_response
         tracker.track_metrics_of_async = AsyncMock(return_value=mock_response)
 
         judge = Judge(judge_config_with_key, mock_runner)
@@ -283,7 +458,7 @@ class TestJudgeEvaluate:
         self, judge_config_with_key: AIJudgeConfig, tracker: LDAIConfigTracker, mock_runner
     ):
         """Evaluate should handle exceptions gracefully."""
-        mock_runner.invoke_structured_model.side_effect = Exception("Provider error")
+        mock_runner.run.side_effect = Exception("Provider error")
         tracker.track_metrics_of_async = AsyncMock(side_effect=Exception("Provider error"))
 
         judge = Judge(judge_config_with_key, mock_runner)
@@ -306,7 +481,33 @@ class TestJudgeEvaluate:
         assert isinstance(result, JudgeResult)
         assert result.sampled is False
         assert result.success is False
-        mock_runner.invoke_structured_model.assert_not_called()
+        mock_runner.run.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_evaluate_uses_instance_sample_rate_when_arg_omitted(
+        self, judge_config_with_key: AIJudgeConfig, mock_runner
+    ):
+        """When sampling_rate arg is omitted, the instance's sample_rate is used."""
+        judge = Judge(judge_config_with_key, mock_runner, sample_rate=0.0)
+
+        result = await judge.evaluate("input", "output")
+
+        assert isinstance(result, JudgeResult)
+        assert result.sampled is False
+        mock_runner.run.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_evaluate_arg_overrides_instance_sample_rate(
+        self, judge_config_with_key: AIJudgeConfig, mock_runner
+    ):
+        """An explicit sampling_rate=0.0 must override an instance sample_rate of 1.0."""
+        judge = Judge(judge_config_with_key, mock_runner, sample_rate=1.0)
+
+        result = await judge.evaluate("input", "output", sampling_rate=0.0)
+
+        assert isinstance(result, JudgeResult)
+        assert result.sampled is False
+        mock_runner.run.assert_not_called()
 
 
 class TestJudgeEvaluateMessages:
@@ -317,15 +518,13 @@ class TestJudgeEvaluateMessages:
         self, judge_config_with_key: AIJudgeConfig, tracker: LDAIConfigTracker, mock_runner
     ):
         """evaluate_messages should call evaluate with constructed input/output."""
-        from ldai.providers.types import ModelResponse
-
-        mock_response = StructuredResponse(
-            data={'score': 0.9, 'reasoning': 'Very relevant'},
-            raw_response='{"score": 0.9, "reasoning": "..."}',
-            metrics=LDAIMetrics(success=True)
+        mock_response = RunnerResult(
+            content='',
+            metrics=LDAIMetrics(success=True),
+            parsed={'score': 0.9, 'reasoning': 'Very relevant'},
         )
 
-        mock_runner.invoke_structured_model.return_value = mock_response
+        mock_runner.run.return_value = mock_response
         tracker.track_metrics_of_async = AsyncMock(return_value=mock_response)
 
         judge = Judge(judge_config_with_key, mock_runner)
@@ -334,9 +533,9 @@ class TestJudgeEvaluateMessages:
             LDMessage(role='user', content='Question 1'),
             LDMessage(role='assistant', content='Answer 1'),
         ]
-        chat_response = ModelResponse(
-            message=LDMessage(role='assistant', content='Answer 2'),
-            metrics=LDAIMetrics(success=True)
+        chat_response = RunnerResult(
+            content='Answer 2',
+            metrics=LDAIMetrics(success=True),
         )
 
         result = await judge.evaluate_messages(messages, chat_response)
@@ -344,6 +543,210 @@ class TestJudgeEvaluateMessages:
         assert result is not None
         assert result.success is True
         assert tracker.track_metrics_of_async.called
+
+    @pytest.mark.asyncio
+    async def test_evaluate_messages_preserves_roles_in_input(
+        self, judge_config_with_key: AIJudgeConfig, mock_runner
+    ):
+        """evaluate_messages must forward role-prefixed lines to evaluate()."""
+        messages = [
+            LDMessage(role='user', content='hi'),
+            LDMessage(role='assistant', content='hello'),
+        ]
+        chat_response = RunnerResult(content='reply', metrics=LDAIMetrics(success=True))
+
+        judge = Judge(judge_config_with_key, mock_runner)
+        with patch.object(judge, 'evaluate', new=AsyncMock(return_value=JudgeResult(judge_config_key='judge-config'))) as mock_evaluate:
+            await judge.evaluate_messages(messages, chat_response)
+
+        mock_evaluate.assert_called_once()
+        args, _ = mock_evaluate.call_args
+        assert args[0] == 'user: hi\nassistant: hello'
+        assert args[1] == 'reply'
+
+
+class TestJudgeRunnerNonMultiTurn:
+    """Successive evaluate() calls must not contaminate each other.
+
+    The Judge shares one runner across evaluations, so the runner must be
+    stateless across calls — RunnerFactory.create_model(..., multi_turn=False)
+    is what guarantees that at the client layer. These tests verify the Judge
+    itself does not accidentally mutate the runner's history and that two
+    evaluations see the same baseline.
+    """
+
+    @pytest.mark.asyncio
+    async def test_two_evaluations_do_not_contaminate_history(
+        self, judge_config_with_key: AIJudgeConfig, tracker: LDAIConfigTracker
+    ):
+        """A judge bound to a non-multi-turn runner must run the same baseline twice."""
+        # Stand in a fake runner that records the history it would expose to the
+        # LLM at the moment run() is called. With multi_turn=False the recorded
+        # baseline should be identical across calls.
+        seen_baselines: List[List[LDMessage]] = []
+
+        class _FakeRunner:
+            def __init__(self):
+                self._history: List[LDMessage] = []
+                self._multi_turn = False
+
+            async def run(self, input, output_type=None):  # type: ignore[no-untyped-def]
+                # Snapshot history as seen at call time.
+                seen_baselines.append(list(self._history))
+                return RunnerResult(
+                    content='ok',
+                    metrics=LDAIMetrics(success=True),
+                    parsed={'score': 0.9, 'reasoning': 'fine'},
+                )
+
+        runner = _FakeRunner()
+
+        async def _await_fn(_metric_fn, fn):
+            return await fn()
+
+        tracker.track_metrics_of_async = AsyncMock(side_effect=_await_fn)
+        judge = Judge(judge_config_with_key, runner)  # type: ignore[arg-type]
+
+        await judge.evaluate('first input', 'first output')
+        await judge.evaluate('second input', 'second output')
+
+        assert len(seen_baselines) == 2
+        # Both runs see the same baseline (empty in this fake; the point is
+        # they're equal — no contamination from the prior turn).
+        assert seen_baselines[0] == seen_baselines[1]
+        # And the runner's history never grew because multi_turn is False.
+        assert runner._history == []
+
+
+class TestJudgeConfigStripsLegacyMessages:
+    """Tests for ``LDAIClient.judge_config()`` legacy-message stripping.
+
+    Both ``LDAIClient.judge_config()`` (the direct public API) and
+    ``LDAIClient.create_judge()`` (the wrapper API) reach the same internal
+    ``_judge_config()`` method.  ``_judge_config()`` is responsible for
+    injecting ``message_history``/``response_to_evaluate`` markers so they
+    survive Mustache rendering, then stripping any legacy template messages
+    before returning the config.
+    """
+
+    @pytest.fixture
+    def context(self) -> Context:
+        return Context.create('user-key')
+
+    def _make_client(self, td: TestData) -> LDAIClient:
+        config = Config('sdk-key', update_processor_class=td, send_events=False)
+        return LDAIClient(LDClient(config=config))
+
+    def test_judge_config_strips_legacy_messages_from_returned_config(self, context):
+        """Calling ``judge_config()`` directly (no variables) still strips legacy messages.
+
+        This is the regression for the bug where legacy messages leaked through
+        the public ``judge_config()`` entry point because reserved-variable
+        markers were only injected in ``_create_judge_instance``.
+        """
+        td = TestData.data_source()
+        td.update(
+            td.flag('legacy-judge')
+            .variations({
+                'model': {'name': 'gpt-4'},
+                'provider': {'name': 'openai'},
+                'messages': [
+                    {'role': 'system', 'content': 'You are a judge.'},
+                    {'role': 'assistant', 'content': '{{message_history}}'},
+                    {'role': 'user', 'content': 'Evaluate: {{response_to_evaluate}}'},
+                ],
+                'evaluationMetricKey': '$ld:ai:judge:relevance',
+                '_ldMeta': {'enabled': True, 'variationKey': 'judge-v1', 'version': 1},
+            })
+            .variation_for_all(0)
+        )
+        client = self._make_client(td)
+
+        result = client.judge_config('legacy-judge', context)
+
+        assert result.enabled is True
+        assert result.messages is not None
+        assert len(result.messages) == 1
+        assert result.messages[0].role == 'system'
+        assert result.messages[0].content == 'You are a judge.'
+
+    def test_judge_config_passes_user_variables_to_template(self, context):
+        """User variables are still interpolated into the system message."""
+        td = TestData.data_source()
+        td.update(
+            td.flag('parametric-judge')
+            .variations({
+                'model': {'name': 'gpt-4'},
+                'provider': {'name': 'openai'},
+                'messages': [
+                    {'role': 'system', 'content': 'You are a {{tone}} judge.'},
+                ],
+                'evaluationMetricKey': '$ld:ai:judge:relevance',
+                '_ldMeta': {'enabled': True, 'variationKey': 'judge-v1', 'version': 1},
+            })
+            .variation_for_all(0)
+        )
+        client = self._make_client(td)
+
+        result = client.judge_config(
+            'parametric-judge', context, variables={'tone': 'strict'}
+        )
+
+        assert result.messages is not None
+        assert result.messages[0].content == 'You are a strict judge.'
+
+    def test_judge_config_warns_on_reserved_variables(self, context):
+        """``_judge_config`` warns when callers pass reserved variable names."""
+        td = TestData.data_source()
+        td.update(
+            td.flag('judge-config')
+            .variations({
+                'model': {'name': 'gpt-4'},
+                'provider': {'name': 'openai'},
+                'messages': [{'role': 'system', 'content': 'You are a judge.'}],
+                'evaluationMetricKey': '$ld:ai:judge:relevance',
+                '_ldMeta': {'enabled': True, 'variationKey': 'judge-v1', 'version': 1},
+            })
+            .variation_for_all(0)
+        )
+        client = self._make_client(td)
+
+        with patch('ldai.client.log') as mock_log:
+            client.judge_config(
+                'judge-config',
+                context,
+                variables={
+                    'message_history': 'should be ignored',
+                    'response_to_evaluate': 'should be ignored',
+                },
+            )
+
+        warning_messages = [c.args[0] for c in mock_log.warning.call_args_list]
+        assert any("'message_history' is reserved" in m for m in warning_messages)
+        assert any("'response_to_evaluate' is reserved" in m for m in warning_messages)
+
+    def test_judge_config_does_not_warn_without_reserved_variables(self, context):
+        """No warnings should be emitted when callers pass non-reserved variables."""
+        td = TestData.data_source()
+        td.update(
+            td.flag('judge-config')
+            .variations({
+                'model': {'name': 'gpt-4'},
+                'provider': {'name': 'openai'},
+                'messages': [{'role': 'system', 'content': 'You are a judge.'}],
+                'evaluationMetricKey': '$ld:ai:judge:relevance',
+                '_ldMeta': {'enabled': True, 'variationKey': 'judge-v1', 'version': 1},
+            })
+            .variation_for_all(0)
+        )
+        client = self._make_client(td)
+
+        with patch('ldai.client.log') as mock_log:
+            client.judge_config('judge-config', context, variables={'tone': 'strict'})
+
+        warning_messages = [c.args[0] for c in mock_log.warning.call_args_list]
+        assert not any("'message_history' is reserved" in m for m in warning_messages)
+        assert not any("'response_to_evaluate' is reserved" in m for m in warning_messages)
 
 
 class TestEvaluationSchemaBuilder:
