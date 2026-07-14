@@ -85,15 +85,21 @@ def _find_model_config(
 ) -> Optional[Dict[str, Any]]:
     """Find the best matching model config for a given model name.
 
-    When multiple configs share the same ``id``, the one marked ``global=True``
-    is preferred over project-specific configs. Falls back to the first
-    non-global match if no global entry exists.
+    Matches on either the catalog ``id`` (e.g. ``"gpt-4o"``) or the catalog
+    ``key`` (e.g. ``"OpenAI.gpt-4o"``). The ``key`` form is what the API
+    returns as ``modelConfigKey`` on a variation, so both must be checked.
 
-    :param model_name: The model id to look up.
+    When multiple configs match, the one marked ``global=True`` is preferred
+    over project-specific configs. Falls back to the first non-global match.
+
+    :param model_name: The model id or key to look up.
     :param configs: List of model config dicts from the LD API.
     :return: Best-matching model config dict, or None if no match.
     """
-    matching = [mc for mc in configs if mc.get("id") == model_name]
+    matching = [
+        mc for mc in configs
+        if mc.get("id") == model_name or mc.get("key") == model_name
+    ]
     if not matching:
         return None
     global_match = next((mc for mc in matching if mc.get("global") is True), None)
