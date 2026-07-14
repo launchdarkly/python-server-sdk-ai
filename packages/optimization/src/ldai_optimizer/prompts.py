@@ -165,7 +165,10 @@ def build_token_latency_variation_prompt(
     if untried_models:
         model_section += f"\nModels not yet tried: {untried_models} — strongly prefer one of these."
     if tried_models:
-        model_section += f"\nModels already tried: {tried_models} — avoid repeating these unless all options are exhausted."
+        model_section += (
+            f"\nModels already tried: {tried_models}"
+            " — avoid repeating these unless all options are exhausted."
+        )
 
     config_section = variation_prompt_configuration(
         history,

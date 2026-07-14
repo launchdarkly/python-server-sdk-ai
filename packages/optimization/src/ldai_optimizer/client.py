@@ -224,6 +224,7 @@ class OptimizationClient:
         self._model_configs: List[Dict[str, Any]] = []
         self._last_batch_size: int = 1
         self._in_cost_latency_phase: bool = False
+        self._ld_context: Optional[Context] = None
 
         if os.environ.get("LAUNCHDARKLY_API_KEY"):
             self._has_api_key = True
@@ -710,9 +711,10 @@ class OptimizationClient:
             template_variables["expected_response"] = expected_response
 
         assert optimization_judge.judge_key is not None
+        judge_context = self._ld_context or self._options.context_choices[0]
         judge_config = self._judge_config(
             optimization_judge.judge_key,
-            self._options.context_choices[0],
+            judge_context,
             AIJudgeConfigDefault(enabled=False),
             template_variables,
         )
@@ -1068,7 +1070,11 @@ class OptimizationClient:
                     self._api_key,  # type: ignore[arg-type]
                     **({"base_url": base_url} if base_url else {}),
                 )
-                raw_variation = client.get_ai_config_variation(project_key, agent_key, variation_key)  # type: ignore[arg-type]
+                raw_variation = client.get_ai_config_variation(
+                    project_key,  # type: ignore[arg-type]
+                    agent_key,
+                    variation_key,
+                )
                 raw_instructions = raw_variation.get("instructions") or ""
                 raw_tools = raw_variation.get("tools") or []
                 model_config_key = raw_variation.get("modelConfigKey") or ""
@@ -1091,7 +1097,6 @@ class OptimizationClient:
                     "instructions", agent_config.instructions
                 )
                 raw_tools = raw_variation.get("tools", [])
-
 
             if not raw_instructions:
                 raise ValueError(
@@ -1186,6 +1191,7 @@ class OptimizationClient:
         self._agent_key = agent_key
         self._fetch_model_configs(options.project_key, options.base_url, options.token_optimization)
         context = random.choice(options.context_choices)
+        self._ld_context = context
         agent_config = await self._get_agent_config(
             agent_key,
             context,
@@ -1240,6 +1246,7 @@ class OptimizationClient:
         self._agent_key = agent_key
         self._fetch_model_configs(options.project_key, options.base_url, options.token_optimization)
         context = random.choice(options.context_choices)
+        self._ld_context = context
         agent_config = await self._get_agent_config(
             agent_key,
             context,
@@ -1855,6 +1862,7 @@ class OptimizationClient:
         self._model_configs = model_configs
 
         context = random.choice(options.context_choices)
+        self._ld_context = context
         # _get_agent_config calls _initialize_class_members_from_config internally;
         # _run_optimization calls it again to reset history before the loop starts.
         agent_config = await self._get_agent_config(
@@ -1873,7 +1881,8 @@ class OptimizationClient:
         else:
             result = await self._run_optimization(agent_config, optimization_options)
 
-        if optimization_options.auto_commit and options.auto_commit and self._last_run_succeeded and self._last_succeeded_context:
+        if (optimization_options.auto_commit and options.auto_commit
+                and self._last_run_succeeded and self._last_succeeded_context):
             created_key = self._commit_variation(
                 self._last_succeeded_context,
                 project_key=options.project_key,
@@ -1985,6 +1994,7 @@ class OptimizationClient:
                 "turn completed",
                 "success",
                 "failure",
+                "optimizing cost/latency",
             ],
             ctx: OptimizationContext,
         ) -> None:

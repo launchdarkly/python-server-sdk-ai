@@ -234,9 +234,12 @@ def extract_json_from_response(response_str: str) -> Dict[str, Any]:
     :return: Parsed dictionary
     :raises ValueError: If no valid JSON object can be extracted
     """
-    # Try direct parse first
+    # Try direct parse first; require a dict so JSON arrays/strings/numbers
+    # don't reach validate_variation_response and raise TypeError.
     try:
-        return json.loads(response_str)
+        parsed = json.loads(response_str)
+        if isinstance(parsed, dict):
+            return parsed
     except json.JSONDecodeError:
         pass
 
