@@ -5923,6 +5923,42 @@ class TestGetAgentConfigVariationKey:
             "test-api-key", base_url="https://staging.launchdarkly.com"
         )
 
+    async def test_model_parameters_read_from_api_variation(self):
+        """Model parameters in the variation payload are not ignored."""
+        client = self._make_client_with_key()
+        mock_api = MagicMock()
+        mock_api.get_ai_config_variation.return_value = {
+            **self._VARIATION_DATA,
+            "model": {"parameters": {"temperature": 0.3, "maxTokens": 512}},
+        }
+
+        config = await client._get_agent_config(
+            "test-agent", LD_CONTEXT,
+            variation_key="my-variation",
+            project_key="my-project",
+            api_client=mock_api,
+        )
+
+        assert config.model is not None
+        assert config.model.name == "OpenAI.gpt-4o-mini"
+        assert config.model._parameters == {"temperature": 0.3, "maxTokens": 512}
+
+    async def test_model_parameters_default_to_empty_when_absent(self):
+        """When the variation has no model.parameters, ModelConfig gets an empty dict."""
+        client = self._make_client_with_key()
+        mock_api = MagicMock()
+        mock_api.get_ai_config_variation.return_value = self._VARIATION_DATA  # no "model" key
+
+        config = await client._get_agent_config(
+            "test-agent", LD_CONTEXT,
+            variation_key="my-variation",
+            project_key="my-project",
+            api_client=mock_api,
+        )
+
+        assert config.model is not None
+        assert config.model._parameters == {}
+
     async def test_api_error_propagates_without_sdk_fallback(self):
         """If the API call fails, the error propagates — no silent fallback to SDK default."""
         from ldai_optimizer.ld_api_client import LDApiError

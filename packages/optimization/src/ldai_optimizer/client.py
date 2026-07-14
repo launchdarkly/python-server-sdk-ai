@@ -1073,9 +1073,15 @@ class OptimizationClient:
                 raw_tools = raw_variation.get("tools") or []
                 model_config_key = raw_variation.get("modelConfigKey") or ""
                 if model_config_key:
+                    raw_model_data = raw_variation.get("model")
+                    model_parameters = (
+                        raw_model_data.get("parameters")
+                        if isinstance(raw_model_data, dict)
+                        else {}
+                    )
                     agent_config = dataclasses.replace(
                         agent_config,
-                        model=ModelConfig(name=model_config_key, parameters={}),
+                        model=ModelConfig(name=model_config_key, parameters=model_parameters or {}),
                     )
             else:
                 # variation() returns the raw JSON before chevron.render(), so instructions
