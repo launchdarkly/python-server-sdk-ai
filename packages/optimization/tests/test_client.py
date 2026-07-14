@@ -5817,6 +5817,168 @@ class TestVariationPromptFeedbackCost:
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# variation_key in _get_agent_config
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+class TestGetAgentConfigVariationKey:
+    _VARIATION_DATA = {
+        "key": "my-variation",
+        "instructions": "Custom variation instructions.",
+        "modelConfigKey": "OpenAI.gpt-4o-mini",
+        "tools": [{"key": "search-tool", "version": 1}],
+    }
+
+    def _make_client_with_key(self) -> OptimizationClient:
+        with patch.dict("os.environ", {"LAUNCHDARKLY_API_KEY": "test-api-key"}):
+            return OptimizationClient(_make_ldai_client())
+
+    async def test_sdk_path_used_when_no_variation_key(self):
+        """Without variation_key, the existing SDK variation() call is used."""
+        client = _make_client()
+        await client._get_agent_config("test-agent", LD_CONTEXT)
+        client._ldClient._client.variation.assert_called_once_with("test-agent", LD_CONTEXT, {})
+
+    async def test_api_path_used_when_variation_key_set(self):
+        """With variation_key, get_ai_config_variation is called instead of SDK variation()."""
+        client = self._make_client_with_key()
+        mock_api = MagicMock()
+        mock_api.get_ai_config_variation.return_value = self._VARIATION_DATA
+
+        await client._get_agent_config(
+            "test-agent", LD_CONTEXT,
+            variation_key="my-variation",
+            project_key="my-project",
+            api_client=mock_api,
+        )
+
+        mock_api.get_ai_config_variation.assert_called_once_with(
+            "my-project", "test-agent", "my-variation"
+        )
+        client._ldClient._client.variation.assert_not_called()
+
+    async def test_instructions_come_from_api_variation(self):
+        client = self._make_client_with_key()
+        mock_api = MagicMock()
+        mock_api.get_ai_config_variation.return_value = self._VARIATION_DATA
+
+        await client._get_agent_config(
+            "test-agent", LD_CONTEXT,
+            variation_key="my-variation",
+            project_key="my-project",
+            api_client=mock_api,
+        )
+
+        assert client._initial_instructions == "Custom variation instructions."
+
+    async def test_model_replaced_from_api_variation_model_config_key(self):
+        client = self._make_client_with_key()
+        mock_api = MagicMock()
+        mock_api.get_ai_config_variation.return_value = self._VARIATION_DATA
+
+        config = await client._get_agent_config(
+            "test-agent", LD_CONTEXT,
+            variation_key="my-variation",
+            project_key="my-project",
+            api_client=mock_api,
+        )
+
+        assert config.model is not None
+        assert config.model.name == "OpenAI.gpt-4o-mini"
+
+    async def test_tool_keys_extracted_from_api_variation(self):
+        client = self._make_client_with_key()
+        mock_api = MagicMock()
+        mock_api.get_ai_config_variation.return_value = self._VARIATION_DATA
+
+        await client._get_agent_config(
+            "test-agent", LD_CONTEXT,
+            variation_key="my-variation",
+            project_key="my-project",
+            api_client=mock_api,
+        )
+
+        assert client._initial_tool_keys == ["search-tool"]
+
+    async def test_api_client_built_from_base_url_when_not_provided(self):
+        """When no api_client is passed, a new LDApiClient is created with the given base_url."""
+        client = self._make_client_with_key()
+        variation_data = {**self._VARIATION_DATA}
+
+        with patch("ldai_optimizer.client.LDApiClient") as mock_cls:
+            mock_instance = MagicMock()
+            mock_instance.get_ai_config_variation.return_value = variation_data
+            mock_cls.return_value = mock_instance
+
+            await client._get_agent_config(
+                "test-agent", LD_CONTEXT,
+                variation_key="my-variation",
+                project_key="my-project",
+                base_url="https://staging.launchdarkly.com",
+            )
+
+        mock_cls.assert_called_once_with(
+            "test-api-key", base_url="https://staging.launchdarkly.com"
+        )
+
+    async def test_model_parameters_read_from_api_variation(self):
+        """Model parameters in the variation payload are not ignored."""
+        client = self._make_client_with_key()
+        mock_api = MagicMock()
+        mock_api.get_ai_config_variation.return_value = {
+            **self._VARIATION_DATA,
+            "model": {"parameters": {"temperature": 0.3, "maxTokens": 512}},
+        }
+
+        config = await client._get_agent_config(
+            "test-agent", LD_CONTEXT,
+            variation_key="my-variation",
+            project_key="my-project",
+            api_client=mock_api,
+        )
+
+        assert config.model is not None
+        assert config.model.name == "OpenAI.gpt-4o-mini"
+        assert config.model._parameters == {"temperature": 0.3, "maxTokens": 512}
+
+    async def test_model_parameters_default_to_empty_when_absent(self):
+        """When the variation has no model.parameters, ModelConfig gets an empty dict."""
+        client = self._make_client_with_key()
+        mock_api = MagicMock()
+        mock_api.get_ai_config_variation.return_value = self._VARIATION_DATA  # no "model" key
+
+        config = await client._get_agent_config(
+            "test-agent", LD_CONTEXT,
+            variation_key="my-variation",
+            project_key="my-project",
+            api_client=mock_api,
+        )
+
+        assert config.model is not None
+        assert config.model._parameters == {}
+
+    async def test_api_error_propagates_without_sdk_fallback(self):
+        """If the API call fails, the error propagates — no silent fallback to SDK default."""
+        from ldai_optimizer.ld_api_client import LDApiError
+        client = self._make_client_with_key()
+        mock_api = MagicMock()
+        mock_api.get_ai_config_variation.side_effect = LDApiError(
+            "Variation 'bad-key' not found", status_code=404
+        )
+
+        with pytest.raises(Exception):
+            await client._get_agent_config(
+                "test-agent", LD_CONTEXT,
+                variation_key="bad-key",
+                project_key="my-project",
+                api_client=mock_api,
+            )
+
+        client._ldClient._client.variation.assert_not_called()
+
+
 @pytest.mark.asyncio
 class TestEvaluateAcceptanceJudgeCostAugmentation:
     def setup_method(self):
@@ -5952,72 +6114,45 @@ class TestVariationKeyInOptimizeFromOptions:
         client._api_key = None
         return client
 
-    def _make_ai_config_with_variations(self, *keys: str) -> dict:
-        return {
-            "variations": [
-                {"key": k, "instructions": f"Instructions for {k}.", "mode": "agent"}
-                for k in keys
-            ]
-        }
+    async def test_variation_key_forwarded_to_get_agent_config(self):
+        client = self._make_client_with_key()
+        options = _make_options(variation_key="custom-var", project_key="my-project")
 
-    async def test_raises_when_variation_key_set_and_no_api_key(self):
+        with patch.object(client, "_get_agent_config", wraps=client._get_agent_config) as spy:
+            mock_api = MagicMock()
+            mock_api.get_ai_config_variation.return_value = {
+                "key": "custom-var",
+                "instructions": AGENT_INSTRUCTIONS,
+                "modelConfigKey": "OpenAI.gpt-4o",
+                "tools": [],
+            }
+            with patch("ldai_optimizer.client.LDApiClient", return_value=mock_api):
+                await client.optimize_from_options("test-agent", options)
+
+        call_kwargs = spy.call_args[1]
+        assert call_kwargs.get("variation_key") == "custom-var"
+        assert call_kwargs.get("project_key") == "my-project"
+
+    async def test_raises_when_variation_key_set_without_api_key(self):
         client = self._make_client_without_key()
-        options = _make_options(variation_key="my-variation", project_key="my-project")
+        options = _make_options(variation_key="custom-var", project_key="my-project")
 
         with pytest.raises(ValueError, match="LAUNCHDARKLY_API_KEY"):
             await client.optimize_from_options("test-agent", options)
 
-    async def test_raises_when_variation_key_set_and_no_project_key(self):
+    async def test_raises_when_variation_key_set_without_project_key(self):
         client = self._make_client_with_key()
-        options = _make_options(variation_key="my-variation", project_key=None)
+        options = _make_options(variation_key="custom-var", project_key=None)
 
         with pytest.raises(ValueError, match="project_key"):
             await client.optimize_from_options("test-agent", options)
 
-    async def test_uses_variation_key_as_base_variation(self):
-        client = self._make_client_with_key()
-        ai_config = self._make_ai_config_with_variations("v1", "my-variation", "v3")
-
-        with patch("ldai_optimizer.client.LDApiClient") as mock_api_cls:
-            mock_api_instance = MagicMock()
-            mock_api_instance.get_ai_config.return_value = ai_config
-            mock_api_instance.get_model_configs.return_value = []
-            mock_api_cls.return_value = mock_api_instance
-
-            options = _make_options(
-                variation_key="my-variation",
-                project_key="my-project",
-            )
-            await client.optimize_from_options("test-agent", options)
-
-        mock_api_instance.get_ai_config.assert_called_with("my-project", "test-agent")
-        # Verify that the SDK default variation() was NOT called
-        client._ldClient._client.variation.assert_not_called()
-
-    async def test_raises_when_variation_key_not_found_in_config(self):
-        client = self._make_client_with_key()
-        ai_config = self._make_ai_config_with_variations("v1", "v2")
-
-        with patch("ldai_optimizer.client.LDApiClient") as mock_api_cls:
-            mock_api_instance = MagicMock()
-            mock_api_instance.get_ai_config.return_value = ai_config
-            mock_api_instance.get_model_configs.return_value = []
-            mock_api_cls.return_value = mock_api_instance
-
-            options = _make_options(
-                variation_key="nonexistent-key",
-                project_key="my-project",
-            )
-            with pytest.raises(ValueError, match="nonexistent-key"):
-                await client.optimize_from_options("test-agent", options)
-
-    async def test_no_api_call_when_variation_key_not_set(self):
+    async def test_no_validation_error_when_variation_key_not_set(self):
+        """Omitting variation_key should not trigger any new validation errors."""
         client = self._make_client_without_key()
-        options = _make_options()  # no variation_key
+        options = _make_options()  # variation_key=None by default
 
-        # Should succeed and use the SDK default variation path
         result = await client.optimize_from_options("test-agent", options)
-        client._ldClient._client.variation.assert_called()
         assert result is not None
 
 
@@ -6038,36 +6173,117 @@ class TestVariationKeyInOptimizeFromGroundTruthOptions:
         client._api_key = None
         return client
 
-    async def test_raises_when_variation_key_set_and_no_api_key(self):
+    async def test_variation_key_forwarded_to_get_agent_config(self):
+        client = self._make_client_with_key()
+        opts = _make_gt_options(variation_key="custom-var", project_key="my-project")
+
+        with patch.object(client, "_get_agent_config", wraps=client._get_agent_config) as spy:
+            mock_api = MagicMock()
+            mock_api.get_ai_config_variation.return_value = {
+                "key": "custom-var",
+                "instructions": AGENT_INSTRUCTIONS,
+                "modelConfigKey": "OpenAI.gpt-4o",
+                "tools": [],
+            }
+            with patch("ldai_optimizer.client.LDApiClient", return_value=mock_api):
+                await client.optimize_from_ground_truth_options("test-agent", opts)
+
+        call_kwargs = spy.call_args[1]
+        assert call_kwargs.get("variation_key") == "custom-var"
+        assert call_kwargs.get("project_key") == "my-project"
+
+    async def test_raises_when_variation_key_set_without_api_key(self):
         client = self._make_client_without_key()
-        options = _make_gt_options(variation_key="my-variation", project_key="my-project")
+        opts = _make_gt_options(variation_key="custom-var", project_key="my-project")
 
         with pytest.raises(ValueError, match="LAUNCHDARKLY_API_KEY"):
-            await client.optimize_from_ground_truth_options("test-agent", options)
+            await client.optimize_from_ground_truth_options("test-agent", opts)
 
-    async def test_raises_when_variation_key_set_and_no_project_key(self):
+    async def test_raises_when_variation_key_set_without_project_key(self):
         client = self._make_client_with_key()
-        options = _make_gt_options(variation_key="my-variation", project_key=None)
+        opts = _make_gt_options(variation_key="custom-var", project_key=None)
 
         with pytest.raises(ValueError, match="project_key"):
-            await client.optimize_from_ground_truth_options("test-agent", options)
+            await client.optimize_from_ground_truth_options("test-agent", opts)
 
-    async def test_raises_when_variation_key_not_found_in_config(self):
+
+# ---------------------------------------------------------------------------
+# variation_key in optimize_from_config
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+class TestVariationKeyInOptimizeFromConfig:
+    def _make_client_with_key(self) -> OptimizationClient:
+        with patch.dict("os.environ", {"LAUNCHDARKLY_API_KEY": "test-api-key"}):
+            return OptimizationClient(_make_ldai_client())
+
+    async def test_variation_key_from_config_forwarded_to_get_agent_config(self):
+        """variationKey from the fetched AgentOptimization config is passed to _get_agent_config."""
         client = self._make_client_with_key()
-        ai_config = {"variations": [{"key": "v1"}, {"key": "v2"}]}
+        api_config = dict(_API_CONFIG, variationKey="base-variation")
+        mock_api = _make_mock_api_client()
+        mock_api.get_agent_optimization = MagicMock(return_value=api_config)
+        mock_api.get_ai_config_variation = MagicMock(return_value={
+            "key": "base-variation",
+            "instructions": AGENT_INSTRUCTIONS,
+            "modelConfigKey": "OpenAI.gpt-4o",
+            "tools": [],
+        })
 
-        with patch("ldai_optimizer.client.LDApiClient") as mock_api_cls:
-            mock_api_instance = MagicMock()
-            mock_api_instance.get_ai_config.return_value = ai_config
-            mock_api_instance.get_model_configs.return_value = []
-            mock_api_cls.return_value = mock_api_instance
+        with patch("ldai_optimizer.client.LDApiClient", return_value=mock_api):
+            with patch.object(client, "_get_agent_config", wraps=client._get_agent_config) as spy:
+                await client.optimize_from_config("my-opt", _make_from_config_options())
 
-            options = _make_gt_options(
-                variation_key="nonexistent-key",
-                project_key="my-project",
-            )
-            with pytest.raises(ValueError, match="nonexistent-key"):
-                await client.optimize_from_ground_truth_options("test-agent", options)
+        call_kwargs = spy.call_args[1]
+        assert call_kwargs.get("variation_key") == "base-variation"
+        assert call_kwargs.get("project_key") == "my-project"
+
+    async def test_variation_key_none_when_not_in_config(self):
+        """When variationKey is absent from the config, None is passed to _get_agent_config."""
+        client = self._make_client_with_key()
+        api_config = dict(_API_CONFIG)  # no variationKey
+        assert "variationKey" not in api_config
+        mock_api = _make_mock_api_client()
+        mock_api.get_agent_optimization = MagicMock(return_value=api_config)
+
+        with patch("ldai_optimizer.client.LDApiClient", return_value=mock_api):
+            with patch.object(client, "_get_agent_config", wraps=client._get_agent_config) as spy:
+                await client.optimize_from_config("my-opt", _make_from_config_options())
+
+        call_kwargs = spy.call_args[1]
+        assert call_kwargs.get("variation_key") is None
+
+    async def test_prebuilt_api_client_passed_to_get_agent_config(self):
+        """The api_client constructed in optimize_from_config is reused in _get_agent_config."""
+        client = self._make_client_with_key()
+        mock_api = _make_mock_api_client()
+        mock_api.get_agent_optimization = MagicMock(return_value=dict(_API_CONFIG))
+
+        with patch("ldai_optimizer.client.LDApiClient", return_value=mock_api):
+            with patch.object(client, "_get_agent_config", wraps=client._get_agent_config) as spy:
+                await client.optimize_from_config("my-opt", _make_from_config_options())
+
+        call_kwargs = spy.call_args[1]
+        assert call_kwargs.get("api_client") is mock_api
+
+    async def test_api_variation_instructions_used_as_base(self):
+        """When variationKey is set, the base instructions come from the API variation."""
+        client = self._make_client_with_key()
+        api_config = dict(_API_CONFIG, variationKey="base-variation")
+        mock_api = _make_mock_api_client()
+        mock_api.get_agent_optimization = MagicMock(return_value=api_config)
+        mock_api.get_ai_config_variation = MagicMock(return_value={
+            "key": "base-variation",
+            "instructions": "Instructions from specific variation.",
+            "modelConfigKey": "OpenAI.gpt-4o",
+            "tools": [],
+        })
+
+        with patch("ldai_optimizer.client.LDApiClient", return_value=mock_api):
+            await client.optimize_from_config("my-opt", _make_from_config_options())
+
+        assert client._initial_instructions == "Instructions from specific variation."
 
 
 # ---------------------------------------------------------------------------
