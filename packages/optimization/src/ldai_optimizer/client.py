@@ -15,6 +15,7 @@ All LaunchDarkly API calls are isolated requests; they carry no information
 about the caller's broader runtime environment beyond the key itself.
 """
 
+import asyncio
 import dataclasses
 import json
 import logging
@@ -2118,6 +2119,15 @@ class OptimizationClient:
                 api_client.patch_agent_optimization_result(
                     project_key, optimization_key, result_id, patch
                 )
+                # When the winning result is marked successful, make sure
+                # _last_optimization_result_id tracks it.  Without this the
+                # auto-commit PATCH (which attaches createdVariationKey) is
+                # sent to the last-posted Phase 2 record rather than to the
+                # winner, giving a non-winning RUNNING record the latest
+                # updatedAt and causing the backend to report the run as still
+                # running even after the optimization completes.
+                if status == "success":
+                    self._last_optimization_result_id = result_id
 
             # Reset tracking state after terminal events so the next main-loop
             # attempt starts fresh.
@@ -2673,16 +2683,20 @@ class OptimizationClient:
         frozen_user_input = winning_ctx.user_input
 
         # Build a deterministic, deduplicated list of models to evaluate:
-        # start with the Phase 1 winner's model, then add each model_choice
-        # that hasn't been seen yet. This guarantees every user-selected model
-        # is tried exactly once, in a predictable order.
+        # always start from model_choices, skipping the Phase 1 winner so it
+        # doesn't appear as an extra input inside the quality iteration in the
+        # UI. Fall back to the Phase 1 winner only when no distinct choices
+        # are provided.
         phase1_model = winning_ctx.current_model or ""
         seen_models: set = {phase1_model}
-        ordered_models: List[str] = [phase1_model]
+        ordered_models: List[str] = []
         for m in self._options.model_choices or []:
             if m not in seen_models:
                 seen_models.add(m)
                 ordered_models.append(m)
+        # Fall back to Phase 1 model only if no distinct alternatives exist.
+        if not ordered_models:
+            ordered_models.append(phase1_model)
         # Ensure at least 2 iterations
         while len(ordered_models) < 2:
             ordered_models.append(ordered_models[-1])
@@ -2714,12 +2728,35 @@ class OptimizationClient:
                 variables=frozen_variables,
                 user_input=frozen_user_input,
             )
+            # Pre-populate placeholder gate score keys so the "generating"
+            # status update carries the same score keys as the final Phase 2
+            # result.  Without these placeholders the UI bucketing logic
+            # (which groups by gate-key presence) cannot distinguish this
+            # record from a Phase 1 result and places it in the wrong
+            # iteration group.  The placeholders are overwritten with real
+            # values after the agent call and gate evaluation complete.
+            gate_placeholders: Dict[str, JudgeResult] = {}
+            if self._options.latency_optimization:
+                gate_placeholders["_latency_gate"] = JudgeResult(
+                    score=0.0, rationale="evaluating"
+                )
+            if self._options.token_optimization:
+                gate_placeholders["_cost_gate"] = JudgeResult(
+                    score=0.0, rationale="evaluating"
+                )
+            if gate_placeholders:
+                ctx = dataclasses.replace(
+                    ctx, scores={**ctx.scores, **gate_placeholders}
+                )
             self._safe_status_update("generating", ctx, iteration)
             try:
-                ctx = await self._execute_agent_turn(ctx, iteration)
-            except Exception:
+                ctx = await asyncio.wait_for(
+                    self._execute_agent_turn(ctx, iteration),
+                    timeout=120,
+                )
+            except (Exception, asyncio.TimeoutError):
                 logger.warning(
-                    "[Phase 2 Iter %d] -> Agent call failed (model=%s); "
+                    "[Phase 2 Iter %d] -> Agent call failed or timed out (model=%s); "
                     "skipping this model and trying the next",
                     iteration,
                     self._current_model,
@@ -2758,16 +2795,27 @@ class OptimizationClient:
             if i < max_iters - 1:
                 self._safe_status_update("turn completed", ctx, iteration)
 
-        # Send terminal FAILED status for each non-winning model attempt.
-        # We use _safe_status_update directly rather than _handle_failure so that
-        # exploratory Phase 2 misses don't corrupt _last_run_succeeded,
-        # _last_succeeded_context, or trigger on_failing_result — those are
-        # run-level signals that should only fire if the whole optimization fails.
-        for failed_ctx in non_candidates:
-            self._safe_status_update("failure", failed_ctx, failed_ctx.iteration)
+        # Phase 2 is complete.  The `status` field on each result carries the
+        # *run-level* outcome (PASSED / FAILED / RUNNING), not the quality of
+        # that individual result — the scores already encode individual quality.
+        # The backend derives the visible run status from the highest-iteration
+        # result, so every Phase 2 result must end with status=PASSED after a
+        # successful run; otherwise the highest-numbered result keeps the run in
+        # RUNNING indefinitely.  We use _safe_status_update directly (not
+        # _handle_failure / _handle_success) for non-winners so that
+        # _last_run_succeeded, _last_succeeded_context, and on_failing_result are
+        # not corrupted — those are reserved for run-level outcomes.
+        for non_candidate_ctx in non_candidates:
+            self._safe_status_update("success", non_candidate_ctx, non_candidate_ctx.iteration)
 
         if candidates:
             best = self._pick_best_candidate(candidates)
+            # Non-best candidates: mark PASSED (run succeeded) before the winner
+            # so _handle_success remains the very last update, preserving the
+            # correct _last_succeeded_context for the caller.
+            for other in candidates:
+                if other.iteration != best.iteration:
+                    self._safe_status_update("success", other, other.iteration)
             # Suppress on_passing_result here — the caller fires it once with the
             # true final winner after Phase 2 returns, so it is never double-fired.
             self._handle_success(best, best.iteration, suppress_user_callbacks=True)
