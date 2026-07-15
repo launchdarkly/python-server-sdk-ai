@@ -138,12 +138,13 @@ def td() -> TestData:
             {
                 'model': {
                     'name': 'gpt-4',
-                    'modelKey': 'my-model',
-                    'modelVersion': 2,
                 },
                 'provider': {'name': 'openai'},
                 'messages': [],
-                '_ldMeta': {'enabled': True, 'variationKey': 'v1', 'version': 1},
+                '_ldMeta': {
+                    'enabled': True, 'variationKey': 'v1', 'version': 1,
+                    'modelKey': 'my-model', 'modelVersion': 2,
+                },
             },
         )
         .variation_for_all(0)
@@ -619,11 +620,12 @@ def test_create_tracker_stamps_model_key_and_version_on_track_data():
 
     mock_client = Mock()
     mock_client.variation.return_value = {
-        '_ldMeta': {'enabled': True, 'variationKey': 'var-abc', 'version': 7},
+        '_ldMeta': {
+            'enabled': True, 'variationKey': 'var-abc', 'version': 7,
+            'modelKey': 'my-model', 'modelVersion': 2,
+        },
         'model': {
             'name': 'gpt-4',
-            'modelKey': 'my-model',
-            'modelVersion': 2,
         },
         'provider': {'name': 'openai'},
         'messages': []
@@ -647,21 +649,24 @@ def test_create_tracker_stamps_model_key_and_version_on_track_data():
 
 
 @pytest.mark.parametrize(
-    'model_payload,expected_model_key,expected_model_version',
+    'ld_meta_overrides,expected_model_key,expected_model_version',
     [
-        pytest.param({'name': 'gpt-4'}, None, None, id='omits_model_version_when_absent'),
-        pytest.param({'name': 'gpt-4', 'modelVersion': 3}, None, 3, id='omits_model_key_when_absent'),
+        pytest.param({}, None, None, id='omits_model_version_when_absent'),
+        pytest.param({'modelVersion': 3}, None, 3, id='omits_model_key_when_absent'),
     ],
 )
 def test_create_tracker_model_key_and_version_defaults(
-    model_payload, expected_model_key, expected_model_version,
+    ld_meta_overrides, expected_model_key, expected_model_version,
 ):
     from unittest.mock import Mock
 
     mock_client = Mock()
     mock_client.variation.return_value = {
-        '_ldMeta': {'enabled': True, 'variationKey': 'var-abc', 'version': 7},
-        'model': model_payload,
+        '_ldMeta': {
+            'enabled': True, 'variationKey': 'var-abc', 'version': 7,
+            **ld_meta_overrides,
+        },
+        'model': {'name': 'gpt-4'},
         'provider': {'name': 'openai'},
         'messages': []
     }

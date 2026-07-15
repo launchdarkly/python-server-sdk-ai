@@ -931,19 +931,19 @@ class LDAIClient:
 
         model = None
         tracked_model_version = None
+        raw_model_version = variation.get('_ldMeta', {}).get('modelVersion')
+        if raw_model_version is not None:
+            tracked_model_version = int(raw_model_version)
         if 'model' in variation and isinstance(variation['model'], dict):
             parameters = variation['model'].get('parameters', None)
             custom = variation['model'].get('custom', None)
             region = variation['model'].get('region', None)
-            raw_model_version = variation['model'].get('modelVersion')
-            if raw_model_version is not None:
-                tracked_model_version = int(raw_model_version)
             model = ModelConfig(
                 name=variation['model']['name'],
                 parameters=parameters,
                 custom=custom,
                 region=region,
-                model_key=variation['model'].get('modelKey'),
+                model_key=variation.get('_ldMeta', {}).get('modelKey'),
                 model_version=tracked_model_version,
             )
 
