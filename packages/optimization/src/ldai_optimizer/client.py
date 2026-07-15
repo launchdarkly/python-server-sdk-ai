@@ -49,6 +49,7 @@ from ldai_optimizer.ld_api_client import (
     AgentOptimizationResultPatch,
     AgentOptimizationResultPost,
     LDApiClient,
+    LDApiError,
 )
 from ldai_optimizer.prompts import (
     build_message_history_text,
@@ -340,7 +341,7 @@ class OptimizationClient:
             create_tracker=self._agent_config.create_tracker,
             evaluator=self._agent_config.evaluator,
             model=ModelConfig(
-                name=ctx.current_model or "",
+                name=_strip_provider_prefix(ctx.current_model or ""),
                 parameters=ctx.current_parameters,
             ),
             instructions=instructions,
@@ -1094,7 +1095,10 @@ class OptimizationClient:
                     )
                     agent_config = dataclasses.replace(
                         agent_config,
-                        model=ModelConfig(name=model_config_key, parameters=model_parameters or {}),
+                        model=ModelConfig(
+                            name=_strip_provider_prefix(model_config_key),
+                            parameters=model_parameters or {},
+                        ),
                     )
             else:
                 # variation() returns the raw JSON before chevron.render(), so instructions
@@ -1880,13 +1884,29 @@ class OptimizationClient:
             api_client=api_client,
         )
 
-        optimization_options = self._build_options_from_config(
+        # Preflight: verify that the API key has write access to the results endpoint
+        # before any agent work begins.  A read-only or wrong-project key would
+        # otherwise silently 403 on every result POST mid-run, leaving the Results
+        # tab empty with no visible error.
+        try:
+            api_client.verify_write_access(options.project_key, optimization_key)
+        except LDApiError as exc:
+            raise ValueError(
+                f"API key does not have write access to project '{options.project_key}' "
+                f"(optimization: '{optimization_key}'). Verify that your LAUNCHDARKLY_API_KEY "
+                f"has the 'Writer' role (or equivalent) for this project before running an "
+                f"optimization. Original error: {exc}"
+            ) from exc
+
+        optimization_options, _log_persist_summary = self._build_options_from_config(
             config, options, api_client, optimization_key, run_id, model_configs
         )
         if isinstance(optimization_options, GroundTruthOptimizationOptions):
             result = await self._run_ground_truth_optimization(agent_config, optimization_options)
         else:
             result = await self._run_optimization(agent_config, optimization_options)
+
+        _log_persist_summary()
 
         if (optimization_options.auto_commit and options.auto_commit
                 and self._last_run_succeeded and self._last_succeeded_context):
@@ -1915,7 +1935,7 @@ class OptimizationClient:
         optimization_key: str,
         run_id: str,
         model_configs: Optional[List[Dict[str, Any]]] = None,
-    ) -> "Union[OptimizationOptions, GroundTruthOptimizationOptions]":
+    ) -> "Tuple[Union[OptimizationOptions, GroundTruthOptimizationOptions], Any]":
         """Map a fetched AgentOptimization config + user options into the appropriate options type.
 
         When the config contains groundTruthResponses, the three lists (groundTruthResponses,
@@ -1934,7 +1954,8 @@ class OptimizationClient:
         :param optimization_key: String key of the parent agent_optimization record.
         :param run_id: UUID that groups all result records for this run.
         :param model_configs: Pre-fetched list of model config dicts for resolving modelConfigKey.
-        :return: OptimizationOptions or GroundTruthOptimizationOptions.
+        :return: Tuple of (OptimizationOptions or GroundTruthOptimizationOptions, summary_fn).
+            Call summary_fn() after the optimization loop to log persistence health.
         """
         judges: Dict[str, OptimizationJudge] = {}
 
@@ -1967,6 +1988,18 @@ class OptimizationClient:
         config_version: int = config["version"]
         _cached_model_configs: List[Dict[str, Any]] = list(model_configs or [])
 
+        # Warn early about model choices that have no matching model config — these
+        # are likely retired or misspelled and will fail at run time with an opaque
+        # provider error rather than a useful message.
+        if _cached_model_configs:
+            for raw_model in config.get("modelChoices") or []:
+                if not _find_model_config(raw_model, _cached_model_configs):
+                    logger.warning(
+                        "Model choice '%s' was not found in the project's model configs — "
+                        "it may be retired or misspelled and will likely fail at run time.",
+                        raw_model,
+                    )
+
         # Maps logical iteration number → result record id. Each new main-loop
         # iteration (plus the init iteration 0) POSTs a fresh record; subsequent
         # status events for that same iteration PATCH the existing record.
@@ -1984,6 +2017,13 @@ class OptimizationClient:
         # this, iterations that don't naturally receive a terminal event (e.g. the
         # init iteration 0, or non-final GT samples) are left in a stale state.
         _last_open_iteration: int = -1
+
+        # Persistence health counters — incremented on every failed POST or PATCH
+        # so a single summary warning can be emitted at run end.
+        _post_failures: int = 0
+        _patch_failures: int = 0
+        _post_successes: int = 0
+        _patch_successes: int = 0
 
         def _resolve_model_config_key(model_name: str) -> str:
             if not model_name:
@@ -2006,6 +2046,7 @@ class OptimizationClient:
             ctx: OptimizationContext,
         ) -> None:
             nonlocal _in_validation_phase, _validation_parent_iteration, _last_open_iteration
+            nonlocal _post_failures, _patch_failures, _post_successes, _patch_successes
             # _safe_status_update (the caller) already wraps this entire function in
             # a try/except, so errors here are caught and logged without aborting the run.
             mapped = _OPTIMIZATION_STATUS_MAP.get(
@@ -2052,11 +2093,10 @@ class OptimizationClient:
                     "agentOptimizationVersion": config_version,
                     "iteration": logical_iteration,
                     "instructions": snapshot.current_instructions,
+                    "userInput": snapshot.user_input or "",
                 }
                 if snapshot.current_parameters:
                     post_payload["parameters"] = snapshot.current_parameters
-                if snapshot.user_input:
-                    post_payload["userInput"] = snapshot.user_input
                 result_id = api_client.post_agent_optimization_result(
                     project_key, optimization_key, post_payload
                 )
@@ -2064,6 +2104,9 @@ class OptimizationClient:
                     _iteration_result_ids[logical_iteration] = result_id
                     self._last_optimization_result_id = result_id
                     _last_open_iteration = logical_iteration
+                    _post_successes += 1
+                else:
+                    _post_failures += 1
 
             # Phase 2: PATCH the record with current status and available telemetry.
             result_id = _iteration_result_ids.get(logical_iteration)
@@ -2116,9 +2159,12 @@ class OptimizationClient:
                     "parameters": snapshot.current_parameters,
                     "modelConfigKey": _resolve_model_config_key(snapshot.current_model or ""),
                 }
-                api_client.patch_agent_optimization_result(
+                if api_client.patch_agent_optimization_result(
                     project_key, optimization_key, result_id, patch
-                )
+                ):
+                    _patch_successes += 1
+                else:
+                    _patch_failures += 1
                 # When the winning result is marked successful, make sure
                 # _last_optimization_result_id tracks it.  Without this the
                 # auto-commit PATCH (which attaches createdVariationKey) is
@@ -2141,6 +2187,27 @@ class OptimizationClient:
                     options.on_status_update(status, ctx)
                 except Exception:
                     logger.exception("User on_status_update callback failed for status=%s", status)
+
+        def _log_persist_summary() -> None:
+            """Emit a single summary line about result-persistence health at run end."""
+            total_posts = _post_successes + _post_failures
+            total_patches = _patch_successes + _patch_failures
+            if _post_failures or _patch_failures:
+                logger.warning(
+                    "Result persistence summary: %d/%d POSTs and %d/%d PATCHes to the "
+                    "LaunchDarkly API failed — the Results tab may be incomplete. "
+                    "Check your API key and network connectivity.",
+                    _post_successes,
+                    total_posts,
+                    _patch_successes,
+                    total_patches,
+                )
+            else:
+                logger.debug(
+                    "Result persistence summary: all %d POSTs and %d PATCHes succeeded.",
+                    total_posts,
+                    total_patches,
+                )
 
         # If we have ground truth responses, we provide a different
         # configuration options type that contains the bundled GroundTruthSamples
@@ -2183,7 +2250,7 @@ class OptimizationClient:
                 latency_optimization=config.get("latencyOptimization"),
                 token_optimization=config.get("tokenOptimization"),
                 auto_commit=config.get("autoCommit", True),
-            )
+            ), _log_persist_summary
 
         variable_choices: List[Dict[str, Any]] = config["variableChoices"] or [{}]
         user_input_options: Optional[List[str]] = config["userInputOptions"] or None
@@ -2206,7 +2273,7 @@ class OptimizationClient:
             latency_optimization=config.get("latencyOptimization"),
             token_optimization=config.get("tokenOptimization"),
             auto_commit=config.get("autoCommit", True),
-        )
+        ), _log_persist_summary
 
     async def _execute_agent_turn(
         self,

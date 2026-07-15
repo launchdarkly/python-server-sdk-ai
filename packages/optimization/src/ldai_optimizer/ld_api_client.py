@@ -105,12 +105,12 @@ class _AgentOptimizationResultPostRequired(TypedDict):
     agentOptimizationVersion: int
     iteration: int
     instructions: str
+    userInput: str
 
 
 class AgentOptimizationResultPost(_AgentOptimizationResultPostRequired, total=False):
     """Payload for POST /agent-optimizations/{key}/results — creates a new result record."""
 
-    userInput: str
     parameters: Dict[str, Any]
 
 
@@ -343,6 +343,34 @@ class LDApiClient:
         raw = self._request("GET", path)
         return _parse_agent_optimization(raw)
 
+    def verify_write_access(self, project_key: str, optimization_key: str) -> None:
+        """Probe-POST to verify write access to the results endpoint before a run starts.
+
+        Sends an intentionally invalid payload (``iteration: -1``) so the API will
+        reject the body with a 400 if auth passes — confirming write access without
+        creating a permanent record.  Only 401 and 403 responses are re-raised;
+        a 400 (bad input) means authentication and authorisation both succeeded.
+
+        :param project_key: LaunchDarkly project key.
+        :param optimization_key: Key of the agent optimization config.
+        :raises LDApiError: If the API returns 401 or 403.
+        """
+        path = f"/api/v2/projects/{project_key}/agent-optimizations/{optimization_key}/results"
+        probe: AgentOptimizationResultPost = {
+            "runId": "__preflight__",
+            "agentOptimizationVersion": -1,
+            "iteration": -1,
+            "instructions": "",
+            "userInput": "",
+        }
+        try:
+            self._request("POST", path, body=probe)
+        except LDApiError as exc:
+            if exc.status_code in (401, 403):
+                raise
+            # 400 (invalid body) or any other non-auth error means we reached
+            # the API and it accepted our credentials — write access is confirmed.
+
     def post_agent_optimization_result(
         self, project_key: str, optimization_key: str, payload: AgentOptimizationResultPost
     ) -> Optional[str]:
@@ -361,7 +389,7 @@ class LDApiClient:
             result = self._request("POST", path, body=payload)
             return result.get("id") if isinstance(result, dict) else None
         except LDApiError as exc:
-            logger.debug(
+            logger.warning(
                 "Failed to persist optimization result (optimization_key=%s, iteration=%s): %s",
                 optimization_key,
                 payload.get("iteration"),
@@ -369,7 +397,7 @@ class LDApiClient:
             )
             return None
         except Exception as exc:
-            logger.debug(
+            logger.warning(
                 "Unexpected error persisting optimization result (optimization_key=%s, iteration=%s): %s",
                 optimization_key,
                 payload.get("iteration"),
@@ -379,7 +407,7 @@ class LDApiClient:
 
     def patch_agent_optimization_result(
         self, project_key: str, optimization_key: str, result_id: str, payload: AgentOptimizationResultPatch
-    ) -> None:
+    ) -> bool:
         """Update an existing iteration result record.
 
         Errors are caught and logged rather than raised so that persistence
@@ -389,19 +417,23 @@ class LDApiClient:
         :param optimization_key: String key of the parent agent_optimization record.
         :param result_id: ID of the result record to update.
         :param payload: PATCH payload with fields to update.
+        :return: True if the update succeeded, False on any error.
         """
         path = f"/api/v2/projects/{project_key}/agent-optimizations/{optimization_key}/results/{result_id}"
         try:
             self._request("PATCH", path, body=payload)
+            return True
         except LDApiError as exc:
-            logger.debug(
+            logger.warning(
                 "Failed to update optimization result (result_id=%s): %s",
                 result_id,
                 exc,
             )
+            return False
         except Exception as exc:
-            logger.debug(
+            logger.warning(
                 "Unexpected error updating optimization result (result_id=%s): %s",
                 result_id,
                 exc,
             )
+            return False
