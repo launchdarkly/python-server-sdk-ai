@@ -2728,13 +2728,7 @@ class OptimizationClient:
                 variables=frozen_variables,
                 user_input=frozen_user_input,
             )
-            # Pre-populate placeholder gate score keys so the "generating"
-            # status update carries the same score keys as the final Phase 2
-            # result.  Without these placeholders the UI bucketing logic
-            # (which groups by gate-key presence) cannot distinguish this
-            # record from a Phase 1 result and places it in the wrong
-            # iteration group.  The placeholders are overwritten with real
-            # values after the agent call and gate evaluation complete.
+
             gate_placeholders: Dict[str, JudgeResult] = {}
             if self._options.latency_optimization:
                 gate_placeholders["_latency_gate"] = JudgeResult(
