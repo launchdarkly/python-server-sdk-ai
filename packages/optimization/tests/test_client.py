@@ -2137,7 +2137,7 @@ class TestBuildOptionsFromConfig:
         self.api_client = _make_mock_api_client()
 
     def _build(self, config=None, options=None) -> OptimizationOptions:
-        opts, _ = self.client._build_options_from_config(
+        opts = self.client._build_options_from_config(
             config or dict(_API_CONFIG),
             options or _make_from_config_options(),
             self.api_client,
@@ -2465,7 +2465,7 @@ class TestBuildOptionsFromConfig:
             {"id": "gpt-4o", "key": "project.gpt-4o", "global": False},
             {"id": "gpt-4o", "key": "global.gpt-4o", "global": True},
         ]
-        result, _ = self.client._build_options_from_config(
+        result = self.client._build_options_from_config(
             dict(_API_CONFIG),
             _make_from_config_options(),
             self.api_client,
@@ -2485,7 +2485,7 @@ class TestBuildOptionsFromConfig:
     @pytest.mark.parametrize("status", ["generating", "evaluating", "success"])
     def test_model_config_key_resolved_in_variation(self, status):
         model_configs = [{"id": "gpt-4o", "key": "OpenAI.gpt-4o"}]
-        result, _ = self.client._build_options_from_config(
+        result = self.client._build_options_from_config(
             dict(_API_CONFIG),
             _make_from_config_options(),
             self.api_client,
@@ -3829,7 +3829,7 @@ class TestBuildOptionsFromConfigGroundTruth:
         self.api_client = _make_mock_api_client()
 
     def _build(self, config=None, options=None):
-        opts, _ = self.client._build_options_from_config(
+        opts = self.client._build_options_from_config(
             config or dict(_API_CONFIG_WITH_GT),
             options or _make_from_config_options(),
             self.api_client,
@@ -5015,7 +5015,7 @@ class TestBuildOptionsFromConfigIsInverted:
         self.api_client = _make_mock_api_client()
 
     def _build(self, config=None, options=None) -> OptimizationOptions:
-        opts, _ = self.client._build_options_from_config(
+        opts = self.client._build_options_from_config(
             config or dict(_API_CONFIG),
             options or _make_from_config_options(),
             self.api_client,

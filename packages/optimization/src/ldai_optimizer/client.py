@@ -1974,15 +1974,13 @@ class OptimizationClient:
                 f"optimization. Original error: {exc}"
             ) from exc
 
-        optimization_options, _log_persist_summary = self._build_options_from_config(
+        optimization_options = self._build_options_from_config(
             config, options, api_client, optimization_key, run_id, model_configs
         )
         if isinstance(optimization_options, GroundTruthOptimizationOptions):
             result = await self._run_ground_truth_optimization(agent_config, optimization_options)
         else:
             result = await self._run_optimization(agent_config, optimization_options)
-
-        _log_persist_summary()
 
         if (optimization_options.auto_commit and options.auto_commit
                 and self._last_run_succeeded and self._last_succeeded_context):
@@ -2011,7 +2009,7 @@ class OptimizationClient:
         optimization_key: str,
         run_id: str,
         model_configs: Optional[List[Dict[str, Any]]] = None,
-    ) -> "Tuple[Union[OptimizationOptions, GroundTruthOptimizationOptions], Any]":
+    ) -> "Union[OptimizationOptions, GroundTruthOptimizationOptions]":
         """Map a fetched AgentOptimization config + user options into the appropriate options type.
 
         When the config contains groundTruthResponses, the three lists (groundTruthResponses,
@@ -2094,13 +2092,6 @@ class OptimizationClient:
         # init iteration 0, or non-final GT samples) are left in a stale state.
         _last_open_iteration: int = -1
 
-        # Persistence health counters — incremented on every failed POST or PATCH
-        # so a single summary warning can be emitted at run end.
-        _post_failures: int = 0
-        _patch_failures: int = 0
-        _post_successes: int = 0
-        _patch_successes: int = 0
-
         def _resolve_model_config_key(model_name: str) -> str:
             if not model_name:
                 return ""
@@ -2122,7 +2113,6 @@ class OptimizationClient:
             ctx: OptimizationContext,
         ) -> None:
             nonlocal _in_validation_phase, _validation_parent_iteration, _last_open_iteration
-            nonlocal _post_failures, _patch_failures, _post_successes, _patch_successes
             # _safe_status_update (the caller) already wraps this entire function in
             # a try/except, so errors here are caught and logged without aborting the run.
             mapped = _OPTIMIZATION_STATUS_MAP.get(
@@ -2180,9 +2170,6 @@ class OptimizationClient:
                     _iteration_result_ids[logical_iteration] = result_id
                     self._last_optimization_result_id = result_id
                     _last_open_iteration = logical_iteration
-                    _post_successes += 1
-                else:
-                    _post_failures += 1
 
             # Phase 2: PATCH the record with current status and available telemetry.
             result_id = _iteration_result_ids.get(logical_iteration)
@@ -2235,12 +2222,9 @@ class OptimizationClient:
                     "parameters": snapshot.current_parameters,
                     "modelConfigKey": _resolve_model_config_key(snapshot.current_model or ""),
                 }
-                if api_client.patch_agent_optimization_result(
+                api_client.patch_agent_optimization_result(
                     project_key, optimization_key, result_id, patch
-                ):
-                    _patch_successes += 1
-                else:
-                    _patch_failures += 1
+                )
                 # When the winning result is marked successful, make sure
                 # _last_optimization_result_id tracks it.  Without this the
                 # auto-commit PATCH (which attaches createdVariationKey) is
@@ -2263,9 +2247,6 @@ class OptimizationClient:
                     options.on_status_update(status, ctx)
                 except Exception:
                     logger.exception("User on_status_update callback failed for status=%s", status)
-
-        def _log_persist_summary() -> None:
-            pass
 
         # If we have ground truth responses, we provide a different
         # configuration options type that contains the bundled GroundTruthSamples
@@ -2308,7 +2289,7 @@ class OptimizationClient:
                 latency_optimization=config.get("latencyOptimization"),
                 token_optimization=config.get("tokenOptimization"),
                 auto_commit=config.get("autoCommit", True),
-            ), _log_persist_summary
+            )
 
         variable_choices: List[Dict[str, Any]] = config["variableChoices"] or [{}]
         user_input_options: Optional[List[str]] = config["userInputOptions"] or None
@@ -2331,7 +2312,7 @@ class OptimizationClient:
             latency_optimization=config.get("latencyOptimization"),
             token_optimization=config.get("tokenOptimization"),
             auto_commit=config.get("autoCommit", True),
-        ), _log_persist_summary
+        )
 
     async def _execute_agent_turn(
         self,
