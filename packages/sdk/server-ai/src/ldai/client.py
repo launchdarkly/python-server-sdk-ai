@@ -37,13 +37,16 @@ from ldai.tracker import AIGraphTracker, LDAIConfigTracker
 _TRACK_SDK_INFO = '$ld:ai:sdk:info'
 
 _TRACK_USAGE_AGENT_CONFIG = '$ld:ai:usage:agent-config'
+_TRACK_USAGE_AGENT_CONFIG_TEMPLATE = '$ld:ai:usage:agent-config-template'
 _TRACK_USAGE_AGENT_CONFIGS = '$ld:ai:usage:agent-configs'
 _TRACK_USAGE_COMPLETION_CONFIG = '$ld:ai:usage:completion-config'
+_TRACK_USAGE_COMPLETION_CONFIG_TEMPLATE = '$ld:ai:usage:completion-config-template'
 _TRACK_USAGE_CREATE_AGENT = '$ld:ai:usage:create-agent'
 _TRACK_USAGE_CREATE_AGENT_GRAPH = '$ld:ai:usage:create-agent-graph'
 _TRACK_USAGE_CREATE_JUDGE = '$ld:ai:usage:create-judge'
 _TRACK_USAGE_CREATE_MODEL = '$ld:ai:usage:create-model'
 _TRACK_USAGE_JUDGE_CONFIG = '$ld:ai:usage:judge-config'
+_TRACK_USAGE_JUDGE_CONFIG_TEMPLATE = '$ld:ai:usage:judge-config-template'
 
 _INIT_TRACK_CONTEXT = Context.builder('ld-internal-tracking').kind('ld_ai').anonymous(True).build()
 
@@ -138,10 +141,11 @@ class LDAIClient:
         default: AICompletionConfigDefault,
         variables: Optional[Dict[str, Any]] = None,
         default_ai_provider: Optional[str] = None,
+        interpolate: bool = True,
     ) -> AICompletionConfig:
         (model, provider, messages, instructions,
          tracker_factory, enabled, judge_configuration, variation) = self.__evaluate(
-            key, context, default.to_dict(), variables
+            key, context, default.to_dict(), variables, interpolate=interpolate
         )
 
         evaluator = self._build_evaluator(judge_configuration, context, default_ai_provider, variables)
@@ -186,12 +190,41 @@ class LDAIClient:
             key, context, default or _DISABLED_COMPLETION_DEFAULT, variables, default_ai_provider
         )
 
+    def completion_config_template(
+        self,
+        key: str,
+        context: Context,
+        default: Optional[AICompletionConfigDefault] = None,
+    ) -> AICompletionConfig:
+        """
+        Get the un-rendered template of a completion configuration.
+
+        Unlike :meth:`completion_config`, Mustache placeholders in
+        ``messages[].content`` (e.g. ``{{name}}``) are returned as-is rather
+        than being substituted with variable values.  Use this when you need
+        to inspect or store the raw prompt template before rendering it
+        yourself.
+
+        :param key: The key of the completion configuration.
+        :param context: The context to evaluate the completion configuration in.
+        :param default: The default value of the completion configuration. When not provided,
+            a disabled config is used as the fallback.
+        :return: The completion configuration with un-rendered template placeholders.
+        """
+        self._client.track(_TRACK_USAGE_COMPLETION_CONFIG_TEMPLATE, context, key, 1)
+
+        return self._completion_config(
+            key, context, default or _DISABLED_COMPLETION_DEFAULT,
+            variables=None, interpolate=False,
+        )
+
     def _judge_config(
         self,
         key: str,
         context: Context,
         default: AIJudgeConfigDefault,
         variables: Optional[Dict[str, Any]] = None,
+        interpolate: bool = True,
     ) -> AIJudgeConfig:
         if variables is not None:
             if variables.get('message_history') is not None:
@@ -213,7 +246,7 @@ class LDAIClient:
 
         (model, provider, messages, instructions,
          tracker_factory, enabled, judge_configuration, variation) = self.__evaluate(
-            key, context, default.to_dict(), extended_variables
+            key, context, default.to_dict(), extended_variables, interpolate=interpolate
         )
 
         def _extract_evaluation_metric_key(variation: Dict[str, Any]) -> Optional[str]:
@@ -270,6 +303,35 @@ class LDAIClient:
 
         return self._judge_config(
             key, context, default or _DISABLED_JUDGE_DEFAULT, variables
+        )
+
+    def judge_config_template(
+        self,
+        key: str,
+        context: Context,
+        default: Optional[AIJudgeConfigDefault] = None,
+    ) -> AIJudgeConfig:
+        """
+        Get the un-rendered template of a judge configuration.
+
+        Unlike :meth:`judge_config`, Mustache placeholders in
+        ``messages[].content`` are returned as-is rather than being
+        substituted with variable values.  The reserved judge placeholders
+        (``{{message_history}}`` and ``{{response_to_evaluate}}``) are also
+        preserved.  Use this when you need to inspect the raw prompt template
+        before rendering it yourself.
+
+        :param key: The key of the judge configuration.
+        :param context: The context to evaluate the judge configuration in.
+        :param default: The default value of the judge configuration. When not provided,
+            a disabled config is used as the fallback.
+        :return: The judge configuration with un-rendered template placeholders.
+        """
+        self._client.track(_TRACK_USAGE_JUDGE_CONFIG_TEMPLATE, context, key, 1)
+
+        return self._judge_config(
+            key, context, default or _DISABLED_JUDGE_DEFAULT,
+            variables=None, interpolate=False,
         )
 
     def create_judge(
@@ -544,6 +606,38 @@ class LDAIClient:
             key, context, default or _DISABLED_AGENT_DEFAULT, variables
         )
 
+    def agent_config_template(
+        self,
+        key: str,
+        context: Context,
+        default: Optional[AIAgentConfigDefault] = None,
+    ) -> AIAgentConfig:
+        """
+        Get the un-rendered template of an agent configuration.
+
+        Unlike :meth:`agent_config`, Mustache placeholders in ``instructions``
+        (e.g. ``{{topic}}``) are returned as-is rather than being substituted
+        with variable values.  Use this when you need to inspect or store the
+        raw instruction template before rendering it yourself.
+
+        :param key: The agent configuration key.
+        :param context: The context to evaluate the agent configuration in.
+        :param default: Default agent values. When not provided, a disabled config is used
+            as the fallback.
+        :return: Configured AIAgentConfig instance with un-rendered template placeholders.
+        """
+        self._client.track(
+            _TRACK_USAGE_AGENT_CONFIG_TEMPLATE,
+            context,
+            key,
+            1
+        )
+
+        return self.__evaluate_agent(
+            key, context, default or _DISABLED_AGENT_DEFAULT,
+            variables=None, interpolate=False,
+        )
+
     def agent_configs(
         self,
         agent_configs: List[AIAgentConfigRequest],
@@ -783,6 +877,7 @@ class LDAIClient:
         default_dict: Dict[str, Any],
         variables: Optional[Dict[str, Any]] = None,
         graph_key: Optional[str] = None,
+        interpolate: bool = True,
     ) -> Tuple[
         Optional[ModelConfig], Optional[ProviderConfig], Optional[List[LDMessage]],
         Optional[str], Callable[[], LDAIConfigTracker], bool, Optional[Any], Dict[str, Any]
@@ -795,6 +890,8 @@ class LDAIClient:
         :param default_dict: Default configuration as dictionary.
         :param variables: Variables for interpolation.
         :param graph_key: When set, passed to the tracker so all events include ``graphKey``.
+        :param interpolate: When False, Mustache placeholders in messages and instructions
+            are preserved as-is rather than being rendered.
         :return: Tuple of (model, provider, messages, instructions,
             tracker_factory, enabled, judge_configuration, variation).
         """
@@ -812,8 +909,9 @@ class LDAIClient:
             messages = [
                 LDMessage(
                     role=entry['role'],
-                    content=self.__interpolate_template(
-                        entry['content'], all_variables
+                    content=(
+                        self.__interpolate_template(entry['content'], all_variables)
+                        if interpolate else entry['content']
                     ),
                 )
                 for entry in variation['messages']
@@ -821,7 +919,10 @@ class LDAIClient:
 
         instructions = None
         if 'instructions' in variation and isinstance(variation['instructions'], str):
-            instructions = self.__interpolate_template(variation['instructions'], all_variables)
+            instructions = (
+                self.__interpolate_template(variation['instructions'], all_variables)
+                if interpolate else variation['instructions']
+            )
 
         provider_config = None
         if 'provider' in variation and isinstance(variation['provider'], dict):
@@ -832,10 +933,12 @@ class LDAIClient:
         if 'model' in variation and isinstance(variation['model'], dict):
             parameters = variation['model'].get('parameters', None)
             custom = variation['model'].get('custom', None)
+            region = variation['model'].get('region', None)
             model = ModelConfig(
                 name=variation['model']['name'],
                 parameters=parameters,
-                custom=custom
+                custom=custom,
+                region=region,
             )
 
         variation_key = variation.get('_ldMeta', {}).get('variationKey', '')
@@ -886,6 +989,7 @@ class LDAIClient:
         variables: Optional[Dict[str, Any]] = None,
         graph_key: Optional[str] = None,
         default_ai_provider: Optional[str] = None,
+        interpolate: bool = True,
     ) -> AIAgentConfig:
         """
         Internal method to evaluate an agent configuration.
@@ -896,11 +1000,12 @@ class LDAIClient:
         :param variables: Variables for interpolation.
         :param graph_key: When set, passed to the tracker so all events include ``graphKey``.
         :param default_ai_provider: Optional default AI provider for judge evaluation.
+        :param interpolate: When False, Mustache placeholders in instructions are preserved as-is.
         :return: Configured AIAgentConfig instance.
         """
         (model, provider, messages, instructions,
          tracker_factory, enabled, judge_configuration, variation) = self.__evaluate(
-            key, context, default.to_dict(), variables, graph_key=graph_key
+            key, context, default.to_dict(), variables, graph_key=graph_key, interpolate=interpolate
         )
 
         # For agents, prioritize instructions over messages

@@ -20,7 +20,7 @@ classifiers = [
     "Topic :: Software Development :: Libraries",
 ]
 dependencies = [
-    "launchdarkly-server-sdk-ai>=1.0.1", # x-release-please-version
+    "launchdarkly-server-sdk-ai>=1.1.0", # x-release-please-version
     "langchain-core>=1.0.0",
     "langchain>=1.0.0",
 ]
@@ -53,8 +53,6 @@ packages = ["src/ldai_langchain"]
 [tool.mypy]
 python_version = "3.10"
 ignore_missing_imports = true
-install_types = true
-non_interactive = true
 
 [tool.isort]
 profile = "black"
