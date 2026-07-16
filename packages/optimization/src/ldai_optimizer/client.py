@@ -76,7 +76,7 @@ logger.addFilter(RedactionFilter())
 def _interpolate(template: str, variables: Dict[str, Any]) -> str:
     """Replace {{key}} tokens with values from variables; unresolved tokens become empty string."""
     return re.sub(
-        r"\{\{(\w+)\}\}",
+        r"\{\{([\w-]+)\}\}",
         lambda m: str(variables.get(m.group(1), "")),
         template,
     )
@@ -1131,6 +1131,15 @@ class OptimizationClient:
                 agent_config, instructions=raw_instructions
             )
             self._initialize_class_members_from_config(agent_config)
+            # Merge variation-level tools into _current_parameters so that
+            # _extract_agent_tools (which reads parameters["tools"]) finds them
+            # during agent turns.  The model._parameters used above only carries
+            # model-level parameters; variation tools are a separate top-level
+            # field in the REST response and must be injected explicitly.
+            # Create a new dict (not an in-place mutation) so agent_config.model
+            # stays unaffected.
+            if raw_tools and not self._current_parameters.get("tools"):
+                self._current_parameters = {**self._current_parameters, "tools": raw_tools}
             return agent_config
         except Exception:
             logger.exception("[Optimization] -> Failed to get agent configuration")
@@ -1489,6 +1498,10 @@ class OptimizationClient:
                     self._last_succeeded_context = last_ctx
                     self._safe_status_update("success", last_ctx, last_ctx.iteration)
                     phase1_winner = self._last_succeeded_context
+                    # Record baseline from the winning attempt before Phase 2 so the
+                    # latency/cost gates have a reference even when GT passes on
+                    # attempt 1 and _record_baseline_from_batch was never called.
+                    self._record_baseline_from_batch(attempt_results)
                     await self._run_cost_latency_phase(
                         last_ctx,
                         last_ctx.iteration,
@@ -3264,6 +3277,10 @@ class OptimizationClient:
                         or self._options.token_optimization
                     ) and not self._is_token_limit_exceeded():
                         phase1_winner = self._last_succeeded_context
+                        # Record the Phase 1 baseline before Phase 2 so the latency/
+                        # cost gates have a reference point even when the first attempt
+                        # passes (i.e. _record_baseline was never called in the loop).
+                        self._record_baseline(optimize_context)
                         await self._run_cost_latency_phase(optimize_context, iteration)
                         if self._last_succeeded_context is None:
                             self._last_run_succeeded = True
@@ -3296,7 +3313,9 @@ class OptimizationClient:
                 )
                 if iteration >= self._options.max_attempts:
                     return self._handle_failure(optimize_context, iteration)
-                self._record_baseline(last_ctx)
+                # Record baseline from the main iteration context (not the failing
+                # validation run) so Phase 2 gates are not skewed by a bad sample.
+                self._record_baseline(optimize_context)
                 self._history.append(last_ctx)
                 self._history = _trim_history(self._history, _MAX_STANDARD_HISTORY_LENGTH)
                 try:

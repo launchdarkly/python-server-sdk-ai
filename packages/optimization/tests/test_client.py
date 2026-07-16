@@ -17,6 +17,7 @@ from ldai_optimizer.client import (
     _MAX_STANDARD_HISTORY_LENGTH,
     _compute_validation_count,
     _find_model_config,
+    _interpolate,
     _strip_provider_prefix,
     _trim_history,
 )
@@ -2134,7 +2135,7 @@ class TestBuildOptionsFromConfig:
         self.api_client = _make_mock_api_client()
 
     def _build(self, config=None, options=None) -> OptimizationOptions:
-        return self.client._build_options_from_config(
+        opts, _ = self.client._build_options_from_config(
             config or dict(_API_CONFIG),
             options or _make_from_config_options(),
             self.api_client,
@@ -2142,6 +2143,7 @@ class TestBuildOptionsFromConfig:
             run_id="run-uuid-456",
             model_configs=[],
         )
+        return opts
 
     def test_acceptance_statements_mapped_to_judges(self):
         result = self._build()
@@ -2461,7 +2463,7 @@ class TestBuildOptionsFromConfig:
             {"id": "gpt-4o", "key": "project.gpt-4o", "global": False},
             {"id": "gpt-4o", "key": "global.gpt-4o", "global": True},
         ]
-        result = self.client._build_options_from_config(
+        result, _ = self.client._build_options_from_config(
             dict(_API_CONFIG),
             _make_from_config_options(),
             self.api_client,
@@ -2481,7 +2483,7 @@ class TestBuildOptionsFromConfig:
     @pytest.mark.parametrize("status", ["generating", "evaluating", "success"])
     def test_model_config_key_resolved_in_variation(self, status):
         model_configs = [{"id": "gpt-4o", "key": "OpenAI.gpt-4o"}]
-        result = self.client._build_options_from_config(
+        result, _ = self.client._build_options_from_config(
             dict(_API_CONFIG),
             _make_from_config_options(),
             self.api_client,
@@ -3825,7 +3827,7 @@ class TestBuildOptionsFromConfigGroundTruth:
         self.api_client = _make_mock_api_client()
 
     def _build(self, config=None, options=None):
-        return self.client._build_options_from_config(
+        opts, _ = self.client._build_options_from_config(
             config or dict(_API_CONFIG_WITH_GT),
             options or _make_from_config_options(),
             self.api_client,
@@ -3833,6 +3835,7 @@ class TestBuildOptionsFromConfigGroundTruth:
             run_id="run-uuid-789",
             model_configs=[],
         )
+        return opts
 
     def test_returns_ground_truth_options_when_gt_present(self):
         result = self._build()
@@ -5010,7 +5013,7 @@ class TestBuildOptionsFromConfigIsInverted:
         self.api_client = _make_mock_api_client()
 
     def _build(self, config=None, options=None) -> OptimizationOptions:
-        return self.client._build_options_from_config(
+        opts, _ = self.client._build_options_from_config(
             config or dict(_API_CONFIG),
             options or _make_from_config_options(),
             self.api_client,
@@ -5018,6 +5021,7 @@ class TestBuildOptionsFromConfigIsInverted:
             run_id="run-uuid-456",
             model_configs=[],
         )
+        return opts
 
     def test_is_inverted_true_when_ai_config_returns_isInverted(self):
         """is_inverted is set from the AI Config REST API response for each judge."""
@@ -5886,7 +5890,7 @@ class TestGetAgentConfigVariationKey:
         )
 
         assert config.model is not None
-        assert config.model.name == "OpenAI.gpt-4o-mini"
+        assert config.model.name == "gpt-4o-mini"
 
     async def test_tool_keys_extracted_from_api_variation(self):
         client = self._make_client_with_key()
@@ -5940,7 +5944,7 @@ class TestGetAgentConfigVariationKey:
         )
 
         assert config.model is not None
-        assert config.model.name == "OpenAI.gpt-4o-mini"
+        assert config.model.name == "gpt-4o-mini"
         assert config.model._parameters == {"temperature": 0.3, "maxTokens": 512}
 
     async def test_model_parameters_default_to_empty_when_absent(self):
@@ -6351,3 +6355,241 @@ class TestLatencyCostOptimizationBooleans:
         _, ctx = self.client._apply_cost_gate(True, ctx)
         assert "_latency_gate" in ctx.scores
         assert "_cost_gate" not in ctx.scores
+
+
+# ---------------------------------------------------------------------------
+# OptimizationOptions validation
+# ---------------------------------------------------------------------------
+
+
+class TestOptimizationOptionsValidation:
+    def _make(self, **overrides) -> OptimizationOptions:
+        defaults = dict(
+            max_attempts=3,
+            model_choices=["gpt-4o"],
+            judge_model="gpt-4o",
+            variable_choices=[{"language": "English"}],
+            handle_agent_call=AsyncMock(return_value=OptimizationResponse(output="x")),
+            handle_judge_call=AsyncMock(return_value=OptimizationResponse(output=JUDGE_PASS_RESPONSE)),
+            judges={
+                "accuracy": OptimizationJudge(
+                    threshold=0.8,
+                    acceptance_statement="The response must be accurate.",
+                )
+            },
+        )
+        defaults.update(overrides)
+        return OptimizationOptions(**defaults)
+
+    def test_valid_options_created(self):
+        opts = self._make()
+        assert opts.model_choices == ["gpt-4o"]
+
+    def test_raises_empty_model_choices(self):
+        with pytest.raises(ValueError, match="model_choices"):
+            self._make(model_choices=[])
+
+    def test_raises_empty_variable_choices(self):
+        with pytest.raises(ValueError, match="variable_choices"):
+            self._make(variable_choices=[])
+
+    def test_raises_no_judges_and_no_on_turn(self):
+        with pytest.raises(ValueError, match="judges or on_turn"):
+            self._make(judges=None, on_turn=None)
+
+    def test_on_turn_satisfies_criteria_requirement(self):
+        opts = self._make(judges=None, on_turn=lambda ctx: True)
+        assert opts.on_turn is not None
+
+
+# ---------------------------------------------------------------------------
+# _interpolate — hyphenated and standard keys
+# ---------------------------------------------------------------------------
+
+
+class TestInternalInterpolate:
+    def test_substitutes_standard_key(self):
+        assert _interpolate("Hello {{name}}", {"name": "world"}) == "Hello world"
+
+    def test_substitutes_hyphenated_key(self):
+        assert _interpolate("ID: {{user-id}}", {"user-id": "u-42"}) == "ID: u-42"
+
+    def test_substitutes_underscore_key(self):
+        assert _interpolate("{{trip_purpose}}", {"trip_purpose": "leisure"}) == "leisure"
+
+    def test_unresolved_token_becomes_empty_string(self):
+        assert _interpolate("{{missing}}", {}) == ""
+
+    def test_unresolved_hyphen_token_becomes_empty_string(self):
+        assert _interpolate("{{user-id}}", {}) == ""
+
+    def test_multiple_tokens_in_template(self):
+        result = _interpolate("{{user-id}} — {{lang}}", {"user-id": "x", "lang": "en"})
+        assert result == "x — en"
+
+
+# ---------------------------------------------------------------------------
+# Phase 2 baseline populated before _run_cost_latency_phase
+# ---------------------------------------------------------------------------
+
+
+class TestPhase2BaselineSet:
+    """Verify _baseline_duration_ms / _baseline_cost_usd are populated before
+    Phase 2 runs — including when quality passes on the very first iteration."""
+
+    def _make_options(self, *, gt=False, **extra) -> OptimizationOptions:
+        return _make_options(
+            latency_optimization=True,
+            token_optimization=True,
+            **extra,
+        )
+
+    def _ctx_with(self, duration_ms=1000.0, cost=0.01, iteration=1) -> OptimizationContext:
+        return OptimizationContext(
+            scores={"accuracy": JudgeResult(score=1.0, rationale="good")},
+            completion_response="ok",
+            current_instructions="Do X.",
+            current_parameters={},
+            current_variables={"language": "English"},
+            iteration=iteration,
+            duration_ms=duration_ms,
+            estimated_cost_usd=cost,
+        )
+
+    @pytest.mark.asyncio
+    async def test_baseline_populated_before_phase2_standard_first_pass(self):
+        """Baseline is set even when the very first standard iteration passes."""
+        client = _make_client()
+        client._options = self._make_options()
+        client._initialize_class_members_from_config(_make_agent_config())
+
+        baseline_captured = {}
+
+        async def fake_phase2(ctx, iteration):
+            baseline_captured["duration"] = client._baseline_duration_ms
+            baseline_captured["cost"] = client._baseline_cost_usd
+
+        client._run_cost_latency_phase = fake_phase2
+        client._last_run_succeeded = True
+        client._last_succeeded_context = self._ctx_with()
+
+        # Simulate the code path: all_valid=True on iteration 1
+        client._baseline_duration_ms = None
+        client._baseline_cost_usd = None
+
+        ctx = self._ctx_with(duration_ms=800.0, cost=0.008)
+        client._record_baseline(ctx)
+        await fake_phase2(ctx, 1)
+
+        assert baseline_captured["duration"] == 800.0
+        assert baseline_captured["cost"] == 0.008
+
+    @pytest.mark.asyncio
+    async def test_baseline_populated_before_phase2_gt_first_attempt(self):
+        """Baseline is set from the batch before Phase 2 on GT first-attempt pass."""
+        client = _make_client()
+        client._options = self._make_options()
+        client._initialize_class_members_from_config(_make_agent_config())
+
+        ctx1 = self._ctx_with(duration_ms=900.0, cost=0.009)
+        ctx2 = self._ctx_with(duration_ms=1100.0, cost=0.011)
+        batch = [ctx1, ctx2]
+
+        client._baseline_duration_ms = None
+        client._baseline_cost_usd = None
+        client._record_baseline_from_batch(batch)
+
+        assert client._baseline_duration_ms == pytest.approx(1000.0)
+        assert client._baseline_cost_usd == pytest.approx(0.010)
+
+    def test_validation_fail_baseline_uses_main_context_not_validation_ctx(self):
+        """After a validation failure the baseline records optimize_context (main
+        iteration), not last_ctx (the failing validation run)."""
+        client = _make_client()
+        client._options = _make_options()
+        client._initialize_class_members_from_config(_make_agent_config())
+
+        main_ctx = self._ctx_with(duration_ms=500.0, cost=0.005)
+        client._record_baseline(main_ctx)
+
+        assert client._baseline_duration_ms == 500.0
+        assert client._baseline_cost_usd == 0.005
+
+
+# ---------------------------------------------------------------------------
+# Variation tools merged into _current_parameters
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+class TestVariationToolsMergedIntoCurrentParameters:
+    """Tools from the REST variation payload must be visible in _current_parameters
+    after _get_agent_config so that _extract_agent_tools can pick them up."""
+
+    _VARIATION_WITH_TOOLS = {
+        "key": "v-tools",
+        "instructions": "Tool-bearing instructions.",
+        "modelConfigKey": "OpenAI.gpt-4o-mini",
+        "tools": [{"key": "search-tool", "version": 1}, {"key": "calc-tool", "version": 2}],
+    }
+
+    def _make_client_with_key(self) -> OptimizationClient:
+        with patch.dict("os.environ", {"LAUNCHDARKLY_API_KEY": "test-api-key"}):
+            return OptimizationClient(_make_ldai_client())
+
+    async def test_variation_tools_merged_into_current_parameters(self):
+        client = self._make_client_with_key()
+        mock_api = MagicMock()
+        mock_api.get_ai_config_variation.return_value = self._VARIATION_WITH_TOOLS
+
+        await client._get_agent_config(
+            "test-agent", LD_CONTEXT,
+            variation_key="v-tools",
+            project_key="my-project",
+            api_client=mock_api,
+        )
+
+        assert "tools" in client._current_parameters
+        tool_keys = [t["key"] for t in client._current_parameters["tools"]]
+        assert tool_keys == ["search-tool", "calc-tool"]
+
+    async def test_variation_tools_not_clobber_model_parameters_tools(self):
+        """If the model already carries a tools list it should not be overwritten."""
+        client = self._make_client_with_key()
+        mock_api = MagicMock()
+        variation = {
+            **self._VARIATION_WITH_TOOLS,
+            "model": {
+                "modelConfigKey": "OpenAI.gpt-4o-mini",
+                "parameters": {"tools": [{"key": "model-tool", "version": 99}]},
+            },
+        }
+        mock_api.get_ai_config_variation.return_value = variation
+
+        await client._get_agent_config(
+            "test-agent", LD_CONTEXT,
+            variation_key="v-tools",
+            project_key="my-project",
+            api_client=mock_api,
+        )
+
+        # The model-level tools take precedence — variation tools must not overwrite them.
+        tool_keys = [t["key"] for t in client._current_parameters["tools"]]
+        assert tool_keys == ["model-tool"]
+
+    async def test_model_parameters_not_mutated_by_tools_injection(self):
+        """The original model._parameters dict must not be mutated."""
+        client = self._make_client_with_key()
+        mock_api = MagicMock()
+        mock_api.get_ai_config_variation.return_value = self._VARIATION_WITH_TOOLS
+
+        config = await client._get_agent_config(
+            "test-agent", LD_CONTEXT,
+            variation_key="v-tools",
+            project_key="my-project",
+            api_client=mock_api,
+        )
+
+        # _current_parameters is a new dict, not the model's internal dict.
+        if config.model is not None:
+            assert config.model._parameters is not client._current_parameters

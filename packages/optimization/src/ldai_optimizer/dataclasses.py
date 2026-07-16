@@ -369,6 +369,8 @@ class OptimizationOptions:
         """Validate required options."""
         if len(self.model_choices) < 1:
             raise ValueError("model_choices must have at least 1 model")
+        if len(self.variable_choices) < 1:
+            raise ValueError("variable_choices must have at least 1 entry")
         if self.judges is None and self.on_turn is None:
             raise ValueError("Either judges or on_turn must be provided")
         if self.judge_model is None:
