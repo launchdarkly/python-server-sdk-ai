@@ -73,6 +73,63 @@ logger = logging.getLogger(__name__)
 logger.addFilter(RedactionFilter())
 
 
+_TRANSIENT_RETRY_STATUSES = frozenset({429, 503, 529})
+_TRANSIENT_NAME_FRAGMENTS = frozenset({"overloaded", "ratelimit", "rate_limit", "toomanyrequests"})
+# Default per-call retry budget for LLM calls that hit transient provider errors.
+_LLM_CALL_MAX_RETRIES = 3
+_LLM_CALL_BASE_DELAY_S = 2.0
+
+
+def _is_transient_error(exc: BaseException) -> bool:
+    """Return True when *exc* looks like a recoverable provider error worth retrying.
+
+    Works without importing any provider SDK: checks the ``status_code`` /
+    ``status`` / ``http_status`` attribute that most HTTP-client libraries
+    expose, and falls back to a keyword scan of the exception class name.
+    """
+    for attr in ("status_code", "status", "http_status", "code"):
+        code = getattr(exc, attr, None)
+        if isinstance(code, int) and code in _TRANSIENT_RETRY_STATUSES:
+            return True
+    name = type(exc).__name__.lower().replace("-", "_")
+    return any(frag in name for frag in _TRANSIENT_NAME_FRAGMENTS)
+
+
+async def _invoke_with_retry(
+    label: str,
+    coro_factory: Any,
+    max_retries: int = _LLM_CALL_MAX_RETRIES,
+    base_delay: float = _LLM_CALL_BASE_DELAY_S,
+) -> Any:
+    """Await *coro_factory()* and retry up to *max_retries* times on transient errors.
+
+    :param label: Short human-readable name used in log messages (e.g. "agent call").
+    :param coro_factory: Zero-argument callable that returns a coroutine (or any
+        awaitable) representing a single LLM call attempt.
+    :param max_retries: Maximum number of additional attempts after the first.
+    :param base_delay: Base sleep duration in seconds; doubled after each attempt.
+    :returns: The return value of the successful coroutine.
+    :raises: The last exception if all attempts are exhausted.
+    """
+    for attempt in range(max_retries + 1):
+        try:
+            return await await_if_needed(coro_factory())
+        except Exception as exc:
+            if attempt < max_retries and _is_transient_error(exc):
+                delay = base_delay * (2 ** attempt)
+                logger.warning(
+                    "Transient error on %s (attempt %d/%d), retrying in %.1fs: %s",
+                    label,
+                    attempt + 1,
+                    max_retries + 1,
+                    delay,
+                    exc,
+                )
+                await asyncio.sleep(delay)
+            else:
+                raise
+
+
 def _interpolate(template: str, variables: Dict[str, Any]) -> str:
     """Replace {{key}} tokens with values from variables; unresolved tokens become empty string."""
     return re.sub(
@@ -823,10 +880,10 @@ class OptimizationClient:
         )
 
         _judge_start = time.monotonic()
-        result = self._judge_call(
-            judge_key, judge_call_config, judge_ctx, True
+        judge_response: OptimizationResponse = await _invoke_with_retry(
+            f"config judge '{judge_key}' (iteration {iteration})",
+            lambda: self._judge_call(judge_key, judge_call_config, judge_ctx, True),
         )
-        judge_response: OptimizationResponse = await await_if_needed(result)
         judge_duration_ms = (time.monotonic() - _judge_start) * 1000
         judge_response_str = judge_response.output
 
@@ -1017,10 +1074,10 @@ class OptimizationClient:
         )
 
         _judge_start = time.monotonic()
-        result = self._judge_call(
-            judge_key, judge_call_config, judge_ctx, True
+        judge_response: OptimizationResponse = await _invoke_with_retry(
+            f"acceptance judge '{judge_key}' (iteration {iteration})",
+            lambda: self._judge_call(judge_key, judge_call_config, judge_ctx, True),
         )
-        judge_response: OptimizationResponse = await await_if_needed(result)
         judge_duration_ms = (time.monotonic() - _judge_start) * 1000
         judge_response_str = judge_response.output
 
@@ -1817,13 +1874,15 @@ class OptimizationClient:
         response_data = None
         response_str = ""
         for attempt in range(1, _MAX_VARIATION_RETRIES + 1):
-            result = self._options.handle_agent_call(
-                self._agent_key,
-                agent_config,
-                variation_ctx,
-                False,
+            variation_response: OptimizationResponse = await _invoke_with_retry(
+                f"variation generation (iteration {iteration}, attempt {attempt})",
+                lambda: self._options.handle_agent_call(
+                    self._agent_key,
+                    agent_config,
+                    variation_ctx,
+                    False,
+                ),
             )
-            variation_response: OptimizationResponse = await await_if_needed(result)
             if variation_response.usage is not None:
                 self._total_token_usage += variation_response.usage.total or 0
             response_str = variation_response.output
@@ -2315,13 +2374,16 @@ class OptimizationClient:
         )
         try:
             _agent_start = time.monotonic()
-            result = self._options.handle_agent_call(
-                self._agent_key,
-                self._build_agent_config_for_context(optimize_context),
-                optimize_context,
-                False,
+            _agent_config = self._build_agent_config_for_context(optimize_context)
+            agent_response: OptimizationResponse = await _invoke_with_retry(
+                f"agent call (iteration {iteration})",
+                lambda: self._options.handle_agent_call(
+                    self._agent_key,
+                    _agent_config,
+                    optimize_context,
+                    False,
+                ),
             )
-            agent_response: OptimizationResponse = await await_if_needed(result)
             agent_duration_ms = (time.monotonic() - _agent_start) * 1000
             completion_response = agent_response.output
             logger.debug(

@@ -18,6 +18,8 @@ from ldai_optimizer.client import (
     _compute_validation_count,
     _find_model_config,
     _interpolate,
+    _invoke_with_retry,
+    _is_transient_error,
     _strip_provider_prefix,
     _trim_history,
 )
@@ -6593,3 +6595,119 @@ class TestVariationToolsMergedIntoCurrentParameters:
         # _current_parameters is a new dict, not the model's internal dict.
         if config.model is not None:
             assert config.model._parameters is not client._current_parameters
+
+
+# ---------------------------------------------------------------------------
+# Transient error detection and retry logic
+# ---------------------------------------------------------------------------
+
+
+class TestIsTransientError:
+    """_is_transient_error correctly identifies retryable HTTP errors."""
+
+    def _exc_with_status(self, status: int) -> Exception:
+        e = Exception("provider error")
+        e.status_code = status  # type: ignore[attr-defined]
+        return e
+
+    def test_429_is_transient(self):
+        assert _is_transient_error(self._exc_with_status(429))
+
+    def test_503_is_transient(self):
+        assert _is_transient_error(self._exc_with_status(503))
+
+    def test_529_is_transient(self):
+        assert _is_transient_error(self._exc_with_status(529))
+
+    def test_400_is_not_transient(self):
+        assert not _is_transient_error(self._exc_with_status(400))
+
+    def test_500_is_not_transient(self):
+        assert not _is_transient_error(self._exc_with_status(500))
+
+    def test_overloaded_class_name_is_transient(self):
+        class OverloadedError(Exception):
+            pass
+        assert _is_transient_error(OverloadedError("overloaded"))
+
+    def test_rate_limit_class_name_is_transient(self):
+        class RateLimitError(Exception):
+            pass
+        assert _is_transient_error(RateLimitError("rate limited"))
+
+    def test_generic_exception_is_not_transient(self):
+        assert not _is_transient_error(ValueError("bad input"))
+
+
+@pytest.mark.asyncio
+class TestInvokeWithRetry:
+    """_invoke_with_retry retries on transient errors and gives up after max_retries."""
+
+    async def test_succeeds_on_first_attempt(self):
+        calls = 0
+
+        async def coro():
+            nonlocal calls
+            calls += 1
+            return "ok"
+
+        result = await _invoke_with_retry("test", coro, max_retries=2, base_delay=0)
+        assert result == "ok"
+        assert calls == 1
+
+    async def test_retries_and_succeeds_on_second_attempt(self):
+        calls = 0
+
+        def factory():
+            nonlocal calls
+            calls += 1
+
+            async def coro():
+                if calls == 1:
+                    err = Exception("overloaded")
+                    err.status_code = 529  # type: ignore[attr-defined]
+                    raise err
+                return "ok"
+
+            return coro()
+
+        result = await _invoke_with_retry("test", factory, max_retries=2, base_delay=0)
+        assert result == "ok"
+        assert calls == 2
+
+    async def test_raises_after_max_retries_exhausted(self):
+        class OverloadedError(Exception):
+            pass
+
+        calls = 0
+
+        def factory():
+            nonlocal calls
+            calls += 1
+
+            async def coro():
+                raise OverloadedError("still overloaded")
+
+            return coro()
+
+        with pytest.raises(OverloadedError):
+            await _invoke_with_retry("test", factory, max_retries=2, base_delay=0)
+
+        assert calls == 3  # 1 initial + 2 retries
+
+    async def test_non_transient_error_raises_immediately(self):
+        calls = 0
+
+        def factory():
+            nonlocal calls
+            calls += 1
+
+            async def coro():
+                raise ValueError("bad input — not retryable")
+
+            return coro()
+
+        with pytest.raises(ValueError):
+            await _invoke_with_retry("test", factory, max_retries=3, base_delay=0)
+
+        assert calls == 1  # no retries
