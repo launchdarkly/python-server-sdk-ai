@@ -1562,6 +1562,10 @@ class OptimizationClient:
                     await self._run_cost_latency_phase(
                         last_ctx,
                         last_ctx.iteration,
+                        # Pass the ground-truth expected response for the last sample so
+                        # Phase 2 judges can score against the labeled answer, matching
+                        # the evaluation context used in Phase 1.
+                        expected_response=samples[-1].expected_response,
                     )
                     if self._last_succeeded_context is None:
                         # No Phase 2 candidate won; restore the Phase 1 winner.
@@ -2799,6 +2803,7 @@ class OptimizationClient:
         self,
         winning_ctx: OptimizationContext,
         last_iteration: int,
+        expected_response: Optional[str] = None,
     ) -> None:
         """Run Phase 2: optimize model and parameters for cost/latency on the frozen winning variation.
 
@@ -2814,6 +2819,10 @@ class OptimizationClient:
         :param winning_ctx: The Phase 1 winning OptimizationContext.
         :param last_iteration: The last iteration number from Phase 1; Phase 2
             continues from last_iteration + 1.
+        :param expected_response: Optional ground truth expected response from the
+            Phase 1 GT sample that corresponds to the winning context. When provided,
+            injected into judge context so quality checks in Phase 2 can score against
+            the ground truth just as they did in Phase 1.
         """
         self._in_cost_latency_phase = True
         self._history = [winning_ctx]
@@ -2887,7 +2896,7 @@ class OptimizationClient:
             self._safe_status_update("generating", ctx, iteration)
             try:
                 ctx = await asyncio.wait_for(
-                    self._execute_agent_turn(ctx, iteration),
+                    self._execute_agent_turn(ctx, iteration, expected_response=expected_response),
                     timeout=120,
                 )
             except (Exception, asyncio.TimeoutError):

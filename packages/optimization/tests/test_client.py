@@ -6711,3 +6711,89 @@ class TestInvokeWithRetry:
             await _invoke_with_retry("test", factory, max_retries=3, base_delay=0)
 
         assert calls == 1  # no retries
+
+
+# ---------------------------------------------------------------------------
+# Phase 2 GT expected_response forwarding
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+class TestPhase2GroundTruthExpectedResponse:
+    """_run_cost_latency_phase must forward the last GT sample's expected_response
+    to _execute_agent_turn so quality judges can score against ground truth in Phase 2."""
+
+    def _ctx(self, iteration=1, user_input="q1") -> OptimizationContext:
+        return OptimizationContext(
+            scores={"acc": JudgeResult(score=1.0)},
+            completion_response="answer",
+            current_instructions="Do X.",
+            current_parameters={},
+            current_variables={"lang": "English"},
+            iteration=iteration,
+            duration_ms=500.0,
+            user_input=user_input,
+        )
+
+    async def test_expected_response_forwarded_to_execute_agent_turn(self):
+        """Phase 2 passes expected_response from the last GT sample to _execute_agent_turn."""
+        client = _make_client()
+        opts = _make_gt_options(latency_optimization=True, max_attempts=2)
+        client._options = opts
+        client._initialize_class_members_from_config(_make_agent_config())
+
+        execute_side_effects = [
+            # Attempt 1: both samples pass
+            self._ctx(iteration=1, user_input="What is 2+2?"),
+            self._ctx(iteration=2, user_input="What is 3+3?"),
+        ]
+
+        captured_expected_responses: list = []
+
+        async def fake_execute(ctx, iteration, expected_response=None):
+            captured_expected_responses.append(expected_response)
+            return self._ctx(iteration=iteration, user_input=ctx.user_input or "")
+
+        with patch.object(client, "_execute_agent_turn", side_effect=fake_execute):
+            with patch.object(client, "_run_cost_latency_phase", new_callable=AsyncMock) as mock_phase2:
+                await client.optimize_from_ground_truth_options("test-agent", opts)
+
+        mock_phase2.assert_called_once()
+        call_kwargs = mock_phase2.call_args
+        # The last GT sample's expected_response ("6") must be forwarded.
+        assert call_kwargs.kwargs.get("expected_response") == "6"
+
+    async def test_phase2_execute_agent_turn_receives_expected_response(self):
+        """_run_cost_latency_phase passes expected_response to _execute_agent_turn."""
+        client = _make_client()
+        opts = _make_options(latency_optimization=True)
+        client._options = opts
+        client._initialize_class_members_from_config(_make_agent_config())
+        client._baseline_duration_ms = 1000.0
+        client._baseline_cost_usd = 0.01
+        client._in_cost_latency_phase = False
+
+        winning_ctx = self._ctx(iteration=1)
+        captured_expected_responses: list = []
+
+        async def fake_execute(ctx, iteration, expected_response=None):
+            captured_expected_responses.append(expected_response)
+            return dataclasses.replace(
+                self._ctx(iteration=iteration),
+                scores={"acc": JudgeResult(score=1.0)},
+                duration_ms=500.0,
+                estimated_cost_usd=0.005,
+            )
+
+        with patch.object(client, "_execute_agent_turn", side_effect=fake_execute):
+            with patch.object(client, "_safe_status_update"):
+                with patch.object(client, "_apply_duration_gate", return_value=(True, winning_ctx)):
+                    with patch.object(client, "_apply_cost_gate", return_value=(True, winning_ctx)):
+                        await client._run_cost_latency_phase(
+                            winning_ctx,
+                            last_iteration=1,
+                            expected_response="the expected answer",
+                        )
+
+        assert all(er == "the expected answer" for er in captured_expected_responses)
+        assert len(captured_expected_responses) > 0
