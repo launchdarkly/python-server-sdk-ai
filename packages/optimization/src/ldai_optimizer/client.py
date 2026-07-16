@@ -2265,25 +2265,7 @@ class OptimizationClient:
                     logger.exception("User on_status_update callback failed for status=%s", status)
 
         def _log_persist_summary() -> None:
-            """Emit a single summary line about result-persistence health at run end."""
-            total_posts = _post_successes + _post_failures
-            total_patches = _patch_successes + _patch_failures
-            if _post_failures or _patch_failures:
-                logger.warning(
-                    "Result persistence summary: %d/%d POSTs and %d/%d PATCHes to the "
-                    "LaunchDarkly API failed — the Results tab may be incomplete. "
-                    "Check your API key and network connectivity.",
-                    _post_successes,
-                    total_posts,
-                    _patch_successes,
-                    total_patches,
-                )
-            else:
-                logger.debug(
-                    "Result persistence summary: all %d POSTs and %d PATCHes succeeded.",
-                    total_posts,
-                    total_patches,
-                )
+            pass
 
         # If we have ground truth responses, we provide a different
         # configuration options type that contains the bundled GroundTruthSamples
