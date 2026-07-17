@@ -132,24 +132,6 @@ def td() -> TestData:
         .variation_for_all(1)
     )
 
-    td.update(
-        td.flag('model-config-with-key-version')
-        .variations(
-            {
-                'model': {
-                    'name': 'gpt-4',
-                },
-                'provider': {'name': 'openai'},
-                'messages': [],
-                '_ldMeta': {
-                    'enabled': True, 'variationKey': 'v1', 'version': 1,
-                    'modelKey': 'my-model', 'modelVersion': 2,
-                },
-            },
-        )
-        .variation_for_all(0)
-    )
-
     return td
 
 
@@ -179,32 +161,6 @@ def test_model_config_handles_custom():
     assert model.get_parameter('extra-attribute') is None
     assert model.get_custom('non-existent') is None
     assert model.get_custom('name') is None
-
-
-def test_model_config_to_dict_omits_model_key_and_version_when_unset():
-    model = ModelConfig('fakeModel', parameters={'temperature': 0.5})
-    assert model.model_key is None
-    assert model.model_version is None
-    result = model.to_dict()
-    assert 'modelKey' not in result
-    assert 'modelVersion' not in result
-
-
-def test_model_config_to_dict_includes_model_key_and_version_when_set():
-    model = ModelConfig(
-        'fakeModel',
-        model_key='my-model',
-        model_version=2,
-    )
-    result = model.to_dict()
-    assert result['modelKey'] == 'my-model'
-    assert result['modelVersion'] == 2
-
-
-def test_model_config_to_dict_omits_empty_model_key():
-    model = ModelConfig('fakeModel', model_key='')
-    result = model.to_dict()
-    assert 'modelKey' not in result
 
 
 def test_uses_default_on_invalid_flag(ldai_client: LDAIClient):
@@ -604,15 +560,6 @@ def test_create_tracker_each_call_has_different_run_id():
     run_id_1 = success_calls[0].args[2]['runId']
     run_id_2 = success_calls[1].args[2]['runId']
     assert run_id_1 != run_id_2
-
-
-def test_model_config_reads_model_key_and_version_from_flag(ldai_client: LDAIClient):
-    context = Context.create('user-key')
-    result = ldai_client.completion_config('model-config-with-key-version', context)
-
-    assert result.model is not None
-    assert result.model.model_key == 'my-model'
-    assert result.model.model_version == 2
 
 
 def test_create_tracker_stamps_model_key_and_version_on_track_data():

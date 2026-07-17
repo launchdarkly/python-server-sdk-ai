@@ -58,23 +58,17 @@ class ModelConfig:
         parameters: Optional[Dict[str, Any]] = None,
         custom: Optional[Dict[str, Any]] = None,
         region: Optional[str] = None,
-        model_key: Optional[str] = None,
-        model_version: Optional[int] = None,
     ):
         """
         :param name: The name of the model.
         :param parameters: Additional model-specific parameters.
         :param custom: Additional customer provided data.
         :param region: The region the model is deployed in.
-        :param model_key: The stable, unique key of the model.
-        :param model_version: The pinned version of the model.
         """
         self._name = name
         self._parameters = parameters
         self._custom = custom
         self._region = region
-        self._model_key = model_key
-        self._model_version = model_version
 
     @property
     def name(self) -> str:
@@ -114,36 +108,16 @@ class ModelConfig:
         """
         return self._region
 
-    @property
-    def model_key(self) -> Optional[str]:
-        """
-        The stable, unique key of the model (used for direct lookup; distinct from
-        ``name``, which is not guaranteed unique).
-        """
-        return self._model_key
-
-    @property
-    def model_version(self) -> Optional[int]:
-        """
-        The pinned version of the model that this config variation references.
-        """
-        return self._model_version
-
     def to_dict(self) -> dict:
         """
         Render the given model config as a dictionary object.
         """
-        result: Dict[str, Any] = {
+        return {
             'name': self._name,
             'parameters': self._parameters,
             'custom': self._custom,
             'region': self._region,
         }
-        if self._model_key:
-            result['modelKey'] = self._model_key
-        if self._model_version is not None:
-            result['modelVersion'] = self._model_version
-        return result
 
 
 class ProviderConfig:

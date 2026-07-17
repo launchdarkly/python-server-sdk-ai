@@ -943,15 +943,13 @@ class LDAIClient:
                 parameters=parameters,
                 custom=custom,
                 region=region,
-                model_key=variation.get('_ldMeta', {}).get('modelKey'),
-                model_version=tracked_model_version,
             )
 
         variation_key = variation.get('_ldMeta', {}).get('variationKey', '')
         version = int(variation.get('_ldMeta', {}).get('version', 1))
         model_name = model.name if model else ''
         provider_name = provider_config.name if provider_config else ''
-        model_key = model.model_key if model else None
+        model_key = variation.get('_ldMeta', {}).get('modelKey')
 
         def tracker_factory() -> LDAIConfigTracker:
             return LDAIConfigTracker(
