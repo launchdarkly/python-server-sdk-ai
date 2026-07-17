@@ -1,6 +1,6 @@
 [project]
 name = "launchdarkly-server-sdk-ai"
-version = "1.1.0"  # x-release-please-version
+version = "1.2.0"  # x-release-please-version
 description = "LaunchDarkly SDK for AI"
 authors = [{name = "LaunchDarkly", email = "dev@launchdarkly.com"}]
 license = {text = "Apache-2.0"}
