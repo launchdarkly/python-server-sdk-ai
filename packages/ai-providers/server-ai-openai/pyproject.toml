@@ -20,7 +20,7 @@ classifiers = [
     "Topic :: Software Development :: Libraries",
 ]
 dependencies = [
-    "launchdarkly-server-sdk-ai>=1.1.0", # x-release-please-version
+    "launchdarkly-server-sdk-ai>=1.2.0", # x-release-please-version
     "openai>=1.0.0",
 ]
 
