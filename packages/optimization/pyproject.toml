@@ -1,6 +1,6 @@
 [project]
 name = "launchdarkly-ai-optimizer"
-version = "0.2.0"  # x-release-please-version
+version = "0.2.1"  # x-release-please-version
 description = "LaunchDarkly AI tool — Optimization"
 authors = [{name = "LaunchDarkly", email = "dev@launchdarkly.com"}]
 license = {text = "Apache-2.0"}

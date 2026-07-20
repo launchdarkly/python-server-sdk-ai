@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/launchdarkly/python-server-sdk-ai/compare/ldai_optimizer-0.2.0...ldai_optimizer-0.2.1) (2026-07-20)
+
+
+### Bug Fixes
+
+* **optimization:** wrong install path in readme ([4f73464](https://github.com/launchdarkly/python-server-sdk-ai/commit/4f7346415cb7a8321df851f74a00fc4731933249))
+
 ## [0.2.0](https://github.com/launchdarkly/python-server-sdk-ai/compare/ldai_optimizer-0.1.0...ldai_optimizer-0.2.0) (2026-07-17)
 
 
