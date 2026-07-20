@@ -23,7 +23,7 @@ This package provides helpers for running iterative AI prompt optimization workf
 ## Installation
 
 ```bash
-pip install ldai_optimizer
+pip install launchdarkly-ai-optimizer
 ```
 
 ## Quick Start
