@@ -1,4 +1,5 @@
 import uuid
+from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import chevron
@@ -101,6 +102,34 @@ def _resolve_tools(variation: Dict[str, Any]) -> Optional[Dict[str, LDTool]]:
             custom_parameters=item.get('customParameters'),
         )
     return tools or None
+
+
+@dataclass(frozen=True)
+class _LdMeta:
+    """
+    Parsed representation of a flag variation's ``_ldMeta`` block.
+
+    Internal to :meth:`LDAIClient.__evaluate`. ``variation_key``, ``version``,
+    ``model_key``, and ``model_version`` are never exposed on a public config
+    type -- they only flow into the tracker built for that variation.
+    """
+    enabled: bool
+    variation_key: str
+    version: int
+    model_key: Optional[str]
+    model_version: Optional[int]
+
+
+def _parse_ld_meta(variation: Dict[str, Any]) -> _LdMeta:
+    ld_meta = variation.get('_ldMeta', {})
+    raw_model_version = ld_meta.get('modelVersion')
+    return _LdMeta(
+        enabled=bool(ld_meta.get('enabled', False)),
+        variation_key=ld_meta.get('variationKey', ''),
+        version=int(ld_meta.get('version', 1)),
+        model_key=ld_meta.get('modelKey'),
+        model_version=int(raw_model_version) if raw_model_version is not None else None,
+    )
 
 
 class LDAIClient:
@@ -929,6 +958,8 @@ class LDAIClient:
             provider = variation['provider']
             provider_config = ProviderConfig(provider.get('name', ''))
 
+        meta = _parse_ld_meta(variation)
+
         model = None
         if 'model' in variation and isinstance(variation['model'], dict):
             parameters = variation['model'].get('parameters', None)
@@ -941,8 +972,6 @@ class LDAIClient:
                 region=region,
             )
 
-        variation_key = variation.get('_ldMeta', {}).get('variationKey', '')
-        version = int(variation.get('_ldMeta', {}).get('version', 1))
         model_name = model.name if model else ''
         provider_name = provider_config.name if provider_config else ''
 
@@ -951,15 +980,17 @@ class LDAIClient:
                 ld_client=self._client,
                 run_id=str(uuid.uuid4()),
                 config_key=key,
-                variation_key=variation_key,
-                version=version,
+                variation_key=meta.variation_key,
+                version=meta.version,
                 context=context,
                 model_name=model_name,
                 provider_name=provider_name,
+                model_key=meta.model_key,
+                model_version=meta.model_version,
                 graph_key=graph_key,
             )
 
-        enabled = variation.get('_ldMeta', {}).get('enabled', False)
+        enabled = meta.enabled
 
         judge_configuration = None
         if 'judgeConfiguration' in variation and isinstance(variation['judgeConfiguration'], dict):

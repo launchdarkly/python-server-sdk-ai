@@ -270,6 +270,36 @@ def _base_td() -> dict:
     }
 
 
+def test_track_data_includes_model_key_when_set(client: LDClient):
+    context = Context.create("user-key")
+    tracker = LDAIConfigTracker(
+        ld_client=client, run_id="test-run-id", config_key="config-key",
+        variation_key="variation-key", version=3, model_name="fakeModel",
+        provider_name="fakeProvider", context=context,
+        model_key="my-model", model_version=2,
+    )
+    tracker.track_success()
+
+    track_data = client.track.call_args[0][2]  # type: ignore
+    assert track_data["modelKey"] == "my-model"
+    assert track_data["modelVersion"] == 2
+
+
+def test_track_data_omits_model_key_when_empty(client: LDClient):
+    context = Context.create("user-key")
+    tracker = LDAIConfigTracker(
+        ld_client=client, run_id="test-run-id", config_key="config-key",
+        variation_key="variation-key", version=3, model_name="fakeModel",
+        provider_name="fakeProvider", context=context,
+        model_key="", model_version=3,
+    )
+    tracker.track_success()
+
+    track_data = client.track.call_args[0][2]  # type: ignore
+    assert "modelKey" not in track_data
+    assert track_data["modelVersion"] == 3
+
+
 def test_config_tracker_includes_graph_key_when_provided(client: LDClient):
     context = Context.create("user-key")
     tracker = LDAIConfigTracker(
@@ -774,6 +804,7 @@ def test_resumption_token_round_trip(client: LDClient):
         ld_client=client, run_id="test-run-id", config_key="cfg-key",
         variation_key="var-key", version=5, model_name="gpt-4",
         provider_name="openai", context=context,
+        model_key="my-model", model_version=2,
     )
 
     token = tracker.resumption_token
@@ -788,6 +819,8 @@ def test_resumption_token_round_trip(client: LDClient):
     # modelName and providerName should NOT be in the token
     assert "modelName" not in decoded
     assert "providerName" not in decoded
+    assert "modelKey" not in decoded
+    assert "modelVersion" not in decoded
 
 
 def test_resumption_token_has_no_padding(client: LDClient):
@@ -953,6 +986,8 @@ def test_client_create_tracker_from_resumption_token():
     # modelName and providerName are empty when reconstructed from token
     assert track_data["modelName"] == ""
     assert track_data["providerName"] == ""
+    assert "modelVersion" not in track_data
+    assert "modelKey" not in track_data
     # Context should be the new one, not the original
     assert feedback_calls[0].args[1] == context
 
