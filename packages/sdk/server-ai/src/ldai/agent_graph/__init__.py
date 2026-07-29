@@ -205,7 +205,7 @@ class AgentGraphDefinition:
 
         while len(visited) < len(reachable):
             nxt = next(
-                (k for k in order if k not in visited and indeg[k] <= 0), None
+                (k for k in order if k not in visited and indeg[k] == 0), None
             )
             if nxt is None:  # cycle break
                 nxt = min(
@@ -282,7 +282,7 @@ class AgentGraphDefinition:
                 (
                     k
                     for k in order
-                    if k != root_key and k not in visited and outdeg[k] <= 0
+                    if k != root_key and k not in visited and outdeg[k] == 0
                 ),
                 None,
             )
