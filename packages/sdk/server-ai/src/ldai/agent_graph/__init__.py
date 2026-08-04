@@ -121,28 +121,29 @@ class AgentGraphDefinition:
                     nodes.append(node)
         return nodes
 
-    def _collect_nodes(
-        self,
-        node: AgentGraphNode,
-        node_depths: Dict[str, int],
-        nodes_by_depth: Dict[int, List[AgentGraphNode]],
-        visited: Set[str],
-        max_depth: int,
-    ) -> None:
-        """Collect all reachable nodes from the given node and group them by depth."""
-        node_key = node.get_key()
-        if node_key in visited:
-            return
-        visited.add(node_key)
-
-        # Use max_depth for nodes not in node_depths to ensure they execute last
-        node_depth = node_depths.get(node_key, max_depth)
-        if node_depth not in nodes_by_depth:
-            nodes_by_depth[node_depth] = []
-        nodes_by_depth[node_depth].append(node)
-
-        for child in self.get_child_nodes(node_key):
-            self._collect_nodes(child, node_depths, nodes_by_depth, visited, max_depth)
+    def _reachable_and_discovery(
+        self, root_key: str
+    ) -> tuple[Set[str], List[str]]:
+        """Return reachable node keys and BFS discovery order from root."""
+        reachable: Set[str] = set()
+        order: List[str] = []
+        queue: List[str] = [root_key]
+        reachable.add(root_key)
+        order.append(root_key)
+        while queue:
+            key = queue.pop(0)
+            node = self.get_node(key)
+            if node is None:
+                continue
+            for edge in node.get_edges():
+                if (
+                    self.get_node(edge.target_config) is not None
+                    and edge.target_config not in reachable
+                ):
+                    reachable.add(edge.target_config)
+                    order.append(edge.target_config)
+                    queue.append(edge.target_config)
+        return reachable, order
 
     def terminal_nodes(self) -> List[AgentGraphNode]:
         """Get the terminal nodes of the graph, meaning any nodes without children."""
@@ -161,8 +162,18 @@ class AgentGraphDefinition:
         fn: Callable[["AgentGraphNode", Dict[str, Any]], Any],
         execution_context: Optional[Dict[str, Any]] = None,
     ) -> Any:
-        """Traverse from the root down to terminal nodes, visiting nodes in order of depth.
-        Nodes with the longest paths from the root (deepest nodes) will always be visited last."""
+        """Visit each reachable node in topological (predecessors-first) order.
+
+        The root is visited first. A node is visited only after all of its
+        reachable predecessors. When multiple nodes are ready, discovery order
+        (BFS from root following declared edge order) breaks ties. Cycles are
+        broken at the lowest remaining in-degree, also tie-broken by discovery
+        order.
+
+        Each node's ``fn`` receives a fresh context containing the caller-provided
+        initial context plus the returned results of exactly that node's reachable
+        predecessors — not unrelated parallel-branch nodes.
+        """
         if execution_context is None:
             execution_context = {}
 
@@ -170,104 +181,135 @@ class AgentGraphDefinition:
         if root_node is None:
             return
 
-        node_depths: Dict[str, int] = {root_node.get_key(): 0}
-        current_level: List[AgentGraphNode] = [root_node]
-        depth = 0
-        max_depth_limit = 10  # Infinite loop protection limit
-        max_depth_encountered = 0
-        seen_nodes: Set[str] = {root_node.get_key()}
+        reachable, order = self._reachable_and_discovery(root_node.get_key())
 
-        while current_level:
-            next_level: List[AgentGraphNode] = []
-            depth += 1
+        indeg = {k: 0 for k in reachable}
+        for k in reachable:
+            node = self.get_node(k)
+            if node is None:
+                continue
+            for edge in node.get_edges():
+                if edge.target_config in reachable:
+                    indeg[edge.target_config] += 1
+        indeg[root_node.get_key()] = 0  # force root
 
-            for node in current_level:
-                node_key = node.get_key()
-                for child in self.get_child_nodes(node_key):
-                    child_key = child.get_key()
-                    if depth <= max_depth_limit:
-                        # Defer this child to the next level if it's at a longer path
-                        if child_key not in node_depths or depth > node_depths[child_key]:
-                            node_depths[child_key] = depth
-                            max_depth_encountered = max(max_depth_encountered, depth)
-                        # Add to next level if not already visited (prevents cycles)
-                        if child_key not in seen_nodes:
-                            seen_nodes.add(child_key)
-                            next_level.append(child)
-                    else:
-                        max_depth_encountered = max(max_depth_encountered, depth)
-                        if child_key not in seen_nodes:
-                            # Push this to the next level to be visited
-                            seen_nodes.add(child_key)
-                            next_level.append(child)
-
-            current_level = next_level
-
-        # Use max_depth_limit + 1 to ensure they execute after all recorded nodes
-        max_depth = max(max_depth_limit + 1, max_depth_encountered + 1)
-
-        # Group all nodes by depth
-        nodes_by_depth: Dict[int, List[AgentGraphNode]] = {}
-        # New visited for children nodes
         visited: Set[str] = set()
+        results: Dict[str, Any] = {}
+        ancestors: Dict[str, Set[str]] = {}
 
-        self._collect_nodes(root_node, node_depths, nodes_by_depth, visited, max_depth)
-        # Execute the lambda at this level for the nodes at this depth
-        for depth_level in sorted(nodes_by_depth.keys()):
-            for node in nodes_by_depth[depth_level]:
-                execution_context[node.get_key()] = fn(node, execution_context)
+        def scoped(deps: Set[str]) -> Dict[str, Any]:
+            c = dict(execution_context)
+            for dep_key in deps:
+                c[dep_key] = results[dep_key]
+            return c
 
-        return execution_context[self._agent_graph.root_config_key]
+        while len(visited) < len(reachable):
+            nxt = next(
+                (k for k in order if k not in visited and indeg[k] == 0), None
+            )
+            if nxt is None:  # cycle break
+                nxt = min(
+                    (k for k in order if k not in visited), key=lambda k: indeg[k]
+                )
+            visited.add(nxt)
+            anc: Set[str] = set()
+            for parent in self.get_parent_nodes(nxt):
+                pk = parent.get_key()
+                if pk not in visited:
+                    continue
+                anc.add(pk)
+                anc |= ancestors.get(pk, set())
+            ancestors[nxt] = anc
+            node = self.get_node(nxt)
+            assert node is not None
+            results[nxt] = fn(node, scoped(anc))
+            for edge in node.get_edges():
+                if edge.target_config in reachable:
+                    indeg[edge.target_config] -= 1
+        return results.get(self._agent_graph.root_config_key)
 
     def reverse_traverse(
         self,
         fn: Callable[["AgentGraphNode", Dict[str, Any]], Any],
         execution_context: Optional[Dict[str, Any]] = None,
     ) -> Any:
-        """Traverse from terminal nodes up to the root, visiting nodes level by level.
-        The root node will always be visited last, even if multiple paths converge at it."""
+        """Visit each reachable node in reverse topological (descendants-first) order.
+
+        The root is visited last. A node is visited only after all of its
+        reachable descendants. When multiple nodes are ready, discovery order
+        (BFS from root following declared edge order) breaks ties. Cycles among
+        non-root nodes are broken at the lowest remaining out-degree, also
+        tie-broken by discovery order. Graphs with no terminals (pure cycles)
+        still visit every reachable node, root last.
+
+        Each node's ``fn`` receives a fresh context containing the caller-provided
+        initial context plus the returned results of exactly that node's reachable
+        descendants — not unrelated parallel-branch nodes.
+        """
         if execution_context is None:
             execution_context = {}
 
-        terminal_nodes = self.terminal_nodes()
-        if not terminal_nodes:
+        root_node = self.root()
+        if root_node is None:
             return
 
-        visited: Set[str] = set()
-        current_level: List[AgentGraphNode] = terminal_nodes
         root_key = self._agent_graph.root_config_key
-        root_node_seen = False
+        reachable, order = self._reachable_and_discovery(root_key)
 
-        while current_level:
-            next_level: List[AgentGraphNode] = []
+        outdeg: Dict[str, int] = {}
+        for k in reachable:
+            node = self.get_node(k)
+            assert node is not None
+            outdeg[k] = sum(
+                1 for e in node.get_edges() if e.target_config in reachable
+            )
 
-            for node in current_level:
-                node_key = node.get_key()
-                if node_key in visited:
-                    continue
+        visited: Set[str] = set()
+        results: Dict[str, Any] = {}
+        descendants: Dict[str, Set[str]] = {}
 
-                visited.add(node_key)
-                # Skip the root node if we reach a terminus, it will be visited last
-                if node_key == root_key:
-                    root_node_seen = True
-                    continue
+        def scoped(deps: Set[str]) -> Dict[str, Any]:
+            c = dict(execution_context)
+            for dep_key in deps:
+                c[dep_key] = results[dep_key]
+            return c
 
-                execution_context[node_key] = fn(node, execution_context)
+        def non_root_remaining() -> bool:
+            return any(k != root_key and k not in visited for k in reachable)
 
-                for parent in self.get_parent_nodes(node_key):
-                    parent_key = parent.get_key()
-                    if parent_key not in visited:
-                        next_level.append(parent)
-
-            current_level = next_level
-
-        # If we saw the root node, append it at the end as it'll always be the last node in a
-        # reverse traversal (this should always happen, non-contiguous graphs are invalid)
-        if root_node_seen:
-            root_node = self.root()
-            if root_node is not None:
-                execution_context[root_node.get_key()] = fn(
-                    root_node, execution_context
+        while non_root_remaining():
+            nxt = next(
+                (
+                    k
+                    for k in order
+                    if k != root_key and k not in visited and outdeg[k] == 0
+                ),
+                None,
+            )
+            if nxt is None:  # cycle break
+                nxt = min(
+                    (k for k in order if k != root_key and k not in visited),
+                    key=lambda k: outdeg[k],
                 )
+            visited.add(nxt)
+            desc: Set[str] = set()
+            node = self.get_node(nxt)
+            assert node is not None
+            for edge in node.get_edges():
+                ck = edge.target_config
+                if ck not in reachable or ck not in visited:
+                    continue
+                desc.add(ck)
+                desc |= descendants.get(ck, set())
+            descendants[nxt] = desc
+            results[nxt] = fn(node, scoped(desc))
+            for parent in self.get_parent_nodes(nxt):
+                pk = parent.get_key()
+                if pk != root_key and pk in reachable:
+                    outdeg[pk] -= 1
 
-        return execution_context[self._agent_graph.root_config_key]
+        # root last, once; root depends on every reachable non-root node
+        root_deps = {k for k in reachable if k != root_key}
+        visited.add(root_key)
+        results[root_key] = fn(root_node, scoped(root_deps))
+        return results.get(root_key)

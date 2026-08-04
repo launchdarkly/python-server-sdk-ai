@@ -353,21 +353,14 @@ def test_agent_graph_traverse(ldai_client: LDAIClient):
         "test-agent-graph-depth-3", Context.create("user-key")
     )
 
-    context = {}
     order = []
 
     def handle_traverse(node, context):
-        # Asserting that returned values are included in the context
-        for previousKey in order:
-            assert previousKey in context
-            assert context[previousKey] == previousKey + "-test"
         order.append(node.get_key())
         return node.get_key() + "-test"
 
-    graph.traverse(handle_traverse, context)
-    # Asserting that we traverse in the expected order
-    # This config specifically has nodes connecting from depth 2->3 and root->3 to ensure the root node is visited first
-    # and minimal-agent is visited last
+    graph.traverse(handle_traverse, {})
+    # Nested diamond: root first, convergence node (minimal-agent) last
     assert order == [
         "customer-support-agent",
         "personalized-agent",
@@ -381,20 +374,14 @@ def test_agent_graph_reverse_traverse(ldai_client: LDAIClient):
         "test-agent-graph-depth-3", Context.create("user-key")
     )
 
-    context = {}
     order = []
 
     def handle_reverse_traverse(node, context):
-        # Asserting that returned values are included in the context
-        for previousKey in order:
-            assert previousKey in context
-            assert context[previousKey] == previousKey + "-test"
         order.append(node.get_key())
         return node.get_key() + "-test"
 
-    graph.reverse_traverse(handle_reverse_traverse, context)
-    # Asserting that we traverse in the expected order
-    # This config specifically has nodes connecting from depth 2->3 and root->3 to ensure the root node is visited last
+    graph.reverse_traverse(handle_reverse_traverse, {})
+    # Nested diamond: terminals first, root last
     assert order == [
         "minimal-agent",
         "multi-context-agent",
@@ -445,3 +432,238 @@ def test_agent_graph_handoff(ldai_client: LDAIClient):
         return None
 
     graph.traverse(handle_traverse, context)
+
+
+# ---------------------------------------------------------------------------
+# AIGRAPH parity fixtures (G1–G6 / G2b) — topological order + scoped context
+# ---------------------------------------------------------------------------
+
+_TRAVERSAL_VECTORS = [
+    {
+        "id": "G1",
+        "root": "a",
+        "nodes": ["a", "b", "c"],
+        "edges": [["a", "b"], ["b", "c"]],
+        "traverse": ["a", "b", "c"],
+        "reverse_traverse": ["c", "b", "a"],
+        "traverse_context": {"a": [], "b": ["a"], "c": ["a", "b"]},
+        "reverse_traverse_context": {"a": ["b", "c"], "b": ["c"], "c": []},
+    },
+    {
+        "id": "G2",
+        "root": "a",
+        "nodes": ["a", "b", "c", "d", "e"],
+        "edges": [["a", "b"], ["a", "c"], ["c", "d"], ["d", "e"], ["b", "e"]],
+        "traverse": ["a", "b", "c", "d", "e"],
+        "reverse_traverse": ["e", "b", "d", "c", "a"],
+        "traverse_context": {
+            "a": [],
+            "b": ["a"],
+            "c": ["a"],
+            "d": ["a", "c"],
+            "e": ["a", "b", "c", "d"],
+        },
+        "reverse_traverse_context": {
+            "a": ["b", "c", "d", "e"],
+            "b": ["e"],
+            "c": ["d", "e"],
+            "d": ["e"],
+            "e": [],
+        },
+    },
+    {
+        "id": "G2b",
+        "root": "a",
+        "nodes": ["a", "b", "c", "d", "e"],
+        "edges": [["a", "c"], ["a", "b"], ["c", "d"], ["d", "e"], ["b", "e"]],
+        "traverse": ["a", "c", "b", "d", "e"],
+        "reverse_traverse": ["e", "b", "d", "c", "a"],
+        "traverse_context": {
+            "a": [],
+            "b": ["a"],
+            "c": ["a"],
+            "d": ["a", "c"],
+            "e": ["a", "b", "c", "d"],
+        },
+        "reverse_traverse_context": {
+            "a": ["b", "c", "d", "e"],
+            "b": ["e"],
+            "c": ["d", "e"],
+            "d": ["e"],
+            "e": [],
+        },
+    },
+    {
+        "id": "G3",
+        "root": "a",
+        "nodes": ["a", "b", "c", "d"],
+        "edges": [["a", "b"], ["a", "c"], ["b", "d"], ["c", "d"]],
+        "traverse": ["a", "b", "c", "d"],
+        "reverse_traverse": ["d", "b", "c", "a"],
+        "traverse_context": {
+            "a": [],
+            "b": ["a"],
+            "c": ["a"],
+            "d": ["a", "b", "c"],
+        },
+        "reverse_traverse_context": {
+            "a": ["b", "c", "d"],
+            "b": ["d"],
+            "c": ["d"],
+            "d": [],
+        },
+    },
+    {
+        "id": "G4",
+        "root": "a",
+        "nodes": ["a", "n", "m", "t"],
+        "edges": [["a", "n"], ["n", "m"], ["n", "t"], ["m", "t"]],
+        "traverse": ["a", "n", "m", "t"],
+        "reverse_traverse": ["t", "m", "n", "a"],
+        "traverse_context": {
+            "a": [],
+            "n": ["a"],
+            "m": ["a", "n"],
+            "t": ["a", "m", "n"],
+        },
+        "reverse_traverse_context": {
+            "a": ["m", "n", "t"],
+            "n": ["m", "t"],
+            "m": ["t"],
+            "t": [],
+        },
+    },
+    {
+        "id": "G5",
+        "root": "a",
+        "nodes": ["a", "b", "c", "d"],
+        "edges": [["a", "b"], ["a", "c"], ["b", "d"]],
+        "traverse": ["a", "b", "c", "d"],
+        "reverse_traverse": ["c", "d", "b", "a"],
+        "traverse_context": {
+            "a": [],
+            "b": ["a"],
+            "c": ["a"],
+            "d": ["a", "b"],
+        },
+        "reverse_traverse_context": {
+            "a": ["b", "c", "d"],
+            "b": ["d"],
+            "c": [],
+            "d": [],
+        },
+    },
+    {
+        "id": "G6",
+        "root": "a",
+        "nodes": ["a", "b", "c"],
+        "edges": [["a", "b"], ["b", "c"], ["c", "b"]],
+        "traverse": ["a", "b", "c"],
+        "reverse_traverse": ["b", "c", "a"],
+        "traverse_context": {"a": [], "b": ["a"], "c": ["a", "b"]},
+        "reverse_traverse_context": {"a": ["b", "c"], "b": [], "c": ["b"]},
+    },
+]
+
+
+def _make_graph(root: str, nodes: list, edges: list) -> AgentGraphDefinition:
+    edge_objs = [
+        Edge(
+            key=f"{src}-{tgt}",
+            source_config=src,
+            target_config=tgt,
+            handoff={},
+        )
+        for src, tgt in edges
+    ]
+    graph_config = AIAgentGraphConfig(
+        key="parity-graph",
+        root_config_key=root,
+        edges=edge_objs,
+    )
+    graph_nodes = {
+        key: AIAgentConfig(
+            key=key,
+            enabled=True,
+            create_tracker=MagicMock(),
+            evaluator=Evaluator.noop(),
+        )
+        for key in nodes
+    }
+    built = AgentGraphDefinition.build_nodes(graph_config, graph_nodes)
+    return AgentGraphDefinition(
+        agent_graph=graph_config,
+        nodes=built,
+        context=Context.create("parity-user"),
+        enabled=True,
+        create_tracker=MagicMock(),
+    )
+
+
+@pytest.mark.parametrize(
+    "vector", _TRAVERSAL_VECTORS, ids=[v["id"] for v in _TRAVERSAL_VECTORS]
+)
+def test_traversal_parity_order_and_context(vector):
+    graph = _make_graph(vector["root"], vector["nodes"], vector["edges"])
+    node_keys = set(vector["nodes"])
+    initial = {"seed": "shared"}
+
+    # Forward traverse
+    fwd_order = []
+    fwd_contexts = {}
+
+    def fwd_fn(node, ctx):
+        key = node.get_key()
+        fwd_order.append(key)
+        fwd_contexts[key] = dict(ctx)
+        assert ctx.get("seed") == "shared"
+        return f"{key}-result"
+
+    graph.traverse(fwd_fn, dict(initial))
+    assert fwd_order == vector["traverse"]
+    for key, expected_deps in vector["traverse_context"].items():
+        observed = {k for k in fwd_contexts[key] if k in node_keys}
+        assert observed == set(expected_deps), (
+            f"{vector['id']} forward {key}: expected {set(expected_deps)}, "
+            f"got {observed}"
+        )
+
+    # Reverse traverse
+    rev_order = []
+    rev_contexts = {}
+
+    def rev_fn(node, ctx):
+        key = node.get_key()
+        rev_order.append(key)
+        rev_contexts[key] = dict(ctx)
+        assert ctx.get("seed") == "shared"
+        return f"{key}-result"
+
+    graph.reverse_traverse(rev_fn, dict(initial))
+    assert rev_order == vector["reverse_traverse"]
+    for key, expected_deps in vector["reverse_traverse_context"].items():
+        observed = {k for k in rev_contexts[key] if k in node_keys}
+        assert observed == set(expected_deps), (
+            f"{vector['id']} reverse {key}: expected {set(expected_deps)}, "
+            f"got {observed}"
+        )
+
+
+@pytest.mark.parametrize(
+    "vector", _TRAVERSAL_VECTORS, ids=[v["id"] for v in _TRAVERSAL_VECTORS]
+)
+def test_traversal_parity_determinism(vector):
+    graph = _make_graph(vector["root"], vector["nodes"], vector["edges"])
+
+    def collect(method):
+        order = []
+
+        def fn(node, _ctx):
+            order.append(node.get_key())
+            return node.get_key()
+
+        method(fn, {})
+        return order
+
+    assert collect(graph.traverse) == collect(graph.traverse)
+    assert collect(graph.reverse_traverse) == collect(graph.reverse_traverse)
