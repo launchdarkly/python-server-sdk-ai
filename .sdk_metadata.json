@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "sdks": {
+    "python-server-sdk-ai": {
+      "name": "Python Server AI SDK",
+      "type": "ai",
+      "path": "packages/sdk/server-ai",
+      "languages": ["Python"],
+      "aiSdkNames": ["launchdarkly-server-sdk-ai"],
+      "releases": { "tag-prefix": "launchdarkly-server-sdk-ai-" },
+      "features": {
+        "aiAgentConfig":      { "introduced": "0.10" },
+        "aiAgentGraph":       { "introduced": "0.13" },
+        "aiCompletionConfig": { "introduced": "0.1" },
+        "aiJudgeConfig":      { "introduced": "0.11" },
+        "aiTrackMetrics":     { "introduced": "0.1" }
+      }
+    }
+  }
+}
