@@ -2,6 +2,25 @@
 
 All notable changes to the LaunchDarkly Python AI package will be documented in this file. This project adheres to [Semantic Versioning](http://semver.org).
 
+## [2.0.0](https://github.com/launchdarkly/python-server-sdk-ai/compare/launchdarkly-server-sdk-ai-1.2.0...launchdarkly-server-sdk-ai-2.0.0) (2026-09-28)
+
+
+### ⚠ BREAKING CHANGES
+
+* Make AgentGraph traversal topological ([#214](https://github.com/launchdarkly/python-server-sdk-ai/issues/214))
+
+### Features
+
+* **server-ai:** stamp modelKey and modelVersion on AI usage events (AIC-2851) ([#208](https://github.com/launchdarkly/python-server-sdk-ai/issues/208)) ([66588f0](https://github.com/launchdarkly/python-server-sdk-ai/commit/66588f0c053db9beb021f6b82f9f41a872b7c0dc))
+
+
+### Bug Fixes
+
+* Make AgentGraph traversal topological ([#214](https://github.com/launchdarkly/python-server-sdk-ai/issues/214)) ([d1828ab](https://github.com/launchdarkly/python-server-sdk-ai/commit/d1828ab3d2d6ccde39074cc7134f6c0d0d02a75d))
+* **server-ai:** stop exposing model_key/model_version on ModelConfig ([5f8b5f8](https://github.com/launchdarkly/python-server-sdk-ai/commit/5f8b5f840895252e6ada32aa7e94a0707b91f35d))
+* use == 0 for agent graph ready-check parity ([3f801da](https://github.com/launchdarkly/python-server-sdk-ai/commit/3f801da138a8c106832407f9275e72c55e5a3df7))
+* use topological order and scoped context for agent graph traversal ([d76b2d9](https://github.com/launchdarkly/python-server-sdk-ai/commit/d76b2d9cfa79e00b5ad9dd91f46a50e26716aaa5))
+
 ## [1.2.0](https://github.com/launchdarkly/python-server-sdk-ai/compare/launchdarkly-server-sdk-ai-1.1.0...launchdarkly-server-sdk-ai-1.2.0) (2026-07-17)
 
 
