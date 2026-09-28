@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.2](https://github.com/launchdarkly/python-server-sdk-ai/compare/ldai_optimizer-0.2.1...ldai_optimizer-0.2.2) (2026-09-28)
+
+
+### Bug Fixes
+
+* **optimization:** inline the pinned LD-API-Version value ([fa7b6c3](https://github.com/launchdarkly/python-server-sdk-ai/commit/fa7b6c3ec33cef9a1b4cea9ecbe149908a9a62a5))
+* **optimization:** pin LD-API-Version on agent-optimization API calls (AIC-3484) ([#216](https://github.com/launchdarkly/python-server-sdk-ai/issues/216)) ([36627c7](https://github.com/launchdarkly/python-server-sdk-ai/commit/36627c7fd8ebda1a299df0ff2857ccb71af076f1))
+
 ## [0.2.1](https://github.com/launchdarkly/python-server-sdk-ai/compare/ldai_optimizer-0.2.0...ldai_optimizer-0.2.1) (2026-07-20)
 
 
