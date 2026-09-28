@@ -13,10 +13,6 @@ logger = logging.getLogger(__name__)
 logger.addFilter(RedactionFilter())
 
 _BASE_URL = "https://app.launchdarkly.com"
-# Pinned so customer tokens that default below API v4 are not rejected after
-# the pre-v4 block. Callers that pass LD-API-Version in extra_headers (the
-# AI Config endpoints send "beta") still override this.
-_LD_API_VERSION = "20240415"
 
 _MAX_RETRIES = 3
 _INITIAL_BACKOFF = 1.0  # seconds; doubles on each attempt (1s, 2s, 4s)
@@ -204,7 +200,7 @@ class LDApiClient:
     def _auth_headers(self) -> Dict[str, str]:
         return {
             "Authorization": self._api_key,
-            "LD-API-Version": _LD_API_VERSION,
+            "LD-API-Version": "20240415",
         }
 
     def _request(
