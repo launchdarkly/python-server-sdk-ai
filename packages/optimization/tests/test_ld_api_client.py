@@ -168,6 +168,14 @@ class TestLDApiClientRequest:
             req: urllib.request.Request = mock_open.call_args[0][0]
             assert req.get_header("Authorization") == "my-api-key"
 
+    def test_default_api_version_header_is_v4(self):
+        client = LDApiClient("test-key")
+        with patch("urllib.request.urlopen", return_value=_mock_urlopen({})) as mock_open:
+            client._request("GET", "/path")
+            req: urllib.request.Request = mock_open.call_args[0][0]
+            # urllib capitalizes header names; the wire value is still LD-API-Version.
+            assert req.get_header("Ld-api-version") == "20240415"
+
     def test_raises_ld_api_error_on_http_error(self):
         client = LDApiClient("test-key")
         http_error = urllib.error.HTTPError(

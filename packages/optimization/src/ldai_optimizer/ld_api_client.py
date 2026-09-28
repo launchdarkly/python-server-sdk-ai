@@ -198,7 +198,10 @@ class LDApiClient:
         return f"LDApiClient(base_url={self._base_url!r})"
 
     def _auth_headers(self) -> Dict[str, str]:
-        return {"Authorization": self._api_key}
+        return {
+            "Authorization": self._api_key,
+            "LD-API-Version": "20240415",
+        }
 
     def _request(
         self,
