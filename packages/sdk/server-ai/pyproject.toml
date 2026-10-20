@@ -20,7 +20,7 @@ classifiers = [
     "Topic :: Software Development :: Libraries",
 ]
 dependencies = [
-    "launchdarkly-server-sdk>=9.4.0",
+    "launchdarkly-server-sdk>=9.18.3",
     "chevron==0.14.0",
 ]
 

@@ -490,40 +490,45 @@ testing = ["PyYAML", "atheris (>=2.3.0,<2.4.0) ; python_version < \"3.12\"", "bs
 
 [[package]]
 name = "launchdarkly-eventsource"
-version = "1.5.1"
+version = "1.7.4"
 description = "LaunchDarkly SSE Client"
 optional = false
-python-versions = ">=3.9"
+python-versions = ">=3.10"
 groups = ["main"]
 files = [
-    {file = "launchdarkly_eventsource-1.5.1-py3-none-any.whl", hash = "sha256:43dfbc14a3962c9bce252320d690cdcbfda0ca00501226d517ae77e60f570d44"},
-    {file = "launchdarkly_eventsource-1.5.1.tar.gz", hash = "sha256:f122f80b36db6ea1ab20af62c82b8b2668682259b415053c94400dd6c07922a7"},
+    {file = "launchdarkly_eventsource-1.7.4-py3-none-any.whl", hash = "sha256:42bbaee1741675199be193d99229ecb710a94089e74fc68b8c4edb90cddbdc5e"},
+    {file = "launchdarkly_eventsource-1.7.4.tar.gz", hash = "sha256:0a608da152a53bd05f5b4a2486828f21d48cd25a56986e36a8e47a8e9975e309"},
 ]
 
 [package.dependencies]
 urllib3 = ">=1.26.0,<3"
 
+[package.extras]
+async = ["aiohttp (>=3.8.0,<4)"]
+
 [[package]]
 name = "launchdarkly-server-sdk"
-version = "9.15.1"
+version = "9.18.3"
 description = "LaunchDarkly SDK for Python"
 optional = false
 python-versions = ">=3.10"
 groups = ["main"]
 files = [
-    {file = "launchdarkly_server_sdk-9.15.1-py3-none-any.whl", hash = "sha256:ecaf0b55740921261b9ea38defe8c4b0811feef485e5b3a329ebaa26531a9565"},
-    {file = "launchdarkly_server_sdk-9.15.1.tar.gz", hash = "sha256:61101ef41677ba71061fb974b228412366a02c5a57d05652f5ef419f477154ce"},
+    {file = "launchdarkly_server_sdk-9.18.3-py3-none-any.whl", hash = "sha256:e21d951a465c62f387c7b19b105351f463f45cf51ace93e293041f5452eaef94"},
+    {file = "launchdarkly_server_sdk-9.18.3.tar.gz", hash = "sha256:e785b6a1ce1fabccbf380ec9f8e3604758a70f90e1cb272a1dcaa54df47a295b"},
 ]
 
 [package.dependencies]
-certifi = ">=2018.4.16"
+certifi = ">=2026.10.19"
 expiringdict = ">=1.1.4"
-launchdarkly-eventsource = ">=1.5.0,<2.0.0"
-pyRFC3339 = ">=1.0"
+launchdarkly-eventsource = ">=1.7.2,<2.0.0"
+pyrfc3339 = ">=1.0"
 semver = ">=2.10.2"
 urllib3 = ">=1.26.0,<3"
 
 [package.extras]
+async = ["aiohttp (>=3.9,<4)"]
+async-dynamodb = ["aioboto3 (>=11.0)"]
 consul = ["python-consul (>=1.0.1)"]
 dynamodb = ["boto3 (>=1.9.71)"]
 redis = ["redis (>=2.10.5)"]
@@ -1175,4 +1180,4 @@ zstd = ["backports-zstd (>=1.0.0) ; python_version < \"3.14\""]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10,<4"
-content-hash = "03d0f0af6befaba873460694d3b248e82cb15d8640d68554b99f98ae6067c2bf"
+content-hash = "b24cab1279f034eea3fac5a7fb806546a8d25e2d14672a00bcb9e11b61bd06bf"
