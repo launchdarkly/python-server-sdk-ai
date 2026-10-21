@@ -75,3 +75,6 @@ test-packaging-venv
 # uv — lock file is not committed for libraries (only for applications)
 uv.lock
 .venv/
+
+# Poetry -- the project uses uv; do not commit a Poetry lock file
+poetry.lock
